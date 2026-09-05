@@ -84,8 +84,11 @@ def _parsear_monto_latino(s: str) -> float:
 
 
 def _parsear_monto_plano(s: str) -> float:
-    """'32500.00' o '1750000' -> float directo (sin separador de miles)."""
-    return float(s)
+    """'32500.00', '1750000' o '7,500.00' -> float. En esta familia de
+    alertas el separador de miles (si aparece) siempre es coma y el
+    decimal siempre es punto (nunca al revés) -- a diferencia de las
+    alertas de "Compraste", que usan formato latino."""
+    return float(s.replace(",", ""))
 
 
 def _fecha_iso(dia: str, mes: str, anio: str) -> str:
