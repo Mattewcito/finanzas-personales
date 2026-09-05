@@ -378,8 +378,15 @@
   .btn-subir.visible{ opacity: 1; pointer-events: auto; }
   .btn-subir:hover{ background: var(--card-hover); color:#fff; }
   .side-nav a.active{ background: var(--card-solid); border-color: var(--card-border); color: var(--accent-2); font-weight:600; }
-  /* Si la ventana no tiene margen suficiente a la izquierda de .wrap, mejor ocultarlo que superponerlo */
-  @media (max-width: 1500px){ .side-nav{ display:none; } }
+  /* Si la ventana no tiene margen suficiente a la izquierda de .wrap, mejor
+     ocultarlo que superponerlo. El cálculo real: .wrap tiene max-width
+     1360px y queda centrado, así que su borde derecho de contenido cae en
+     (viewport + 1360) / 2; el side-nav (~150px de ancho, "right: 24px")
+     necesita que ese borde quede a la izquierda del suyo. Eso da un punto
+     de cruce real cerca de los 1700px -- el umbral viejo (1500px) dejaba
+     una franja de ~200px (portátiles comunes) donde el nav quedaba flotando
+     ENCIMA del header en vez de ocultarse. Con margen de sobra acá. */
+  @media (max-width: 1800px){ .side-nav{ display:none; } }
 </style>
 </head>
 <body>
