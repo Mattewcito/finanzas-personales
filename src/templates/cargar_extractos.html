@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Cargar extractos{% endblock %}
+{% block content %}
+<div style="padding:32px; max-width:640px;">
+  <h2 style="margin-top:0;">📥 Cargar extracto bancario</h2>
+  <p style="color:var(--text-dim); font-size:13px;">
+    Subí un archivo y se inserta en la base de datos — no duplica lo que ya
+    esté registrado (se compara por fecha y monto contra todo lo que ya hay,
+    sin importar si entró por acá, por correo o por el Excel).
+  </p>
+
+  <form id="formCarga">
+    <label style="display:block; margin-bottom:12px; font-size:13px;">
+      Tipo de archivo
+      <select name="tipo" id="tipoArchivo" style="display:block; margin-top:4px; width:100%; padding:8px; background:var(--card-solid); color:var(--text); border:1px solid var(--card-border); border-radius:8px;">
+        <option value="excel">Excel (mismo formato que la base de datos: fecha, tipo, categoria, moneda, monto, descripcion, entidad)</option>
+        <option value="pdf_ahorros">PDF — Extracto de cuenta de ahorros</option>
+        <option value="pdf_tarjeta">PDF — Extracto de tarjeta de crédito</option>
+      </select>
+    </label>
+
+    <div id="camposTarjeta" style="display:none; margin-bottom:12px;">
+      <label style="display:block; font-size:13px;">
+        Marca de la tarjeta
+        <input type="text" name="marca" placeholder="Mastercard, Amex..." style="display:block; margin-top:4px; width:100%; padding:8px; background:var(--card-solid); color:var(--text); border:1px solid var(--card-border); border-radius:8px;">
+      </label>
+      <label style="display:block; font-size:13px; margin-top:8px;">
+        Últimos 4 dígitos de la tarjeta
+        <input type="text" name="ultimos4" maxlength="4" style="display:block; margin-top:4px; width:100%; padding:8px; background:var(--card-solid); color:var(--text); border:1px solid var(--card-border); border-radius:8px;">
+      </label>
+    </div>
+
+    <label style="display:block; margin-bottom:16px; font-size:13px;">
+      Archivo
+      <input type="file" name="archivo" id="archivoInput" required style="display:block; margin-top:6px; color:var(--text-dim);">
+    </label>
+
+    <button type="submit" style="padding:10px 22px; border-radius:8px; border:none; background:var(--accent); color:#fff; font-weight:600; cursor:pointer; font-size:13.5px;">
+      Subir e insertar
+    </button>
+  </form>
+
+  <div id="resultado" style="margin-top:20px; font-size:13.5px; white-space:pre-line;"></div>
+</div>
+
+<script>
+document.getElementById('tipoArchivo').addEventListener('change', (e) => {
+  document.getElementById('camposTarjeta').style.display = e.target.value === 'pdf_tarjeta' ? 'block' : 'none';
+});
+
+document.getElementById('formCarga').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const datos = new FormData(e.target);
+  const resultado = document.getElementById('resultado');
+  resultado.textContent = 'Procesando...';
+  resultado.style.color = 'var(--text-dim)';
+
+  try {
+    const res = await fetch('/api/cargar-extracto', { method: 'POST', body: datos });
+    const json = await res.json();
+    if (!res.ok || !json.ok) {
+      resultado.textContent = '❌ ' + (json.error || 'Error desconocido');
+      resultado.style.color = '#f87171';
+      return;
+    }
+    resultado.textContent = `✅ ${json.nuevos} movimiento(s) nuevo(s) insertado(s), ${json.duplicados} ya existían.\nEl dashboard ya se actualizó con estos datos.`;
+    resultado.style.color = '#34d399';
+  } catch (err) {
+    resultado.textContent = '❌ No se pudo conectar con el servidor.';
+    resultado.style.color = '#f87171';
+  }
+});
+</script>
+{% endblock %}

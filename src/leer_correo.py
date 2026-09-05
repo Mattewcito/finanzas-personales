@@ -340,36 +340,6 @@ def buscar_movimientos_correo(dias: int) -> list[dict]:
         conn.logout()
 
 
-# ----------------------------- Inserción con dedup -----------------------------
-
-def insertar_sin_duplicar(conn, movimientos: list[dict]) -> dict:
-    """Inserta solo los movimientos cuyo (fecha, monto redondeado) no exista
-    ya en la base de datos, sin importar el origen — evita duplicar lo que
-    ya haya entrado por el Excel/bot de Gmail viejo durante la transición."""
-    cur = conn.cursor()
-    existentes = set()
-    for row in cur.execute("SELECT fecha, moneda, ROUND(monto) AS m FROM movimientos"):
-        existentes.add((row["fecha"], row["moneda"], row["m"]))
-
-    nuevos, duplicados = [], 0
-    for m in movimientos:
-        clave = (m["fecha"], m["moneda"], round(m["monto"]))
-        if clave in existentes:
-            duplicados += 1
-            continue
-        existentes.add(clave)  # evita duplicar contra sí mismo si el correo llega repetido en el mismo lote
-        nuevos.append(m)
-
-    enriquecidos = [db.enriquecer_movimiento(m) for m in nuevos]
-    cur.executemany(
-        """INSERT INTO movimientos (fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, es_deuda, origen)
-           VALUES (:fecha, :tipo, :categoria, :moneda, :monto, :descripcion, :entidad, :medio_pago, :es_deuda, 'correo_imap')""",
-        enriquecidos,
-    )
-    conn.commit()
-    return {"nuevos": len(nuevos), "duplicados": duplicados}
-
-
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dias", type=int, default=7, help="Cuántos días hacia atrás buscar (default 7)")
@@ -389,7 +359,7 @@ def main() -> int:
     conn = db.conectar()
     try:
         db.crear_esquema(conn)
-        stats = insertar_sin_duplicar(conn, movimientos)
+        stats = db.insertar_movimientos(conn, movimientos, origen="correo_imap")
     finally:
         conn.close()
 

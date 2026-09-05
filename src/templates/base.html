@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>{% block title %}Finanzas Personales{% endblock %}</title>
+<style>
+  :root{
+    --bg: #090c13;
+    --bg-soft: #0d111b;
+    --card-solid: #131928;
+    --card-border: rgba(255,255,255,0.07);
+    --card-hover: #171e30;
+    --text: #e7ebf5;
+    --text-dim: #8d96ab;
+    --text-faint: #5b6379;
+    --accent: #7c6cfb;
+    --accent-2: #38bdf8;
+  }
+  *{ box-sizing: border-box; }
+  html, body{ margin:0; height:100%; }
+  body{
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .app-shell{ display:flex; min-height:100vh; }
+  .app-sidebar{
+    width: 220px; flex-shrink:0; background: var(--bg-soft);
+    border-right: 1px solid var(--card-border); padding: 20px 14px;
+    position: sticky; top:0; align-self:flex-start; height:100vh;
+  }
+  .app-sidebar h1{ font-size:15px; margin: 4px 8px 22px; }
+  .app-sidebar a{
+    display:block; padding:10px 12px; margin-bottom:4px; border-radius:8px;
+    color: var(--text-dim); text-decoration:none; font-size:13.5px;
+  }
+  .app-sidebar a:hover{ background: var(--card-hover); color:#fff; }
+  .app-sidebar a.active{ background: var(--card-solid); color: var(--accent-2); font-weight:600; }
+  .app-main{ flex:1; min-width:0; }
+</style>
+{% block head %}{% endblock %}
+</head>
+<body>
+<div class="app-shell">
+  <nav class="app-sidebar">
+    <h1>💰 Finanzas</h1>
+    <a href="/" class="{{ 'active' if activo == 'dashboard' else '' }}">📊 Dashboard</a>
+    <a href="/cargar-extractos" class="{{ 'active' if activo == 'cargar' else '' }}">📥 Cargar extractos</a>
+  </nav>
+  <div class="app-main">
+    {% block content %}{% endblock %}
+  </div>
+</div>
+</body>
+</html>

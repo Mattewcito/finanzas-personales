@@ -277,3 +277,38 @@ def obtener_ledger_deuda(conn: sqlite3.Connection) -> list[dict]:
            FROM v_deuda_ledger"""
     )
     return [dict(r) for r in cur.fetchall()]
+
+
+# ----------------------------- Inserción con dedup (usada por cualquier fuente de ingesta) -----------------------------
+
+def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], origen: str) -> dict:
+    """Inserta solo los movimientos cuyo (fecha, moneda, monto redondeado) no
+    exista ya en la base de datos, sin importar de qué origen vinieron antes
+    -- evita duplicar lo que ya haya entrado por otra vía (Excel, correo,
+    un extracto subido a mano, etc). Cada movimiento debe traer al menos
+    fecha/tipo/categoria/moneda/monto/descripcion/entidad; se enriquece acá
+    (medio_pago/es_deuda) antes de insertar."""
+    cur = conn.cursor()
+    existentes = set()
+    for row in cur.execute("SELECT fecha, moneda, ROUND(monto) AS m FROM movimientos"):
+        existentes.add((row["fecha"], row["moneda"], row["m"]))
+
+    nuevos, duplicados = [], 0
+    for m in movimientos:
+        clave = (m["fecha"], m["moneda"], round(m["monto"]))
+        if clave in existentes:
+            duplicados += 1
+            continue
+        existentes.add(clave)  # evita duplicar contra sí mismo si el lote trae el mismo movimiento dos veces
+        nuevos.append(m)
+
+    enriquecidos = [enriquecer_movimiento(m) for m in nuevos]
+    for e in enriquecidos:
+        e["origen"] = origen
+    cur.executemany(
+        """INSERT INTO movimientos (fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, es_deuda, origen)
+           VALUES (:fecha, :tipo, :categoria, :moneda, :monto, :descripcion, :entidad, :medio_pago, :es_deuda, :origen)""",
+        enriquecidos,
+    )
+    conn.commit()
+    return {"nuevos": len(nuevos), "duplicados": duplicados}
