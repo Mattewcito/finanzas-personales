@@ -51,8 +51,13 @@ import db_finanzas as db  # mismo folder (src/) — sincronización, esquema y c
 
 PROJECT_ROOT = db.PROJECT_ROOT
 TEMPLATE_PATH = PROJECT_ROOT / "dashboard" / "dashboard_finanzas.html"  # versionada en git, SIN datos reales
-HTML_PATH = PROJECT_ROOT / "data" / "dashboard_finanzas.html"           # generada, CON datos reales, gitignored
 LOG_PATH = PROJECT_ROOT / "data" / "actualizar_dashboard.log"
+
+
+def html_path_usuario(usuario_id: int) -> Path:
+    """Cada usuario tiene su propio dashboard generado (datos separados,
+    2026-09-05) -- nunca uno combinado. data/dashboard_<id>.html, gitignored."""
+    return PROJECT_ROOT / "data" / f"dashboard_{usuario_id}.html"
 
 
 def log(msg: str) -> None:
@@ -106,22 +111,28 @@ def main() -> int:
         try:
             db.crear_esquema(conn)  # no-op si ya existe; asegura que la BD esté lista aunque sea la primera corrida
             stats = db.sincronizar_desde_excel(conn)
-            movimientos = db.obtener_movimientos(conn)
-            ledger_deuda = db.obtener_ledger_deuda(conn)
+            usuarios = db.listar_usuarios(conn)
+
+            resumenes = []
+            for u in usuarios:
+                movimientos = db.obtener_movimientos(conn, usuario_id=u["id"])
+                ledger_deuda = db.obtener_ledger_deuda(conn, usuario_id=u["id"])
+
+                # Siempre parte de la PLANTILLA (sin datos), nunca del HTML
+                # generado la vez anterior — así nunca queda un dato viejo
+                # pegado por error, y un usuario nunca hereda datos de otro.
+                html_plantilla = TEMPLATE_PATH.read_text(encoding="utf-8")
+                html_nuevo = inyectar_en_html(html_plantilla, movimientos, ledger_deuda)
+                html_path_usuario(u["id"]).write_text(html_nuevo, encoding="utf-8")
+
+                saldo = ledger_deuda[-1]["saldo_acumulado"] if ledger_deuda else 0.0
+                resumenes.append(f"{u['nombre_mostrado']} (id={u['id']}): {len(movimientos)} mov., deuda ${saldo:,.0f}")
         finally:
             conn.close()
 
-        # Siempre parte de la PLANTILLA (sin datos), nunca del HTML generado
-        # la vez anterior — así nunca queda un dato viejo pegado por error.
-        html_plantilla = TEMPLATE_PATH.read_text(encoding="utf-8")
-        html_nuevo = inyectar_en_html(html_plantilla, movimientos, ledger_deuda)
-        HTML_PATH.write_text(html_nuevo, encoding="utf-8")
-
-        saldo_final = ledger_deuda[-1]["saldo_acumulado"] if ledger_deuda else 0.0
         log(
-            f"OK — {stats['movimientos']} movimientos ({stats['fecha_min']} a {stats['fecha_max']}), "
-            f"{stats['en_deuda']} marcados como deuda de tarjeta, saldo deuda estimado ${saldo_final:,.0f} "
-            f"→ sincronizado a {db.DB_PATH.name} y volcado a {HTML_PATH.name}"
+            f"OK — Excel sincronizado ({stats['movimientos']} filas, {stats['fecha_min']} a {stats['fecha_max']}). "
+            f"Dashboards regenerados -> " + " | ".join(resumenes)
         )
         return 0
 

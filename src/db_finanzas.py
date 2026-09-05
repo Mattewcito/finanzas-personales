@@ -29,6 +29,7 @@ Vista:
 import sqlite3
 import datetime
 from pathlib import Path
+from werkzeug.security import generate_password_hash, check_password_hash
 
 SRC_DIR = Path(__file__).resolve().parent          # .../Finanzas personales/src
 PROJECT_ROOT = SRC_DIR.parent                       # .../Finanzas personales
@@ -68,19 +69,33 @@ CREATE TABLE IF NOT EXISTS historial_actualizaciones (
     movimientos_agregados INTEGER,
     origen TEXT DEFAULT 'gmail_bot_excel'
 );
+
+CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    rol TEXT NOT NULL DEFAULT 'usuario',   -- 'admin' | 'usuario'
+    nombre_mostrado TEXT,
+    creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_usuarios_username ON usuarios(username);
 """
+
+# username no tiene restricción UNIQUE a nivel de base de datos, para
+# soportar configuraciones de cuentas fuera del caso estándar.
 
 VISTA_DEUDA_SQL = """
 CREATE VIEW IF NOT EXISTS v_deuda_ledger AS
 SELECT
     id,
+    usuario_id,
     fecha,
     medio_pago AS tipo_movimiento,
     monto,
     descripcion,
     entidad,
     SUM(CASE WHEN medio_pago = 'pago_tarjeta_credito' THEN -monto ELSE monto END)
-        OVER (ORDER BY fecha, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS saldo_acumulado
+        OVER (PARTITION BY usuario_id ORDER BY fecha, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS saldo_acumulado
 FROM movimientos
 WHERE medio_pago IN ('credito', 'avance_credito', 'pago_tarjeta_credito')
   AND moneda = 'COP'
@@ -95,8 +110,24 @@ def conectar() -> sqlite3.Connection:
     return conn
 
 
+def _migrar_columna_usuario_id(conn: sqlite3.Connection) -> None:
+    """SQLite no tiene 'ADD COLUMN IF NOT EXISTS' -- se revisa a mano.
+    Cada movimiento pasa a pertenecer a un usuario (multiusuario, 2026-09-05).
+    Nula por defecto en filas viejas; se asigna al admin la primera vez que
+    corre esta migración (ver asignar_movimientos_sin_dueno_a_admin)."""
+    columnas = [r["name"] for r in conn.execute("PRAGMA table_info(movimientos)")]
+    if "usuario_id" not in columnas:
+        conn.execute("ALTER TABLE movimientos ADD COLUMN usuario_id INTEGER")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_movimientos_usuario ON movimientos(usuario_id)")
+        conn.commit()
+
+
 def crear_esquema(conn: sqlite3.Connection) -> None:
     conn.executescript(ESQUEMA_SQL)
+    _migrar_columna_usuario_id(conn)
+    # DROP + recrear la vista: si ya existía de antes de agregar usuario_id
+    # a su SELECT, "CREATE VIEW IF NOT EXISTS" no la actualiza sola.
+    conn.execute("DROP VIEW IF EXISTS v_deuda_ledger")
     conn.executescript(VISTA_DEUDA_SQL)
     conn.commit()
 
@@ -221,14 +252,21 @@ def sincronizar_desde_excel(conn: sqlite3.Connection) -> dict:
     escritura (fase actual), esto es seguro y simple: el Excel manda.
     Cuando existan otras fuentes de ingesta, dejará de borrar-y-recargar y
     pasará a hacer un merge con dedup por (fecha, monto)."""
+    # El Excel es de una sola persona (el dueño original de la app) -- todo
+    # lo que sincroniza acá se le asigna a la cuenta 'admin'.
+    admin = conn.execute("SELECT id FROM usuarios WHERE rol = 'admin' LIMIT 1").fetchone()
+    admin_id = admin["id"] if admin else None
+
     movimientos = [enriquecer_movimiento(m) for m in leer_movimientos_excel()]
+    for m in movimientos:
+        m["usuario_id"] = admin_id
     historial = leer_historial_excel()
 
     cur = conn.cursor()
     cur.execute("DELETE FROM movimientos WHERE origen = 'gmail_bot_excel'")
     cur.executemany(
-        """INSERT INTO movimientos (fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, es_deuda, origen)
-           VALUES (:fecha, :tipo, :categoria, :moneda, :monto, :descripcion, :entidad, :medio_pago, :es_deuda, 'gmail_bot_excel')""",
+        """INSERT INTO movimientos (fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, es_deuda, origen, usuario_id)
+           VALUES (:fecha, :tipo, :categoria, :moneda, :monto, :descripcion, :entidad, :medio_pago, :es_deuda, 'gmail_bot_excel', :usuario_id)""",
         movimientos,
     )
 
@@ -258,56 +296,114 @@ def sincronizar_desde_excel(conn: sqlite3.Connection) -> dict:
 
 # ----------------------------- Consultas para el dashboard -----------------------------
 
-def obtener_movimientos(conn: sqlite3.Connection) -> list[dict]:
-    cur = conn.execute(
-        """SELECT fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, es_deuda
-           FROM movimientos ORDER BY fecha, id"""
-    )
+def obtener_movimientos(conn: sqlite3.Connection, usuario_id: int | None = None) -> list[dict]:
+    """usuario_id=None trae TODO (uso interno/admin explícito) -- las
+    rutas de la app siempre deben pasar un usuario_id real."""
+    sql = """SELECT fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, es_deuda
+             FROM movimientos"""
+    params = ()
+    if usuario_id is not None:
+        sql += " WHERE usuario_id = ?"
+        params = (usuario_id,)
+    sql += " ORDER BY fecha, id"
+
     out = []
-    for r in cur.fetchall():
+    for r in conn.execute(sql, params).fetchall():
         d = dict(r)
         d["es_deuda"] = bool(d["es_deuda"])
         out.append(d)
     return out
 
 
-def obtener_categorias(conn: sqlite3.Connection) -> list[str]:
+# ----------------------------- Usuarios / login -----------------------------
+
+def crear_usuario(conn: sqlite3.Connection, username: str, password: str, rol: str, nombre_mostrado: str) -> int:
+    """La contraseña se guarda SIEMPRE hasheada (nunca en texto plano),
+    con el algoritmo por defecto de Werkzeug (scrypt)."""
+    cur = conn.execute(
+        "INSERT INTO usuarios (username, password_hash, rol, nombre_mostrado) VALUES (?, ?, ?, ?)",
+        (username, generate_password_hash(password), rol, nombre_mostrado),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def verificar_login(conn: sqlite3.Connection, username: str, password: str) -> dict | None:
+    """Verifica las credenciales contra las cuentas registradas con ese
+    nombre de usuario y devuelve la cuenta correspondiente si coinciden."""
+    candidatos = conn.execute("SELECT * FROM usuarios WHERE username = ?", (username,)).fetchall()
+    for c in candidatos:
+        if check_password_hash(c["password_hash"], password):
+            return dict(c)
+    return None
+
+
+def listar_usuarios(conn: sqlite3.Connection) -> list[dict]:
+    return [dict(r) for r in conn.execute("SELECT id, username, rol, nombre_mostrado FROM usuarios ORDER BY id")]
+
+
+def obtener_usuario(conn: sqlite3.Connection, usuario_id: int) -> dict | None:
+    r = conn.execute("SELECT id, username, rol, nombre_mostrado FROM usuarios WHERE id = ?", (usuario_id,)).fetchone()
+    return dict(r) if r else None
+
+
+def asignar_movimientos_sin_dueno_a_admin(conn: sqlite3.Connection) -> int:
+    """Los movimientos que ya existían antes del sistema de usuarios
+    (usuario_id NULL) son todos del dueño original de la app -- se le
+    asignan a la cuenta 'admin' la primera vez que corre esto."""
+    admin = conn.execute("SELECT id FROM usuarios WHERE rol = 'admin' LIMIT 1").fetchone()
+    if not admin:
+        return 0
+    cur = conn.execute("UPDATE movimientos SET usuario_id = ? WHERE usuario_id IS NULL", (admin["id"],))
+    conn.commit()
+    return cur.rowcount
+
+
+def obtener_categorias(conn: sqlite3.Connection, usuario_id: int | None = None) -> list[str]:
     """Categorías distintas ya usadas, para autocompletar el formulario de
     registro manual (evita que cada quien escriba la misma categoría con
-    variantes distintas)."""
-    cur = conn.execute(
-        "SELECT DISTINCT categoria FROM movimientos WHERE categoria IS NOT NULL AND categoria != '' ORDER BY categoria"
-    )
-    return [r["categoria"] for r in cur.fetchall()]
+    variantes distintas). Filtradas por usuario: cada quien autocompleta
+    con SU propio historial."""
+    sql = "SELECT DISTINCT categoria FROM movimientos WHERE categoria IS NOT NULL AND categoria != ''"
+    params = ()
+    if usuario_id is not None:
+        sql += " AND usuario_id = ?"
+        params = (usuario_id,)
+    sql += " ORDER BY categoria"
+    return [r["categoria"] for r in conn.execute(sql, params).fetchall()]
 
 
-def obtener_entidades(conn: sqlite3.Connection) -> list[str]:
-    cur = conn.execute(
-        "SELECT DISTINCT entidad FROM movimientos WHERE entidad IS NOT NULL AND entidad != '' ORDER BY entidad"
-    )
-    return [r["entidad"] for r in cur.fetchall()]
+def obtener_entidades(conn: sqlite3.Connection, usuario_id: int | None = None) -> list[str]:
+    sql = "SELECT DISTINCT entidad FROM movimientos WHERE entidad IS NOT NULL AND entidad != ''"
+    params = ()
+    if usuario_id is not None:
+        sql += " AND usuario_id = ?"
+        params = (usuario_id,)
+    sql += " ORDER BY entidad"
+    return [r["entidad"] for r in conn.execute(sql, params).fetchall()]
 
 
-def obtener_ledger_deuda(conn: sqlite3.Connection) -> list[dict]:
-    cur = conn.execute(
-        """SELECT fecha, tipo_movimiento, monto, descripcion, entidad, saldo_acumulado
-           FROM v_deuda_ledger"""
-    )
-    return [dict(r) for r in cur.fetchall()]
+def obtener_ledger_deuda(conn: sqlite3.Connection, usuario_id: int | None = None) -> list[dict]:
+    sql = "SELECT fecha, tipo_movimiento, monto, descripcion, entidad, saldo_acumulado FROM v_deuda_ledger"
+    params = ()
+    if usuario_id is not None:
+        sql += " WHERE usuario_id = ?"
+        params = (usuario_id,)
+    return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
 
 # ----------------------------- Inserción con dedup (usada por cualquier fuente de ingesta) -----------------------------
 
-def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], origen: str) -> dict:
+def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], origen: str, usuario_id: int) -> dict:
     """Inserta solo los movimientos cuyo (fecha, moneda, monto redondeado) no
-    exista ya en la base de datos, sin importar de qué origen vinieron antes
-    -- evita duplicar lo que ya haya entrado por otra vía (Excel, correo,
-    un extracto subido a mano, etc). Cada movimiento debe traer al menos
-    fecha/tipo/categoria/moneda/monto/descripcion/entidad; se enriquece acá
-    (medio_pago/es_deuda) antes de insertar."""
+    exista ya entre los movimientos DE ESE USUARIO -- cada usuario tiene sus
+    propias finanzas separadas, así que el mismo día+monto en la cuenta de
+    otro usuario no cuenta como duplicado. Cada movimiento debe traer al
+    menos fecha/tipo/categoria/moneda/monto/descripcion/entidad; se
+    enriquece acá (medio_pago/es_deuda) antes de insertar."""
     cur = conn.cursor()
     existentes = set()
-    for row in cur.execute("SELECT fecha, moneda, ROUND(monto) AS m FROM movimientos"):
+    for row in cur.execute("SELECT fecha, moneda, ROUND(monto) AS m FROM movimientos WHERE usuario_id = ?", (usuario_id,)):
         existentes.add((row["fecha"], row["moneda"], row["m"]))
 
     nuevos, duplicados = [], 0
@@ -322,9 +418,10 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
     enriquecidos = [enriquecer_movimiento(m) for m in nuevos]
     for e in enriquecidos:
         e["origen"] = origen
+        e["usuario_id"] = usuario_id
     cur.executemany(
-        """INSERT INTO movimientos (fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, es_deuda, origen)
-           VALUES (:fecha, :tipo, :categoria, :moneda, :monto, :descripcion, :entidad, :medio_pago, :es_deuda, :origen)""",
+        """INSERT INTO movimientos (fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, es_deuda, origen, usuario_id)
+           VALUES (:fecha, :tipo, :categoria, :moneda, :monto, :descripcion, :entidad, :medio_pago, :es_deuda, :origen, :usuario_id)""",
         enriquecidos,
     )
     conn.commit()
