@@ -23,10 +23,44 @@ reemplazables/opcionales por diseño.
   de tarjeta. **Nu queda pendiente** (solo manda extractos mensuales, no
   alertas por movimiento — se sigue cubriendo con `reconciliar_extractos.py`).
   Ver "Configurar la lectura de correo" abajo.
+- ✅ **App con interfaz** (`src/app.py`): servidor Flask con menú lateral
+  colapsable — Dashboard (embebido) y Cargar extractos (subir Excel/PDF
+  desde el navegador, se inserta con dedup y regenera el dashboard solo).
+- ✅ **Docker + Tailscale**: la app corre dockerizada (puerto 5002,
+  `docker-compose.yml`) para poder verla desde el celular/tablet estando
+  fuera de casa, **sin exponerla a internet público** — el acceso es vía
+  [Tailscale](https://tailscale.com) (red privada gratuita entre tus
+  propios dispositivos). Se evaluó exposición pública real (dominio +
+  HTTPS + login) pero se descartó: muchos ISPs residenciales usan CGNAT
+  (no dan IP pública) y expondría la PC a internet sin necesidad, cuando
+  Tailscale da el mismo resultado sin ese riesgo.
+- 🔜 **Dashboard responsive**: falta adaptar el layout para pantallas de
+  celular/tablet (hoy está pensado para escritorio).
 - 🔜 **Fase 2 — Documentos y DIAN**: guardar y vincular facturas,
   extractos y contratos a los movimientos.
 - 🔜 **Fase 3 — Dashboard v2**: planificador de pago de deuda,
   presupuestos por categoría.
+
+## Cómo se corre día a día
+
+Dos versiones corriendo en paralelo, cada una en su puerto:
+
+| | Comando | Puerto | Alcance |
+|---|---|---|---|
+| Desarrollo (probar cosas nuevas) | `iniciar_app.bat` o tarea `FinanzasDev` | 5001 | Solo esta PC (`127.0.0.1`) |
+| Estable (Docker) | `docker compose up -d` o tarea `FinanzasDocker` | 5002 | Esta PC + cualquier dispositivo con Tailscale |
+
+Ambas tareas programadas (`FinanzasDev`, `FinanzasDocker`) se crean una
+sola vez corriendo `scripts/configurar_tareas_programadas.ps1` **como
+administrador** (clic derecho → Ejecutar con PowerShell, o desde una
+PowerShell elevada) — de ahí en más arrancan solas al iniciar sesión en
+Windows. Ese script también abre el puerto 5002 en el firewall (el 5001
+queda cerrado a propósito, solo local).
+
+Para usar la versión Docker desde el celular: instalá la app de Tailscale
+(App Store / Play Store), iniciá sesión con la misma cuenta que usaste en
+la PC, y entrá a `http://<ip-de-tailscale-de-tu-pc>:5002` (la IP la ves
+corriendo `tailscale ip -4` en la PC, o en la app de Tailscale).
 
 ## Estructura
 
