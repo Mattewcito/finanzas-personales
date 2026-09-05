@@ -1,0 +1,10 @@
+services:
+  finanzas:
+    build: .
+    container_name: finanzas-app
+    ports:
+      - "5002:5001"   # accedés por el puerto 5002 de esta PC (5001 lo usa la versión de desarrollo)
+    volumes:
+      - ./data:/app/data
+      - ./dashboard:/app/dashboard
+    restart: unless-stopped   # si Docker se reinicia o el contenedor se cae, vuelve a levantarse solo

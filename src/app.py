@@ -9,6 +9,14 @@ Uso:
     py app.py
 Abre solo en el navegador: http://127.0.0.1:5001
 
+Variables de entorno opcionales (para correr dentro de Docker):
+  HOST                -> por defecto 127.0.0.1 (solo esta PC). En Docker se
+                          usa 0.0.0.0 para que el contenedor sea alcanzable
+                          desde afuera vía el puerto mapeado.
+  PORT                -> por defecto 5001.
+  RUNNING_IN_DOCKER=1  -> evita intentar abrir un navegador (no existe
+                          dentro del contenedor).
+
 Rutas:
   /                    -> Dashboard (el mismo de siempre, embebido)
   /vista/dashboard     -> el archivo data/dashboard_finanzas.html tal cual
@@ -17,6 +25,7 @@ Rutas:
                           dedup, y regenera el dashboard
 """
 
+import os
 import sys
 import datetime
 import threading
@@ -135,5 +144,10 @@ def _leer_excel_generico(path) -> list[dict]:
 
 
 if __name__ == "__main__":
-    threading.Timer(1.0, lambda: webbrowser.open("http://127.0.0.1:5001")).start()
-    app.run(host="127.0.0.1", port=5001, debug=False)
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", 5001))
+
+    if not os.environ.get("RUNNING_IN_DOCKER"):
+        threading.Timer(1.0, lambda: webbrowser.open(f"http://127.0.0.1:{port}")).start()
+
+    app.run(host=host, port=port, debug=False)
