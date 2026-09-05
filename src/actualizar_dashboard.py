@@ -107,15 +107,23 @@ def inyectar_en_html(html: str, movimientos: list[dict], ledger_deuda: list[dict
 
 def main() -> int:
     try:
-        if not db.XLSX_PATH.exists():
-            raise FileNotFoundError(f"No se encontró {db.XLSX_PATH}")
         if not TEMPLATE_PATH.exists():
             raise FileNotFoundError(f"No se encontró la plantilla {TEMPLATE_PATH}")
 
         conn = db.conectar()
         try:
             db.crear_esquema(conn)  # no-op si ya existe; asegura que la BD esté lista aunque sea la primera corrida
-            stats = db.sincronizar_desde_excel(conn)
+
+            # El Excel es un canal de ingesta EN TRANSICIÓN hacia salida (ver
+            # perfil_financiero y leer_correo.py -- el resto de los orígenes ya
+            # escriben directo a la BD). Si no está, no es un error: se
+            # salta la sincronización y se sigue con lo que ya haya en la BD.
+            if db.XLSX_PATH.exists():
+                stats = db.sincronizar_desde_excel(conn)
+                resumen_excel = f"Excel sincronizado ({stats['movimientos']} filas, {stats['fecha_min']} a {stats['fecha_max']})."
+            else:
+                resumen_excel = "Sin Excel activo -- los movimientos vienen directo de la BD."
+
             usuarios = db.listar_usuarios(conn)
 
             resumenes = []
@@ -139,10 +147,7 @@ def main() -> int:
         finally:
             conn.close()
 
-        log(
-            f"OK — Excel sincronizado ({stats['movimientos']} filas, {stats['fecha_min']} a {stats['fecha_max']}). "
-            f"Dashboards regenerados -> " + " | ".join(resumenes)
-        )
+        log(f"OK — {resumen_excel} Dashboards regenerados -> " + " | ".join(resumenes))
         return 0
 
     except Exception as e:
