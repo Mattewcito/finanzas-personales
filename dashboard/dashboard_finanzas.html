@@ -198,10 +198,8 @@
   }
   .switch-toggle input:checked + .switch-slider{ background: var(--accent); border-color: var(--accent); }
   .switch-toggle input:checked + .switch-slider::before{ transform: translateX(15px); background:#fff; }
-  /* La etiqueta "Movimientos" solo se muestra con el switch prendido --
-     apagado, queda solo el switch (sin texto) al lado de "5 vistas". */
-  .switch-toggle .switch-label{ font-size: 12.5px; color: var(--text); font-weight:600; display:none; }
-  .switch-toggle input:checked ~ .switch-label{ display:inline; }
+  .switch-toggle .switch-label{ font-size: 12.5px; color: var(--text-dim); font-weight:600; }
+  .switch-toggle input:checked ~ .switch-label{ color: var(--text); }
 
   /* ===========================================================
      5) CHARTS GRID
@@ -571,7 +569,7 @@
        TABLAS
        ============================================================ -->
   <div class="section-title" id="movimientos">
-    <h2>📋 Movimientos</h2><div class="line"></div>
+    <h2 id="tituloSeccionMovimientos">📋 Últimos movimientos</h2><div class="line"></div>
     <span class="tag">5 vistas</span>
     <label class="switch-toggle" title="Ver todos los movimientos del período, con paginado">
       <input type="checkbox" id="toggleTodosMovimientos">
@@ -1717,6 +1715,12 @@ document.getElementById('toggleTodosMovimientos').addEventListener('change', (e)
   if (todosMovActivo) {
     todosMovPagina = 1;
     renderTodosMovimientos(DATA_ACTUAL);
+    document.getElementById('tituloSeccionMovimientos').textContent = '📋 Movimientos';
+  } else {
+    // Vuelve a nombrar la pestaña que sigue activa (no se resetea al
+    // apagar el switch, solo queda oculta mientras tanto).
+    const tabActiva = document.querySelector('.tab-btn.active');
+    document.getElementById('tituloSeccionMovimientos').textContent = `📋 ${tabActiva ? tabActiva.textContent : 'Últimos movimientos'}`;
   }
 });
 
@@ -1826,6 +1830,9 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(btn.dataset.pane).classList.add('active');
+    // El título de la sección sigue a la pestaña activa -- más diciente
+    // que dejarlo fijo en "Movimientos" sin decir qué se está mirando.
+    document.getElementById('tituloSeccionMovimientos').textContent = `📋 ${btn.textContent}`;
   });
 });
 
