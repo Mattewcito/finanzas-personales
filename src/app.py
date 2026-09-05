@@ -71,6 +71,55 @@ def vista_dashboard():
     return send_from_directory(db.DATA_DIR, "dashboard_finanzas.html")
 
 
+@app.route("/registrar")
+def registrar():
+    conn = db.conectar()
+    try:
+        db.crear_esquema(conn)
+        categorias = db.obtener_categorias(conn)
+        entidades = db.obtener_entidades(conn)
+    finally:
+        conn.close()
+    return render_template("registrar.html", activo="registrar", categorias=categorias, entidades=entidades)
+
+
+@app.route("/api/registrar-movimiento", methods=["POST"])
+def api_registrar_movimiento():
+    fecha = request.form.get("fecha", "").strip()
+    tipo = request.form.get("tipo", "gasto").strip()
+    monto_raw = request.form.get("monto", "").strip()
+    descripcion = request.form.get("descripcion", "").strip()
+    categoria = request.form.get("categoria", "").strip() or "otros"
+    moneda = request.form.get("moneda", "COP").strip()
+    entidad = request.form.get("entidad", "").strip() or "Manual"
+
+    if not fecha or not descripcion:
+        return jsonify(ok=False, error="Falta fecha o descripción."), 400
+    try:
+        monto = float(monto_raw)
+    except ValueError:
+        return jsonify(ok=False, error="El monto no es un número válido."), 400
+    if monto <= 0:
+        return jsonify(ok=False, error="El monto tiene que ser mayor a 0."), 400
+
+    movimiento = {
+        "fecha": fecha, "tipo": tipo, "categoria": categoria,
+        "moneda": moneda, "monto": monto, "descripcion": descripcion, "entidad": entidad,
+    }
+
+    conn = db.conectar()
+    try:
+        db.crear_esquema(conn)
+        stats = db.insertar_movimientos(conn, [movimiento], origen="manual")
+    finally:
+        conn.close()
+
+    if stats["nuevos"] > 0:
+        actualizar_dashboard.main()
+
+    return jsonify(ok=True, **stats)
+
+
 @app.route("/cargar-extractos")
 def cargar_extractos():
     return render_template("cargar_extractos.html", activo="cargar")

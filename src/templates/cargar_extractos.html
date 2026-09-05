@@ -3,10 +3,8 @@
 
 {% block head %}
 <style>
-  .page-wrap{ max-width: 1200px; margin: 0 auto; padding: 32px 28px 60px; }
-
-  .page-header h1{ font-size: 24px; margin: 0 0 6px; }
-  .page-header p{ margin:0; color: var(--text-dim); font-size: 13.5px; max-width: 640px; }
+  /* .page-wrap, .page-header, .card, .field-*, .btn-primary, .result-box
+     viven en base.html (compartidos con Registrar movimiento) */
 
   .upload-layout{
     display: grid;
@@ -16,24 +14,6 @@
     align-items: start;
   }
   @media (max-width: 980px){ .upload-layout{ grid-template-columns: 1fr; } }
-
-  .card{
-    background: linear-gradient(180deg, var(--card-solid), #10141f);
-    border: 1px solid var(--card-border);
-    border-radius: 16px;
-    padding: 24px;
-  }
-
-  .field-label{ display:block; font-size: 12.5px; color: var(--text-dim); margin: 18px 0 6px; font-weight:600; }
-  .field-label:first-child{ margin-top:0; }
-  .field-select, .field-input{
-    width:100%; padding: 10px 12px; font-size: 13.5px;
-    background: var(--bg-soft); color: var(--text);
-    border: 1px solid var(--card-border); border-radius: 10px;
-    font-family: inherit;
-  }
-  .field-select:focus, .field-input:focus{ outline:none; border-color: var(--accent); }
-  .tarjeta-fields{ display:grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
   .dropzone{
     margin-top: 6px; padding: 26px 16px; border-radius: 12px;
@@ -45,24 +25,6 @@
   .dropzone .dz-text{ margin:0; font-size:13px; color: var(--text-dim); }
   .dropzone .dz-text span{ color: var(--accent-2); font-weight:600; }
   .dropzone .dz-file{ margin: 8px 0 0; font-size:12.5px; color: var(--text); font-weight:600; }
-
-  .btn-primary{
-    margin-top: 20px; padding: 11px 24px; border-radius: 10px; border:none;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    color:#fff; font-weight:700; font-size:13.5px; cursor:pointer;
-    font-family: inherit;
-  }
-  .btn-primary:hover{ filter: brightness(1.08); }
-  .btn-primary:disabled{ opacity:.5; cursor:not-allowed; }
-
-  .result-box{
-    margin-top: 18px; padding: 12px 14px; border-radius: 10px;
-    font-size: 13px; border-left: 3px solid var(--text-faint);
-    background: var(--bg-soft); white-space:pre-line;
-  }
-  .result-box.ok{ border-left-color:#34d399; color:#34d399; }
-  .result-box.error{ border-left-color:#f87171; color:#f87171; }
-  .result-box.loading{ border-left-color: var(--accent-2); color: var(--text-dim); }
 
   .info-card h3{ margin:0 0 14px; font-size:14.5px; }
   .info-card .item{ display:flex; gap:10px; margin-bottom:16px; }
@@ -92,7 +54,7 @@
           <option value="pdf_tarjeta">PDF — Extracto de tarjeta de crédito</option>
         </select>
 
-        <div id="camposTarjeta" class="tarjeta-fields" style="display:none;">
+        <div id="camposTarjeta" class="field-row" style="display:none;">
           <div>
             <label class="field-label">Marca de la tarjeta</label>
             <input type="text" name="marca" class="field-input" placeholder="Mastercard, Amex...">
