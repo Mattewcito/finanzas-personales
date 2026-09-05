@@ -1,0 +1,22 @@
+name: Deploy
+
+# Se dispara cada vez que llega un push a master (por ejemplo, al fusionar
+# un Pull Request). Corre en el runner auto-hospedado instalado en la PC
+# donde vive el contenedor Docker -- no en la nube de GitHub, porque el
+# contenedor y sus datos viven localmente.
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Actualizar el código y reconstruir el contenedor
+        shell: cmd
+        run: |
+          cd /d "C:\Finanzas personales"
+          git fetch origin master
+          git reset --hard origin/master
+          docker compose up -d --build
