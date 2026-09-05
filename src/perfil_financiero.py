@@ -70,9 +70,12 @@ def calcular_metricas(movimientos: list[dict], ledger_deuda: list[dict] | None =
     gastos_credito = [m for m in cop if m.get("tipo") == "gasto" and m.get("es_deuda")]
     avances = [m for m in cop if m.get("categoria") == "avance_credito"]
 
-    total_ingresos = sum(m["monto"] for m in ingresos_reales)
-    total_gastos_caja = sum(m["monto"] for m in gastos_caja)
-    total_gastos_credito = sum(m["monto"] for m in gastos_credito)
+    # .get(...) or 0.0 (no m["monto"] directo): un monto ausente o None no
+    # debería tumbar todo el perfil de un usuario -- mismo espíritu que el
+    # resto de la función, que nunca asume que los datos vienen limpios.
+    total_ingresos = sum(m.get("monto") or 0.0 for m in ingresos_reales)
+    total_gastos_caja = sum(m.get("monto") or 0.0 for m in gastos_caja)
+    total_gastos_credito = sum(m.get("monto") or 0.0 for m in gastos_credito)
     total_gastos = total_gastos_caja + total_gastos_credito
 
     tasa_ahorro = ((total_ingresos - total_gastos_caja) / total_ingresos) if total_ingresos else None
@@ -82,7 +85,7 @@ def calcular_metricas(movimientos: list[dict], ledger_deuda: list[dict] | None =
     por_categoria: dict[str, float] = {}
     for m in gastos_caja + gastos_credito:
         cat = (m.get("categoria") or "otros").strip().lower()
-        por_categoria[cat] = por_categoria.get(cat, 0.0) + m["monto"]
+        por_categoria[cat] = por_categoria.get(cat, 0.0) + (m.get("monto") or 0.0)
     categoria_top = max(por_categoria.items(), key=lambda kv: kv[1]) if por_categoria else None
     concentracion_categoria = (categoria_top[1] / total_gastos) if (categoria_top and total_gastos) else 0.0
 
@@ -92,16 +95,16 @@ def calcular_metricas(movimientos: list[dict], ledger_deuda: list[dict] | None =
 
     # Regularidad de ingresos: en cuántos meses distintos hubo al menos
     # un ingreso real, sobre el total de meses con CUALQUIER movimiento.
-    meses_con_movimiento = {m["fecha"][:7] for m in cop if m.get("fecha")}
-    meses_con_ingreso = {m["fecha"][:7] for m in ingresos_reales if m.get("fecha")}
+    meses_con_movimiento = {str(m["fecha"])[:7] for m in cop if m.get("fecha")}
+    meses_con_ingreso = {str(m["fecha"])[:7] for m in ingresos_reales if m.get("fecha")}
     regularidad_ingresos = (len(meses_con_ingreso) / len(meses_con_movimiento)) if meses_con_movimiento else None
 
     # Tendencia de deuda: compara el saldo acumulado al inicio y al final
     # del ledger (umbral del 5% para no marcar como "tendencia" ruido mínimo).
     tendencia_deuda = "sin_datos"
-    saldo_actual = ledger_deuda[-1]["saldo_acumulado"] if ledger_deuda else 0.0
+    saldo_actual = (ledger_deuda[-1].get("saldo_acumulado") or 0.0) if ledger_deuda else 0.0
     if len(ledger_deuda) >= 2:
-        saldo_inicial = ledger_deuda[0]["saldo_acumulado"]
+        saldo_inicial = ledger_deuda[0].get("saldo_acumulado") or 0.0
         if saldo_inicial == 0:
             tendencia_deuda = "creciente" if saldo_actual > 0 else "estable"
         elif saldo_actual > saldo_inicial * 1.05:
