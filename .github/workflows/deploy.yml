@@ -1,29 +1,65 @@
-name: Deploy
+name: CI/CD
 
-# Se dispara cada vez que llega un push a master (por ejemplo, al fusionar
-# un Pull Request). Corre en el runner auto-hospedado instalado en la PC
-# donde vive el contenedor Docker -- no en la nube de GitHub, porque el
-# contenedor y sus datos viven localmente.
-#
-# Corre sobre C:\finanzas-deploy -- una carpeta APARTE de la carpeta de
-# trabajo, dedicada solo a esto (nunca se edita a mano). Así el "git reset
-# --hard" que actualiza el código para producción nunca pisa nada que se
-# esté probando en la carpeta de desarrollo. Ambas leen la misma base de
-# datos real (ver docker-compose.override.yml en cada carpeta, no
-# versionado).
+# Se dispara en cada push/PR a master. El job "test" corre siempre (en la
+# nube de GitHub, gratis, no necesita Docker). El job "deploy" SOLO corre
+# si "test" pasó Y el evento fue un push directo a master (no en PRs) --
+# corre en el runner auto-hospedado de esta PC, porque ahí vive el
+# contenedor.
 on:
   push:
     branches: [master]
+  pull_request:
+    branches: [master]
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar dependencias
+        run: pip install -r requirements-dev.txt
+      - name: Correr pruebas unitarias y de integración
+        run: pytest -v
+
   deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: self-hosted
 
     steps:
-      - name: Actualizar el código y reconstruir el contenedor
-        shell: cmd
+      - name: Desplegar (con rollback automático si falla)
+        shell: powershell
         run: |
-          cd /d "C:\finanzas-deploy"
-          git fetch origin master
-          git reset --hard origin/master
-          docker compose up -d --build
+          $ErrorActionPreference = "Stop"
+          Set-Location "C:\finanzas-deploy"
+          $previo = git rev-parse HEAD
+          Write-Host "Commit actual, guardado como respaldo por si hay que revertir: $previo"
+
+          try {
+            git fetch origin master
+            git reset --hard origin/master
+            docker compose up -d --build
+
+            Write-Host "Verificando que el contenedor haya arrancado bien..."
+            $ok = $false
+            for ($i = 0; $i -lt 10; $i++) {
+              Start-Sleep -Seconds 3
+              try {
+                $resp = Invoke-WebRequest -Uri "http://localhost:5002/health" -UseBasicParsing -TimeoutSec 5
+                if ($resp.StatusCode -eq 200) { $ok = $true; break }
+              } catch {}
+            }
+            if (-not $ok) { throw "El contenedor no respondió correctamente después de desplegar." }
+
+            Write-Host "Despliegue exitoso."
+          } catch {
+            Write-Host "FALLÓ el despliegue: $_"
+            Write-Host "Revirtiendo al commit anterior: $previo"
+            git reset --hard $previo
+            docker compose up -d --build
+            Write-Error "Se revirtió automáticamente al commit anterior por un fallo en el despliegue."
+            exit 1
+          }
