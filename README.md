@@ -48,21 +48,27 @@ reemplazables/opcionales por diseño.
 
 ## Cómo se corre día a día
 
-Dos versiones corriendo en paralelo, cada una en su puerto:
+Dos carpetas, dos contenedores Docker, cada uno en su puerto -- ambos
+siempre arriba (Docker los reinicia solo si se caen o si reiniciás la PC,
+gracias a `restart: unless-stopped`):
 
-| | Comando | Puerto | Alcance |
+| Carpeta | Contenedor | Puerto | Para qué |
 |---|---|---|---|
-| Desarrollo (probar cosas nuevas) | `iniciar_app.bat` o tarea `FinanzasDev` | 5001 | Solo esta PC (`127.0.0.1`) |
-| Estable (Docker) | `docker compose up -d` o tarea `FinanzasDocker` | 5002 | Esta PC + cualquier dispositivo con Tailscale |
+| `C:\Finanzas personales` (esta, donde editás código) | `finanzas-app-dev` | 5001 | Probar cambios antes de subirlos |
+| `C:\finanzas-deploy` (dedicada, nunca se edita a mano) | `finanzas-app-online` | 5002 | Versión estable, accesible por Tailscale |
 
-Ambas tareas programadas (`FinanzasDev`, `FinanzasDocker`) se crean una
-sola vez corriendo `scripts/configurar_tareas_programadas.ps1` **como
-administrador** (clic derecho → Ejecutar con PowerShell, o desde una
-PowerShell elevada) — de ahí en más arrancan solas al iniciar sesión en
-Windows. Ese script también abre el puerto 5002 en el firewall (el 5001
-queda cerrado a propósito, solo local).
+Las dos leen **la misma base de datos real** (`C:\Finanzas personales\data`)
+aunque el código de cada una pueda estar en una versión distinta -- eso lo
+resuelve `docker-compose.override.yml` en cada carpeta (no se sube a git,
+es específico de esta máquina).
 
-Para usar la versión Docker desde el celular: instalá la app de Tailscale
+Para levantar/reconstruir cualquiera de las dos a mano:
+```bash
+cd "C:\Finanzas personales"   # o cd "C:\finanzas-deploy"
+docker compose up -d --build
+```
+
+Para usar la versión online desde el celular: instalá la app de Tailscale
 (App Store / Play Store), iniciá sesión con la misma cuenta que usaste en
 la PC, y entrá a `http://<ip-de-tailscale-de-tu-pc>:5002` (la IP la ves
 corriendo `tailscale ip -4` en la PC, o en la app de Tailscale).
@@ -70,18 +76,25 @@ corriendo `tailscale ip -4` en la PC, o en la app de Tailscale).
 ## Despliegue automático
 
 Cada push a `master` (por ejemplo, al fusionar un Pull Request) reconstruye
-y levanta solo el contenedor Docker — no hace falta correr nada a mano.
+y levanta solo el contenedor de `C:\finanzas-deploy` -- no hace falta
+correr nada a mano ni tocar la carpeta de trabajo.
 
 Cómo funciona: hay un [runner de GitHub Actions](https://docs.github.com/actions/hosting-your-own-runners)
 instalado como servicio de Windows en esta misma PC (`C:\actions-runner`).
 GitHub le avisa a ese servicio cuando hay un push a `master` (conexión
 saliente, no hace falta abrir ningún puerto), y el workflow
 (`.github/workflows/deploy.yml`) corre `git reset --hard origin/master` +
-`docker compose up -d --build` directo sobre esta carpeta.
+`docker compose up -d --build` sobre `C:\finanzas-deploy` -- nunca sobre
+la carpeta de trabajo, para no pisar nada que estés probando ahí.
 
-Instalación (una sola vez): `scripts/instalar_runner_cicd.ps1` **como
-administrador** — instala el runner como servicio de Windows para que
-quede corriendo siempre, incluso después de reiniciar la PC.
+Instalación (una sola vez):
+1. `git clone` este repo en `C:\finanzas-deploy` (carpeta dedicada, aparte
+   de donde trabajás normalmente).
+2. Crear ahí su propio `docker-compose.override.yml` (puerto 5002,
+   apuntando a la base de datos real de `C:\Finanzas personales\data`).
+3. `scripts/instalar_runner_cicd.ps1` **como administrador** -- instala el
+   runner como servicio de Windows para que quede corriendo siempre,
+   incluso después de reiniciar la PC.
 
 Para ver el estado o los logs de las corridas: pestaña "Actions" del
 repositorio en GitHub.
