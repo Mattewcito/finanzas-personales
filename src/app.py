@@ -39,7 +39,7 @@ import webbrowser
 from functools import wraps
 from pathlib import Path
 
-from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify, send_from_directory, send_file, session, redirect, url_for
 
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
@@ -54,11 +54,12 @@ import reconciliar_extractos as rex  # parsers de PDF ya construidos y probados
 UPLOADS_DIR = db.DATA_DIR / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
 
-# "Local" = corriendo directo con "py app.py" (solo esta PC, puerto 5001).
-# "Online" = corriendo en el contenedor Docker (puerto 5002, accesible por
-# Tailscale desde el celular). Mismo código, se distingue por esta env var
-# que ya seteaba el Dockerfile.
-MODO = "Online" if os.environ.get("RUNNING_IN_DOCKER") else "Local"
+# Etiqueta que se muestra en el menú ("Mathewcito · Local/Online"). Ya NO
+# se puede inferir de "¿estoy en Docker?" porque dev y online corren los
+# dos en contenedores -- ahora cada docker-compose (override, específico
+# de cada carpeta) fija su propio MODO_LABEL. "Local" es el default para
+# cuando se corre directo con "py app.py" sin Docker.
+MODO = os.environ.get("MODO_LABEL", "Local")
 
 app = Flask(__name__)
 
@@ -232,6 +233,164 @@ def api_registrar_movimiento():
 @login_required
 def cargar_extractos():
     return render_template("cargar_extractos.html", activo="cargar")
+
+
+@app.route("/crear-usuario")
+@login_required
+def crear_usuario_page():
+    if session.get("rol") != "admin":
+        return redirect(url_for("home"))
+    conn = db.conectar()
+    try:
+        usuarios = db.listar_usuarios(conn)
+    finally:
+        conn.close()
+    return render_template("crear_usuario.html", activo="crear_usuario", usuarios=usuarios)
+
+
+@app.route("/api/crear-usuario", methods=["POST"])
+@login_required
+def api_crear_usuario():
+    if session.get("rol") != "admin":
+        return jsonify(ok=False, error="Solo un administrador puede crear usuarios."), 403
+
+    username = request.form.get("username", "").strip()
+    nombre = request.form.get("nombre", "").strip()
+    password = request.form.get("password", "")
+    rol = request.form.get("rol", "usuario").strip()
+
+    if not username or not nombre or not password:
+        return jsonify(ok=False, error="Faltan campos."), 400
+    if rol not in ("admin", "usuario"):
+        return jsonify(ok=False, error="Rol inválido."), 400
+    if len(password) < 4:
+        return jsonify(ok=False, error="La contraseña es demasiado corta."), 400
+
+    conn = db.conectar()
+    try:
+        db.crear_esquema(conn)
+        nuevo_id = db.crear_usuario(conn, username, password, rol, nombre)
+    finally:
+        conn.close()
+
+    actualizar_dashboard.main()  # genera el dashboard (vacío) del usuario nuevo de una vez
+
+    return jsonify(ok=True, id=nuevo_id)
+
+
+@app.route("/mi-perfil")
+@login_required
+def mi_perfil():
+    """Edita SIEMPRE la cuenta con la que se inició sesión (no la que se
+    esté 'viendo' si sos admin) -- para no confundir "mi perfil" con la
+    cuenta ajena que un admin puede estar mirando en ese momento."""
+    conn = db.conectar()
+    try:
+        cuenta = db.obtener_usuario(conn, session["usuario_id"])
+    finally:
+        conn.close()
+    return render_template("mi_perfil.html", activo="mi_perfil", cuenta=cuenta)
+
+
+@app.route("/api/actualizar-perfil", methods=["POST"])
+@login_required
+def api_actualizar_perfil():
+    username = request.form.get("username", "").strip()
+    nombre = request.form.get("nombre", "").strip()
+    password = request.form.get("password", "").strip()
+
+    if not username or not nombre:
+        return jsonify(ok=False, error="Faltan campos."), 400
+    if password and len(password) < 4:
+        return jsonify(ok=False, error="La contraseña es demasiado corta."), 400
+
+    conn = db.conectar()
+    try:
+        db.actualizar_usuario(conn, session["usuario_id"], username=username,
+                               nombre_mostrado=nombre, password=password or None)
+    finally:
+        conn.close()
+
+    session["nombre"] = nombre  # para que el menú lo refleje ya, sin tener que volver a loguearse
+
+    return jsonify(ok=True)
+
+
+@app.route("/editar-usuario/<int:usuario_id>")
+@login_required
+def editar_usuario_page(usuario_id):
+    if session.get("rol") != "admin":
+        return redirect(url_for("home"))
+    conn = db.conectar()
+    try:
+        cuenta = db.obtener_usuario(conn, usuario_id)
+    finally:
+        conn.close()
+    if not cuenta:
+        return redirect(url_for("crear_usuario_page"))
+    return render_template("editar_usuario.html", activo="crear_usuario", cuenta=cuenta)
+
+
+@app.route("/api/editar-usuario/<int:usuario_id>", methods=["POST"])
+@login_required
+def api_editar_usuario(usuario_id):
+    if session.get("rol") != "admin":
+        return jsonify(ok=False, error="Solo un administrador puede editar otras cuentas."), 403
+
+    username = request.form.get("username", "").strip()
+    nombre = request.form.get("nombre", "").strip()
+    password = request.form.get("password", "").strip()
+    rol = request.form.get("rol", "").strip()
+
+    if not username or not nombre or rol not in ("admin", "usuario"):
+        return jsonify(ok=False, error="Faltan campos o rol inválido."), 400
+    if password and len(password) < 4:
+        return jsonify(ok=False, error="La contraseña es demasiado corta."), 400
+
+    conn = db.conectar()
+    try:
+        db.actualizar_usuario(conn, usuario_id, username=username, nombre_mostrado=nombre,
+                               password=password or None, rol=rol)
+    finally:
+        conn.close()
+
+    if usuario_id == session.get("usuario_id"):  # el admin se editó a sí mismo
+        session["nombre"] = nombre
+        session["rol"] = rol
+
+    return jsonify(ok=True)
+
+
+@app.route("/plantilla-excel")
+@login_required
+def plantilla_excel():
+    """Excel vacío (con un ejemplo) en el formato exacto que espera la
+    opción "Excel" de Cargar extractos -- para que nadie tenga que
+    adivinar las columnas."""
+    import io
+    import openpyxl
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "movimientos"
+    ws.append(list(db.CAMPOS_ESPERADOS))
+    ws.append(["2026-01-15", "gasto", "comida", "COP", 25000, "Ejemplo: Mercado", "Bancolombia"])
+    ws.append(["2026-01-15", "ingreso", "salario", "COP", 2000000, "Ejemplo: Nomina", "Bancolombia"])
+
+    for col in ws.columns:
+        letra = col[0].column_letter
+        ancho = max(len(str(c.value)) for c in col) + 2
+        ws.column_dimensions[letra].width = ancho
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name="plantilla_movimientos.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 @app.route("/api/cargar-extracto", methods=["POST"])

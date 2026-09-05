@@ -8,6 +8,8 @@ services:
     # contenedor terminaría escuchando en dos puertos a la vez. Cada
     # carpeta (dev, despliegue) define el suyo en su propio override
     # (ver docker-compose.override.yml, no versionado).
+    environment:
+      - MODO_LABEL=Local   # la carpeta de despliegue lo pisa a "Online" en su propio override
     volumes:
       - ./data:/app/data
       - ./dashboard:/app/dashboard

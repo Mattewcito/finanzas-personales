@@ -90,13 +90,42 @@
   .app-sidebar.collapsed .sidebar-footer .full-text{ display:none; }
   .app-sidebar.collapsed .sidebar-footer .dot-text{ display:inline; }
   .sidebar-footer .dot-text{ display:none; }
+  /* Flecha propia para los <select> -- la del sistema operativo se ve
+     inconsistente (y a veces torcida) sobre fondo oscuro según el
+     navegador, así que la reemplazamos por una nuestra, siempre igual. */
+  .switcher-select, .field-select{
+    appearance: none; -webkit-appearance: none; -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238d96ab' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 14px;
+    padding-right: 30px;
+  }
+
   .switcher-select{
-    width:100%; padding:5px 8px; font-size:11.5px; font-family:inherit;
-    background: var(--card-solid); color: var(--text);
+    width:100%; padding:5px 26px 5px 8px; font-size:11.5px; font-family:inherit;
+    background-color: var(--card-solid); color: var(--text);
     border:1px solid var(--card-border); border-radius:6px;
   }
 
   .app-main{ flex:1; min-width:0; }
+
+  /* Ícono de "mi perfil" -- fijo, aparece en todas las páginas, siempre
+     representa a QUIEN INICIÓ SESIÓN (no al perfil que un admin esté
+     viendo, para no confundir "mi cuenta" con la de otro). */
+  .profile-icon{
+    position: fixed; top: 16px; right: 20px; z-index: 200;
+    width: 38px; height: 38px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #fff; display:flex; align-items:center; justify-content:center;
+    font-weight:700; font-size:15px; text-decoration:none;
+    border: 2px solid var(--bg-soft);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  }
+  .profile-icon:hover{ filter: brightness(1.12); }
+  @media (max-width: 720px){
+    .profile-icon{ top: 10px; right: 10px; width: 32px; height: 32px; font-size: 13px; }
+  }
 
   /* ---- Estilos compartidos por las páginas de formulario (Registrar
      movimiento, Cargar extractos) -- un solo lugar, no duplicado ---- */
@@ -115,11 +144,12 @@
   .field-label:first-child{ margin-top:0; }
   .field-select, .field-input{
     width:100%; padding: 10px 12px; font-size: 13.5px;
-    background: var(--bg-soft); color: var(--text);
+    background-color: var(--bg-soft); color: var(--text);
     border: 1px solid var(--card-border); border-radius: 10px;
     font-family: inherit;
   }
   .field-select:focus, .field-input:focus{ outline:none; border-color: var(--accent); }
+  .field-select{ padding-right: 30px; } /* deja lugar para la flecha propia, sin que la pise el padding de arriba */
   .field-row{ display:grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
   .btn-primary{
@@ -169,6 +199,7 @@
 {% block head %}{% endblock %}
 </head>
 <body>
+<a href="/mi-perfil" class="profile-icon" title="Mi perfil">{{ (usuario_nombre or '?')[0]|upper }}</a>
 <div class="app-shell">
   <nav class="app-sidebar" id="appSidebar">
     <div class="sidebar-brand">
@@ -194,7 +225,7 @@
         </svg>
         <span>Registrar movimiento</span>
       </a>
-      <a href="/cargar-extractos" class="nav-cargar {{ 'active' if activo == 'cargar' else '' }}">
+      <a href="/cargar-extractos" class="{{ 'nav-cargar' if usuario_rol != 'admin' else '' }} {{ 'active' if activo == 'cargar' else '' }}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 16V4"></path>
           <path d="M7 9l5-5 5 5"></path>
@@ -202,6 +233,16 @@
         </svg>
         <span>Cargar extractos</span>
       </a>
+      {% if usuario_rol == 'admin' %}
+      <a href="/crear-usuario" class="{{ 'active' if activo == 'crear_usuario' else '' }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M19 8v6M22 11h-6"></path>
+        </svg>
+        <span>Crear usuario</span>
+      </a>
+      {% endif %}
     </div>
 
     <div class="sidebar-footer">
