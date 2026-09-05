@@ -65,11 +65,18 @@ jobs:
             # se retiro, este paso no hace nada. Best-effort: si falla, se
             # avisa pero NO se revierte el deploy (la app ya paso el health
             # check de arriba).
-            try {
-              docker exec -w /app/src finanzas-app-online python actualizar_dashboard.py
-            } catch {
-              Write-Warning "No se pudo sincronizar el Excel: $_"
+            #
+            # OJO: docker exec es un ejecutable NATIVO -- un exit code
+            # distinto de cero NO lanza una excepcion de PowerShell, asi que
+            # un try/catch alrededor no lo atrapa (esto tumbo un deploy
+            # entero el 2026-09-05 pese a que ya habia terminado bien). Hay
+            # que revisar $LASTEXITCODE a mano y resetearlo para que no se
+            # filtre como el exit code final del step.
+            docker exec -w /app/src finanzas-app-online python actualizar_dashboard.py
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "No se pudo sincronizar el Excel (exit $LASTEXITCODE) -- no es fatal, se ignora."
             }
+            $global:LASTEXITCODE = 0
 
             Write-Host "Despliegue exitoso."
           } catch {
