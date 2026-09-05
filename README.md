@@ -34,8 +34,13 @@ reemplazables/opcionales por diseño.
   HTTPS + login) pero se descartó: muchos ISPs residenciales usan CGNAT
   (no dan IP pública) y expondría la PC a internet sin necesidad, cuando
   Tailscale da el mismo resultado sin ese riesgo.
-- 🔜 **Dashboard responsive**: falta adaptar el layout para pantallas de
-  celular/tablet (hoy está pensado para escritorio).
+- ✅ **Dashboard responsive**: navegación adaptada a celular/tablet.
+- ✅ **Cuentas de usuario**: acceso con usuario/contraseña, datos
+  aislados por cuenta. Ver `src/crear_usuario.py` para dar de alta cuentas.
+- ✅ **Despliegue automático**: cada push a `master` reconstruye y
+  levanta el contenedor Docker solo, vía un runner de GitHub Actions
+  instalado en esta misma PC (ver `.github/workflows/deploy.yml` y
+  "Despliegue automático" abajo).
 - 🔜 **Fase 2 — Documentos y DIAN**: guardar y vincular facturas,
   extractos y contratos a los movimientos.
 - 🔜 **Fase 3 — Dashboard v2**: planificador de pago de deuda,
@@ -61,6 +66,25 @@ Para usar la versión Docker desde el celular: instalá la app de Tailscale
 (App Store / Play Store), iniciá sesión con la misma cuenta que usaste en
 la PC, y entrá a `http://<ip-de-tailscale-de-tu-pc>:5002` (la IP la ves
 corriendo `tailscale ip -4` en la PC, o en la app de Tailscale).
+
+## Despliegue automático
+
+Cada push a `master` (por ejemplo, al fusionar un Pull Request) reconstruye
+y levanta solo el contenedor Docker — no hace falta correr nada a mano.
+
+Cómo funciona: hay un [runner de GitHub Actions](https://docs.github.com/actions/hosting-your-own-runners)
+instalado como servicio de Windows en esta misma PC (`C:\actions-runner`).
+GitHub le avisa a ese servicio cuando hay un push a `master` (conexión
+saliente, no hace falta abrir ningún puerto), y el workflow
+(`.github/workflows/deploy.yml`) corre `git reset --hard origin/master` +
+`docker compose up -d --build` directo sobre esta carpeta.
+
+Instalación (una sola vez): `scripts/instalar_runner_cicd.ps1` **como
+administrador** — instala el runner como servicio de Windows para que
+quede corriendo siempre, incluso después de reiniciar la PC.
+
+Para ver el estado o los logs de las corridas: pestaña "Actions" del
+repositorio en GitHub.
 
 ## Estructura
 
