@@ -979,7 +979,7 @@ const insights = [];
 insights.push({
   icon: catIcon(catTop),
   title: `${capitalize(catTop)} es tu mayor categoría de gasto`,
-  text: `Concentra <b>${fmtCOP(catTopMonto)}</b> (${fmtPct(catTopMonto/totalGastosCOP*100)} del gasto total). La segunda categoría es <b>${capitalize(gastoPorCategoria[1][0])}</b> con ${fmtCOP(gastoPorCategoria[1][1])}.`
+  text: `Concentra <b>${fmtCOP(catTopMonto)}</b> (${fmtPct(catTopMonto/totalGastosCOP*100)} del gasto total).${gastoPorCategoria[1] ? ` La segunda categoría es <b>${capitalize(gastoPorCategoria[1][0])}</b> con ${fmtCOP(gastoPorCategoria[1][1])}.` : ' Todavía es la única categoría registrada.'}`
 });
 
 // 2) Crecimiento / reducción de gastos (mes vs mes anterior, comparando meses completos disponibles)
@@ -1009,11 +1009,13 @@ insights.push({
 
 // 4) Mes más costoso
 const mesMasCostoso = [...gastoPorMes.entries()].sort((a,b)=>b[1]-a[1])[0];
-insights.push({
-  icon: '🔥',
-  title: `${mesLabel(mesMasCostoso[0])} fue el mes con más gasto`,
-  text: `Se gastaron <b>${fmtCOP(mesMasCostoso[1])}</b> ese mes, equivalentes a ${fmtPct(mesMasCostoso[1]/totalGastosCOP*100)} del total registrado en el período.`
-});
+if (mesMasCostoso) {
+  insights.push({
+    icon: '🔥',
+    title: `${mesLabel(mesMasCostoso[0])} fue el mes con más gasto`,
+    text: `Se gastaron <b>${fmtCOP(mesMasCostoso[1])}</b> ese mes, equivalentes a ${fmtPct(mesMasCostoso[1]/totalGastosCOP*100)} del total registrado en el período.`
+  });
+}
 
 // 5) Patrones frecuentes (comercios que más se repiten)
 function normDesc(d){ return d.split(' - ')[0].split('*')[0].trim(); }
@@ -1043,18 +1045,21 @@ for (const r of gastosCOP) {
   mismoDiaCat.set(k, (mismoDiaCat.get(k)||0) + 1);
 }
 const diasFraccionados = [...mismoDiaCat.entries()].filter(([,c])=>c>=3);
+const [ejemploFecha, ejemploCat] = diasFraccionados.length ? diasFraccionados[0][0].split('|') : [null, null];
 insights.push({
   icon: '💸',
   title: `${fmtPct(totalDiscrecional/totalGastosCOP*100)} del gasto es discrecional`,
-  text: `Restaurantes, entretenimiento, compras y ropa suman <b>${fmtCOP(totalDiscrecional)}</b>.${diasFraccionados.length ? ` Además, se detectaron <b>${diasFraccionados.length} día(s)</b> con 3+ compras de la misma categoría (ej. TEMU el ${fmtDate('2026-09-03')}) — posibles compras impulsivas fraccionadas.` : ''}`
+  text: `Restaurantes, entretenimiento, compras y ropa suman <b>${fmtCOP(totalDiscrecional)}</b>.${diasFraccionados.length ? ` Además, se detectaron <b>${diasFraccionados.length} día(s)</b> con 3+ compras de la misma categoría (ej. ${capitalize(ejemploCat)} el ${fmtDate(ejemploFecha)}) — posibles compras impulsivas fraccionadas.` : ''}`
 });
 
-// 7) Comportamiento por moneda
-insights.push({
-  icon: '💱',
-  title: `Tus finanzas operan casi 100% en COP`,
-  text: `${dataCOP.length} de ${DATA.length} movimientos (${fmtPct(dataCOP.length/DATA.length*100)}) fueron en pesos colombianos. La única transacción en USD fue <b>${dataUSD[0]?.descripcion}</b> por ${fmtUSD(dataUSD[0]?.monto||0)} — una suscripción cobrada en dólares.`
-});
+// 7) Comportamiento por moneda (solo si hay algo de USD -- si todo es COP, esta comparación no aplica)
+if (dataUSD.length > 0) {
+  insights.push({
+    icon: '💱',
+    title: `Tus finanzas operan casi 100% en COP`,
+    text: `${dataCOP.length} de ${DATA.length} movimientos (${fmtPct(dataCOP.length/DATA.length*100)}) fueron en pesos colombianos. ${dataUSD.length === 1 ? `La única transacción en USD fue <b>${dataUSD[0].descripcion}</b> por ${fmtUSD(dataUSD[0].monto)}.` : `Hubo <b>${dataUSD.length} transacciones</b> en USD.`}`
+  });
+}
 
 // 8) Comportamiento por entidad
 const pctBancolombia = (entidadCount.find(e=>e[0]==='Bancolombia')?.[1]||0) / DATA.length * 100;

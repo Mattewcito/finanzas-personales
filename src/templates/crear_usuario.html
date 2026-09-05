@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Crear usuario{% endblock %}
+
+{% block content %}
+<div class="page-wrap" style="max-width: 640px;">
+
+  <div class="page-header">
+    <h1>👤 Crear usuario</h1>
+    <p>Cada cuenta nueva arranca con sus propias finanzas, separadas por completo del resto.</p>
+  </div>
+
+  <div class="card" style="margin-top: 26px;">
+    <form id="formCrearUsuario">
+      <label class="field-label">Nombre de usuario (para iniciar sesión)</label>
+      <input type="text" name="username" class="field-input" required>
+
+      <label class="field-label">Nombre a mostrar en la app</label>
+      <input type="text" name="nombre" class="field-input" required>
+
+      <label class="field-label">Contraseña</label>
+      <input type="password" name="password" class="field-input" required minlength="4">
+
+      <label class="field-label">Rol</label>
+      <select name="rol" class="field-select">
+        <option value="usuario">Usuario (ve solo sus propias finanzas)</option>
+        <option value="admin">Administrador (ve todo, puede cambiar de perfil)</option>
+      </select>
+
+      <button type="submit" class="btn-primary" id="btnCrear">Crear usuario</button>
+    </form>
+
+    <div id="resultado" class="result-box" style="display:none;"></div>
+  </div>
+
+  <div class="card" style="margin-top: 22px;">
+    <h3 style="margin:0 0 14px; font-size:14.5px;">Usuarios existentes</h3>
+    {% for u in usuarios %}
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; {{ 'border-top:1px solid var(--card-border);' if not loop.first else '' }}">
+      <div>
+        <div style="font-size:13.5px; font-weight:600;">{{ u.nombre_mostrado }}</div>
+        <div style="font-size:11.5px; color:var(--text-faint);">usuario: {{ u.username }} · rol: {{ u.rol }}</div>
+      </div>
+      <a href="/editar-usuario/{{ u.id }}" style="color:var(--accent-2); font-size:12.5px; font-weight:600;">Editar</a>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+document.getElementById('formCrearUsuario').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const datos = new FormData(e.target);
+  const resultado = document.getElementById('resultado');
+  const btn = document.getElementById('btnCrear');
+
+  resultado.style.display = 'block';
+  resultado.className = 'result-box loading';
+  resultado.textContent = 'Creando...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/crear-usuario', { method: 'POST', body: datos });
+    const json = await res.json();
+    if (!res.ok || !json.ok) {
+      resultado.className = 'result-box error';
+      resultado.textContent = '❌ ' + (json.error || 'Error desconocido');
+      return;
+    }
+    resultado.className = 'result-box ok';
+    resultado.textContent = '✅ Usuario creado. Ya puede iniciar sesión con esas credenciales.';
+    e.target.reset();
+    setTimeout(() => location.reload(), 900); // para que aparezca en la lista de abajo
+  } catch (err) {
+    resultado.className = 'result-box error';
+    resultado.textContent = '❌ No se pudo conectar con el servidor.';
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+{% endblock %}

@@ -328,6 +328,27 @@ def crear_usuario(conn: sqlite3.Connection, username: str, password: str, rol: s
     return cur.lastrowid
 
 
+def actualizar_usuario(conn: sqlite3.Connection, usuario_id: int, username: str = None,
+                        nombre_mostrado: str = None, password: str = None, rol: str = None) -> None:
+    """Actualiza solo los campos que se pasen (None = no tocar ese campo).
+    La contraseña, si se pasa, se hashea acá mismo -- nunca se guarda en
+    texto plano, igual que en crear_usuario()."""
+    campos, valores = [], []
+    if username is not None:
+        campos.append("username = ?"); valores.append(username)
+    if nombre_mostrado is not None:
+        campos.append("nombre_mostrado = ?"); valores.append(nombre_mostrado)
+    if rol is not None:
+        campos.append("rol = ?"); valores.append(rol)
+    if password:
+        campos.append("password_hash = ?"); valores.append(generate_password_hash(password))
+    if not campos:
+        return
+    valores.append(usuario_id)
+    conn.execute(f"UPDATE usuarios SET {', '.join(campos)} WHERE id = ?", valores)
+    conn.commit()
+
+
 def verificar_login(conn: sqlite3.Connection, username: str, password: str) -> dict | None:
     """Verifica las credenciales contra las cuentas registradas con ese
     nombre de usuario y devuelve la cuenta correspondiente si coinciden."""
@@ -402,17 +423,27 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
     menos fecha/tipo/categoria/moneda/monto/descripcion/entidad; se
     enriquece acá (medio_pago/es_deuda) antes de insertar."""
     cur = conn.cursor()
-    existentes = set()
+    existentes_bd = set()
     for row in cur.execute("SELECT fecha, moneda, ROUND(monto) AS m FROM movimientos WHERE usuario_id = ?", (usuario_id,)):
-        existentes.add((row["fecha"], row["moneda"], row["m"]))
+        existentes_bd.add((row["fecha"], row["moneda"], row["m"]))
 
-    nuevos, duplicados = [], 0
+    # Se distinguen dos tipos de duplicado -- son casos distintos y el
+    # mensaje al usuario debe aclarar cuál es cuál:
+    #   - duplicados_bd: esa fecha+monto ya estaba guardada de antes.
+    #   - duplicados_lote: dos filas DEL MISMO archivo/lote son iguales
+    #     entre sí (no existían antes, pero no tiene sentido guardar la
+    #     misma dos veces en la misma carga).
+    vistos_en_lote = set()
+    nuevos, duplicados_bd, duplicados_lote = [], 0, 0
     for m in movimientos:
         clave = (m["fecha"], m["moneda"], round(m["monto"]))
-        if clave in existentes:
-            duplicados += 1
+        if clave in existentes_bd:
+            duplicados_bd += 1
             continue
-        existentes.add(clave)  # evita duplicar contra sí mismo si el lote trae el mismo movimiento dos veces
+        if clave in vistos_en_lote:
+            duplicados_lote += 1
+            continue
+        vistos_en_lote.add(clave)
         nuevos.append(m)
 
     enriquecidos = [enriquecer_movimiento(m) for m in nuevos]
@@ -425,4 +456,9 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
         enriquecidos,
     )
     conn.commit()
-    return {"nuevos": len(nuevos), "duplicados": duplicados}
+    return {
+        "nuevos": len(nuevos),
+        "duplicados": duplicados_bd + duplicados_lote,
+        "duplicados_bd": duplicados_bd,
+        "duplicados_lote": duplicados_lote,
+    }
