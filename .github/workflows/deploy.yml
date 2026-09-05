@@ -39,7 +39,7 @@ jobs:
           $ErrorActionPreference = "Stop"
           Set-Location "C:\finanzas-deploy"
           $previo = git rev-parse HEAD
-          Write-Host "Commit actual, guardado como respaldo por si hay que revertir: $previo"
+          Write-Host "Commit actual, guardado como respaldo: $previo"
 
           try {
             git fetch origin master
@@ -55,14 +55,14 @@ jobs:
                 if ($resp.StatusCode -eq 200) { $ok = $true; break }
               } catch {}
             }
-            if (-not $ok) { throw "El contenedor no respondió correctamente después de desplegar." }
+            if (-not $ok) { throw "El contenedor no respondio correctamente despues de desplegar." }
 
             Write-Host "Despliegue exitoso."
           } catch {
-            Write-Host "FALLÓ el despliegue: $_"
+            Write-Host "FALLO el despliegue: $_"
             Write-Host "Revirtiendo al commit anterior: $previo"
             git reset --hard $previo
             docker compose up -d --build
-            Write-Error "Se revirtió automáticamente al commit anterior por un fallo en el despliegue."
+            Write-Error "Se revirtio automaticamente al commit anterior por un fallo en el despliegue."
             exit 1
           }
