@@ -41,6 +41,15 @@ reemplazables/opcionales por diseño.
   levanta el contenedor Docker solo, vía un runner de GitHub Actions
   instalado en esta misma PC (ver `.github/workflows/deploy.yml` y
   "Despliegue automático" abajo).
+- ✅ **Perfil financiero por hábitos** (`src/perfil_financiero.py`): cada
+  vez que se regenera el dashboard, se clasifica a cada usuario en un
+  arquetipo (ahorrador, en alerta por deuda, ingresos irregulares, etc.)
+  a partir de TODO su historial, con una descripción y consejos
+  generados automáticamente por reglas (no IA). Se muestra en la sección
+  "Tu perfil financiero" del dashboard.
+- ✅ **Gráficos expandibles**: click en cualquier gráfico (o en el
+  ranking de Top 5 categorías) para verlo en grande con una tabla de
+  detalle debajo.
 - 🔜 **Fase 2 — Documentos y DIAN**: guardar y vincular facturas,
   extractos y contratos a los movimientos.
 - 🔜 **Fase 3 — Dashboard v2**: planificador de pago de deuda,
@@ -123,16 +132,32 @@ Finanzas personales/
 │   ├── finanzas_personales.xlsx #   Excel fuente (lo escribe el bot de correo)
 │   └── finanzas.db              #   base de datos SQLite (fuente de verdad para el dashboard)
 ├── dashboard/
-│   └── dashboard_finanzas.html  # dashboard offline, abrir con doble clic
+│   └── dashboard_finanzas.html  # plantilla del dashboard (sin datos), versionada en git
 ├── src/
+│   ├── app.py                   # raíz de la app Flask: crea el objeto Flask y registra los blueprints
+│   ├── auth.py                  # blueprint de autenticación (login/logout/cambiar de perfil)
+│   ├── routes/
+│   │   ├── dashboard.py         # blueprint: ver el dashboard, registrar movimientos, cargar extractos
+│   │   └── usuarios.py          # blueprint: alta/edición de cuentas, editar el propio perfil
 │   ├── db_finanzas.py           # esquema, clasificación de movimientos, sincronización, consultas
-│   ├── actualizar_dashboard.py  # corre a diario: sincroniza + regenera el dashboard
+│   ├── perfil_financiero.py     # clasifica a cada usuario en un arquetipo de hábitos + consejos
+│   ├── actualizar_dashboard.py  # corre a diario: sincroniza + regenera el dashboard de cada usuario
 │   ├── migrar_a_sqlite.py       # migración/reset puntual de la base de datos
+│   ├── crear_usuario.py         # alta de cuentas por línea de comandos
+│   ├── leer_correo.py           # ingesta local de notificaciones bancarias por Gmail/IMAP
+│   ├── templates/                # plantillas Jinja de la interfaz (login, registrar, cargar extractos, etc.)
 │   └── tools/
-│       └── reconciliar_extractos.py  # parseo de extractos PDF -> Excel, con dedup por (fecha, monto)
+│       └── reconciliar_extractos.py  # parseo de extractos PDF -> movimientos, con dedup por (fecha, monto)
+├── tests/                        # pytest: clasificación, parsers de correo, integración de la app
 ├── docs/                        # (futuro) facturas, extractos, contratos escaneados — NUNCA se sube a git
 └── requirements.txt
 ```
+
+Patrón de diseño: **Flask Blueprints** -- cada área del producto (auth,
+dashboard, usuarios) vive en su propio archivo/blueprint en vez de tener
+todas las rutas en un único `app.py`; `app.py` queda como raíz delgada
+que solo arma la app y los registra. Ver la cabecera de `src/app.py` y
+`src/auth.py` para el detalle de qué vive en cada uno.
 
 ## Cómo funciona el flujo diario
 
