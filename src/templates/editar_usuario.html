@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Editar usuario{% endblock %}
+
+{% block content %}
+<div class="page-wrap" style="max-width: 640px;">
+
+  <div class="page-header">
+    <h1>✏️ Editar usuario</h1>
+    <p>Estás editando la cuenta de <b style="color:var(--text-dim)">{{ cuenta.nombre_mostrado }}</b>. Dejá la contraseña en blanco si no querés cambiarla.</p>
+  </div>
+
+  <div class="card" style="margin-top: 26px;">
+    <form id="formEditar">
+      <label class="field-label">Nombre de usuario (para iniciar sesión)</label>
+      <input type="text" name="username" class="field-input" value="{{ cuenta.username }}" required>
+
+      <label class="field-label">Nombre a mostrar en la app</label>
+      <input type="text" name="nombre" class="field-input" value="{{ cuenta.nombre_mostrado }}" required>
+
+      <label class="field-label">Nueva contraseña (opcional)</label>
+      <input type="password" name="password" class="field-input" placeholder="Dejar en blanco para no cambiarla" minlength="4">
+
+      <label class="field-label">Rol</label>
+      <select name="rol" class="field-select">
+        <option value="usuario" {{ 'selected' if cuenta.rol == 'usuario' else '' }}>Usuario (ve solo sus propias finanzas)</option>
+        <option value="admin" {{ 'selected' if cuenta.rol == 'admin' else '' }}>Administrador (ve todo, puede cambiar de perfil)</option>
+      </select>
+
+      <button type="submit" class="btn-primary" id="btnGuardar">Guardar cambios</button>
+    </form>
+
+    <div id="resultado" class="result-box" style="display:none;"></div>
+  </div>
+
+  <p style="margin-top:16px;"><a href="/crear-usuario" style="color:var(--accent-2); font-size:13px;">&larr; Volver a la lista de usuarios</a></p>
+</div>
+
+<script>
+document.getElementById('formEditar').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const datos = new FormData(e.target);
+  const resultado = document.getElementById('resultado');
+  const btn = document.getElementById('btnGuardar');
+
+  resultado.style.display = 'block';
+  resultado.className = 'result-box loading';
+  resultado.textContent = 'Guardando...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/editar-usuario/{{ cuenta.id }}', { method: 'POST', body: datos });
+    const json = await res.json();
+    if (!res.ok || !json.ok) {
+      resultado.className = 'result-box error';
+      resultado.textContent = '❌ ' + (json.error || 'Error desconocido');
+      return;
+    }
+    resultado.className = 'result-box ok';
+    resultado.textContent = '✅ Usuario actualizado.';
+    e.target.querySelector('[name="password"]').value = '';
+  } catch (err) {
+    resultado.className = 'result-box error';
+    resultado.textContent = '❌ No se pudo conectar con el servidor.';
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+{% endblock %}
