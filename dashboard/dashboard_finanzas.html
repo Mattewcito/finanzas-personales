@@ -429,6 +429,8 @@
     </div>
   </header>
 
+  <div class="empty-state" id="cargandoDashboard">⏳ Cargando tu dashboard...</div>
+
   <!-- ============================================================
        KPIs — métricas principales
        ============================================================ -->
@@ -573,51 +575,43 @@
 
 <script>
 /* =================================================================
-   DATOS
+   DATOS — dinámicos, vía la API (ya NO se hornean en el HTML)
    -----------------------------------------------------------------
-   Este bloque contiene los 116 movimientos de la hoja "movimientos"
-   del archivo finanzas_personales.xlsx, ya convertidos a JSON y
-   embebidos aquí para que el dashboard funcione 100% offline (sin
-   servidor y sin problemas de CORS al abrir el archivo con doble clic).
-   Si el Excel cambia, hay que regenerar este bloque desde la hoja.
-   Esto lo hace automáticamente actualizar_dashboard.py (ver tarea
-   programada diaria) — no edites a mano entre los marcadores.
+   Hasta 2026-09-05 esta plantilla se generaba por usuario con los
+   datos ya embebidos adentro (pensado originalmente para abrir el
+   archivo con doble clic, sin servidor). Ahora que todo pasa por un
+   servidor Flask real, todo ESTE archivo es un único archivo estático
+   compartido por todos los usuarios: al cargar, le pide sus propios
+   datos a /api/dashboard-data (respeta la sesión y, si sos admin
+   viendo el perfil de otra cuenta, esa misma). Nada de "regenerar" ni
+   de archivos por usuario en disco.
 ================================================================= */
-/* __DATA_START__ */
-const DATA = []; // plantilla vacia -- se llena al correr actualizar_dashboard.py, el archivo real vive en data/dashboard_finanzas.html (gitignored)
-/* __DATA_END__ */
+async function iniciarDashboard() {
+  const contenedorCarga = document.getElementById('cargandoDashboard');
+  let datosApi;
+  try {
+    const resp = await fetch('/api/dashboard-data');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    datosApi = await resp.json();
+  } catch (err) {
+    if (contenedorCarga) {
+      contenedorCarga.innerHTML = '<div class="empty-state">⚠️ No se pudo cargar el dashboard. Recargá la página; si sigue fallando, avisá.</div>';
+    }
+    console.error('Error cargando /api/dashboard-data:', err);
+    return;
+  }
+  if (contenedorCarga) contenedorCarga.remove();
 
-/* =================================================================
-   LEDGER DE DEUDA DE TARJETAS DE CRÉDITO
-   -----------------------------------------------------------------
-   Compras a crédito y avances SUMAN deuda; los pagos a tarjeta la
-   RESTAN. Cada movimiento de DATA con medio_pago crédito/avance/pago
-   ya está reflejado acá en orden cronológico con saldo corriente.
-   Lo genera actualizar_dashboard.py — no editar a mano.
-================================================================= */
-/* __DEUDA_TARJETAS_START__ */
-const DEUDA_TARJETAS = [];
-/* __DEUDA_TARJETAS_END__ */
+  const DATA = datosApi.movimientos;
+  const DEUDA_TARJETAS = datosApi.ledger_deuda;
+  const GENERATED_AT = datosApi.generated_at;
+  const PERFIL_FINANCIERO = datosApi.perfil;
 
-/* __GENERATED_AT_START__ */
-const GENERATED_AT = "plantilla";
-/* __GENERATED_AT_END__ */
-
-/* =================================================================
-   PERFIL FINANCIERO — arquetipo de hábitos + consejos personalizados.
-   Lo genera src/perfil_financiero.py a partir de TODO el historial del
-   usuario (no cambia con los filtros de año/mes) — no editar a mano.
-================================================================= */
-/* __PERFIL_FINANCIERO_START__ */
-const PERFIL_FINANCIERO = {"arquetipo":"Sin datos suficientes","descripcion":"Todavía no hay movimientos registrados para generar un perfil.","consejos":[],"metricas":{}};
-/* __PERFIL_FINANCIERO_END__ */
-
-// DATA/DEUDA_TARJETAS de arriba son el histórico COMPLETO, inyectado por
-// actualizar_dashboard.py. El filtro de período (más abajo) llama a
-// renderDashboard() con subconjuntos de estos dos arrays -- nunca se
-// tocan los originales.
-const DATA_COMPLETA = DATA;
-const DEUDA_COMPLETA = DEUDA_TARJETAS;
+  // DATA/DEUDA_TARJETAS de arriba son el histórico COMPLETO. El filtro de
+  // período (más abajo) llama a renderDashboard() con subconjuntos de
+  // estos dos arrays -- nunca se tocan los originales.
+  const DATA_COMPLETA = DATA;
+  const DEUDA_COMPLETA = DEUDA_TARJETAS;
 
 /* =================================================================
    HELPERS de formato
@@ -1590,17 +1584,25 @@ function cerrarModalGrafico() {
   if (modalChartInstance) { modalChartInstance.destroy(); modalChartInstance = null; }
 }
 
-// En un DOMContentLoaded -- el <div id="modalGrafico"> vive más abajo en
-// el HTML (después de este <script>), así que todavía no existe en el
-// DOM si se busca de forma síncrona acá mismo.
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('modalGrafico').addEventListener('click', (e) => {
-    if (e.target.id === 'modalGrafico') cerrarModalGrafico(); // click en el fondo, no en la tarjeta
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') cerrarModalGrafico();
-  });
+// Sin DOMContentLoaded acá: este código corre recién después del
+// "await fetch(...)" de más arriba, momento en el que el DOM entero
+// (incluido el <div id="modalGrafico">, más abajo en el HTML) ya
+// terminó de parsearse -- envolver esto en DOMContentLoaded lo dejaría
+// esperando un evento que ya pasó, y el listener nunca se registraría.
+document.getElementById('modalGrafico').addEventListener('click', (e) => {
+  if (e.target.id === 'modalGrafico') cerrarModalGrafico(); // click en el fondo, no en la tarjeta
 });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') cerrarModalGrafico();
+});
+
+// abrirModalGrafico/abrirModalLeaderboard/cerrarModalGrafico se llaman
+// desde atributos onclick="" inline en el HTML -- esos se resuelven en
+// el scope GLOBAL (window), no en el de esta función async, así que
+// hay que exponerlos a mano.
+window.abrirModalGrafico = abrirModalGrafico;
+window.abrirModalLeaderboard = abrirModalLeaderboard;
+window.cerrarModalGrafico = cerrarModalGrafico;
 
 renderDashboard(DATA_COMPLETA, DEUDA_COMPLETA); // primera carga: histórico completo, sin filtro
 
@@ -1615,6 +1617,10 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById(btn.dataset.pane).classList.add('active');
   });
 });
+
+} // fin de iniciarDashboard()
+
+iniciarDashboard();
 </script>
 
 <!-- ============================================================
