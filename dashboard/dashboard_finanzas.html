@@ -655,10 +655,13 @@ function renderDashboard(DATA, DEUDA_TARJETAS) {
       rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(iso(inicio))}</b> hasta <b>${fmtDate(iso(fin))}</b></div>`;
     }
   } else if (mesVal === 'todos') {
-    // Sin ningún filtro: rango real de todo el histórico cargado.
+    // Sin ningún filtro: "todos los datos" es un período abierto (llega
+    // hasta ahora), así que el final es HOY -- no el último movimiento
+    // cargado. Si no, esta fecha queda atrás de "Última actualización"
+    // apenas pasa un día sin cargar nada, y parece un error.
     if (DATA_COMPLETA.length) {
       const fechasCompletas = [...new Set(DATA_COMPLETA.map(r => r.fecha))].sort();
-      rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(fechasCompletas[0])}</b> hasta <b>${fmtDate(fechasCompletas[fechasCompletas.length - 1])}</b></div>`;
+      rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(fechasCompletas[0])}</b> hasta <b>${fmtDate(iso(hoy))}</b></div>`;
     }
   } else if (DATA.length) {
     // "Todos los años" + un mes específico: puede abarcar varios años --
