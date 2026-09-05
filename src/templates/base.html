@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Finanzas Personales{% endblock %}</title>
 <style>
   :root{
@@ -91,6 +92,32 @@
   .sidebar-footer .dot-text{ display:none; }
 
   .app-main{ flex:1; min-width:0; }
+
+  /* Pantallas chicas (celular/tablet en vertical): el menú lateral pasa a
+     ser una barra inferior fija, tipo app nativa -- nada de sidebar de
+     226px comiéndose la pantalla. */
+  @media (max-width: 720px){
+    .app-shell{ flex-direction: column; }
+    .app-sidebar, .app-sidebar.collapsed{
+      width: 100%; height: auto; flex-direction: row;
+      position: fixed; bottom: 0; left: 0; top: auto;
+      border-right: none; border-top: 1px solid var(--card-border);
+      z-index: 100;
+    }
+    .sidebar-brand, .sidebar-footer{ display: none; }
+    .sidebar-nav{
+      display: flex; flex-direction: row; padding: 6px 8px;
+      justify-content: space-around; overflow: visible;
+    }
+    .sidebar-nav a{
+      flex-direction: column; align-items: center; gap: 3px;
+      padding: 6px 14px; font-size: 10.5px; margin-bottom: 0;
+    }
+    .sidebar-nav a span{ display: block !important; white-space: nowrap; }
+    .sidebar-nav a.nav-cargar{ display: none !important; } /* subir archivos desde el celular no es el caso de uso -- solo queda Dashboard */
+    .app-main{ padding-bottom: 62px; } /* deja ver el contenido por encima de la barra */
+    .app-main iframe{ height: calc(100vh - 62px) !important; }
+  }
 </style>
 {% block head %}{% endblock %}
 </head>
@@ -113,7 +140,7 @@
         </svg>
         <span>Dashboard</span>
       </a>
-      <a href="/cargar-extractos" class="{{ 'active' if activo == 'cargar' else '' }}">
+      <a href="/cargar-extractos" class="nav-cargar {{ 'active' if activo == 'cargar' else '' }}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 16V4"></path>
           <path d="M7 9l5-5 5 5"></path>
@@ -124,7 +151,7 @@
     </div>
 
     <div class="sidebar-footer">
-      <span class="full-text">Finanzas personales · local</span>
+      <span class="full-text">Finanzas personales · {{ modo }}</span>
       <span class="dot-text">●</span>
     </div>
   </nav>

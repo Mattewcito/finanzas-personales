@@ -47,7 +47,18 @@ import reconciliar_extractos as rex  # parsers de PDF ya construidos y probados
 UPLOADS_DIR = db.DATA_DIR / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
 
+# "Local" = corriendo directo con "py app.py" (solo esta PC, puerto 5001).
+# "Online" = corriendo en el contenedor Docker (puerto 5002, accesible por
+# Tailscale desde el celular). Mismo código, se distingue por esta env var
+# que ya seteaba el Dockerfile.
+MODO = "Online" if os.environ.get("RUNNING_IN_DOCKER") else "Local"
+
 app = Flask(__name__)
+
+
+@app.context_processor
+def inyectar_modo():
+    return {"modo": MODO}
 
 
 @app.route("/")
