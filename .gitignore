@@ -4,7 +4,8 @@
 # ============================================================
 
 # Datos reales (Excel, base de datos, extractos, facturas escaneadas)
-data/
+data/*
+!data/*.example.json
 docs/*
 !docs/.gitkeep
 
@@ -27,3 +28,7 @@ venv/
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+
+# Excepciones (deben ir al final para ganarle a las reglas de arriba):
+# archivos *.example.json son plantillas sin datos reales, sí se versionan.
+!data/*.example.json

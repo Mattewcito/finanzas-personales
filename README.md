@@ -11,12 +11,18 @@ reemplazables/opcionales por diseño.
 
 - ✅ **Fase 0 — Base de datos real**: los datos viven en `data/finanzas.db`
   (SQLite), no en el Excel. El Excel se mantiene como fuente de entrada
-  (todavía es lo único que actualiza el bot de lectura de correo) y se
-  sincroniza automáticamente a la base de datos cada vez que se regenera
-  el dashboard.
-- 🔜 **Fase 1 — Ingesta local de correo**: reemplazar la tarea externa que
-  lee Gmail por una automatización propia (credenciales de correo +
-  IMAP), independiente de cualquier suscripción externa.
+  (todavía es lo único que actualiza el bot de lectura de correo viejo) y
+  se sincroniza automáticamente a la base de datos cada vez que se
+  regenera el dashboard.
+- 🚧 **Fase 1 — Ingesta local de correo** (`src/leer_correo.py`): lee las
+  notificaciones de Bancolombia directo de Gmail por IMAP (contraseña de
+  aplicación, no navegador automatizado — Google bloquea logins por
+  navegador controlado), las parsea con expresiones regulares (sin IA) y
+  las inserta en la base de datos con dedup por (fecha, monto). Cubre
+  compras (débito/crédito), QR, transferencias, Bre-B, nómina y avances
+  de tarjeta. **Nu queda pendiente** (solo manda extractos mensuales, no
+  alertas por movimiento — se sigue cubriendo con `reconciliar_extractos.py`).
+  Ver "Configurar la lectura de correo" abajo.
 - 🔜 **Fase 2 — Documentos y DIAN**: guardar y vincular facturas,
   extractos y contratos a los movimientos.
 - 🔜 **Fase 3 — Dashboard v2**: planificador de pago de deuda,
@@ -82,6 +88,29 @@ cd src
 py migrar_a_sqlite.py       # sincroniza/verifica la base de datos
 py actualizar_dashboard.py  # sincroniza + regenera el dashboard
 ```
+
+## Configurar la lectura de correo (Fase 1)
+
+1. Activá verificación en 2 pasos en tu cuenta de Google (si no la tenés).
+2. Generá una contraseña de aplicación en
+   [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
+   (elegí "Otra" y ponele un nombre como "Finanzas IMAP").
+3. Copiá `data/credenciales_correo.example.json` a `data/credenciales_correo.json`
+   y completá tu correo y esa contraseña (16 caracteres, con o sin espacios).
+   Ese archivo **nunca se sube a git** — vive en `data/`.
+4. Probá primero en modo reporte (no escribe nada):
+   ```bash
+   cd src
+   py leer_correo.py --dias 30
+   ```
+5. Si los movimientos que muestra son correctos, aplicá:
+   ```bash
+   py leer_correo.py --dias 30 --aplicar
+   ```
+
+La categoría de cada compra se asigna por palabras clave en el nombre del
+comercio (sin IA) — es un mejor esfuerzo. Se puede corregir directamente
+en la base de datos; no afecta los totales de ingreso/gasto/deuda.
 
 ## Seguridad
 
