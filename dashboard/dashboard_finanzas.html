@@ -709,7 +709,7 @@ kpiGrid.innerHTML = `
     <div class="icon">${catIcon(catTop)}</div>
     <div class="label">Categoría con mayor gasto</div>
     <div class="value" style="font-size:19px; text-transform:capitalize;">${catTop}</div>
-    <div class="sub">${fmtCOP(catTopMonto)} · ${fmtPct(catTopMonto/totalGastosCOP*100)} del consumo total (incl. crédito)</div>
+    <div class="sub">${fmtCOP(catTopMonto)} · ${fmtPct(totalGastosCOP ? catTopMonto/totalGastosCOP*100 : 0)} del consumo total (incl. crédito)</div>
   </div>
 
   <div class="kpi">
@@ -958,7 +958,7 @@ new Chart(document.getElementById('chartDistribucion'), {
     cutout: '55%',
     plugins: {
       legend: { display:false },
-      tooltip: { callbacks: { label:(ctx)=> `${ctx.label}: ${fmtPct(ctx.parsed/totalGastosCOP*100)} (${fmtCOP(ctx.parsed)})` } }
+      tooltip: { callbacks: { label:(ctx)=> `${ctx.label}: ${fmtPct(totalGastosCOP ? ctx.parsed/totalGastosCOP*100 : 0)} (${fmtCOP(ctx.parsed)})` } }
     }
   }
 });
@@ -1044,12 +1044,14 @@ new Chart(document.getElementById('chartEntidades'), {
 ================================================================= */
 const insights = [];
 
-// 1) Categoría donde más se gasta
-insights.push({
-  icon: catIcon(catTop),
-  title: `${capitalize(catTop)} es tu mayor categoría de gasto`,
-  text: `Concentra <b>${fmtCOP(catTopMonto)}</b> (${fmtPct(catTopMonto/totalGastosCOP*100)} del gasto total).${gastoPorCategoria[1] ? ` La segunda categoría es <b>${capitalize(gastoPorCategoria[1][0])}</b> con ${fmtCOP(gastoPorCategoria[1][1])}.` : ' Todavía es la única categoría registrada.'}`
-});
+// 1) Categoría donde más se gasta (no aplica si en el período no hubo ningún gasto, ej. solo ingresos)
+if (gastoPorCategoria.length) {
+  insights.push({
+    icon: catIcon(catTop),
+    title: `${capitalize(catTop)} es tu mayor categoría de gasto`,
+    text: `Concentra <b>${fmtCOP(catTopMonto)}</b> (${fmtPct(totalGastosCOP ? catTopMonto/totalGastosCOP*100 : 0)} del gasto total).${gastoPorCategoria[1] ? ` La segunda categoría es <b>${capitalize(gastoPorCategoria[1][0])}</b> con ${fmtCOP(gastoPorCategoria[1][1])}.` : ' Todavía es la única categoría registrada.'}`
+  });
+}
 
 // 2) Crecimiento / reducción de gastos (mes vs mes anterior, comparando meses completos disponibles)
 if (mesesOrdenados.length >= 2) {
@@ -1070,11 +1072,13 @@ if (mesesOrdenados.length >= 2) {
 const subs = DATA.filter(r => r.categoria === 'suscripciones');
 const subsPorServicio = groupSum(subs.filter(r=>r.moneda==='COP'), r => r.descripcion.split(' - ')[0]);
 const subsUSD = subs.filter(r=>r.moneda==='USD');
-insights.push({
-  icon: '📱',
-  title: `${new Set(subs.map(r=>r.descripcion.split(' - ')[0])).size} servicio(s) de suscripción detectados`,
-  text: `${[...subsPorServicio.entries()].map(([s,v])=>`<b>${s}</b> (${fmtCOP(v)} acumulado)`).join(', ')}${subsUSD.length? ` y <b>${subsUSD[0].descripcion}</b> (${fmtUSD(subsUSD[0].monto)}/mes)` : ''}. Los cargos de Apple varían mes a mes — vale la pena revisar qué apps se están renovando.`
-});
+if (subs.length) {
+  insights.push({
+    icon: '📱',
+    title: `${new Set(subs.map(r=>r.descripcion.split(' - ')[0])).size} servicio(s) de suscripción detectados`,
+    text: `${[...subsPorServicio.entries()].map(([s,v])=>`<b>${s}</b> (${fmtCOP(v)} acumulado)`).join(', ')}${subsUSD.length? ` y <b>${subsUSD[0].descripcion}</b> (${fmtUSD(subsUSD[0].monto)}/mes)` : ''}. Los cargos de Apple varían mes a mes — vale la pena revisar qué apps se están renovando.`
+  });
+}
 
 // 4) Mes más costoso
 const mesMasCostoso = [...gastoPorMes.entries()].sort((a,b)=>b[1]-a[1])[0];
@@ -1082,7 +1086,7 @@ if (mesMasCostoso) {
   insights.push({
     icon: '🔥',
     title: `${mesLabel(mesMasCostoso[0])} fue el mes con más gasto`,
-    text: `Se gastaron <b>${fmtCOP(mesMasCostoso[1])}</b> ese mes, equivalentes a ${fmtPct(mesMasCostoso[1]/totalGastosCOP*100)} del total registrado en el período.`
+    text: `Se gastaron <b>${fmtCOP(mesMasCostoso[1])}</b> ese mes, equivalentes a ${fmtPct(totalGastosCOP ? mesMasCostoso[1]/totalGastosCOP*100 : 0)} del total registrado en el período.`
   });
 }
 
@@ -1115,11 +1119,13 @@ for (const r of gastosCOP) {
 }
 const diasFraccionados = [...mismoDiaCat.entries()].filter(([,c])=>c>=3);
 const [ejemploFecha, ejemploCat] = diasFraccionados.length ? diasFraccionados[0][0].split('|') : [null, null];
-insights.push({
-  icon: '💸',
-  title: `${fmtPct(totalDiscrecional/totalGastosCOP*100)} del gasto es discrecional`,
-  text: `Restaurantes, entretenimiento, compras y ropa suman <b>${fmtCOP(totalDiscrecional)}</b>.${diasFraccionados.length ? ` Además, se detectaron <b>${diasFraccionados.length} día(s)</b> con 3+ compras de la misma categoría (ej. ${capitalize(ejemploCat)} el ${fmtDate(ejemploFecha)}) — posibles compras impulsivas fraccionadas.` : ''}`
-});
+if (totalGastosCOP) {
+  insights.push({
+    icon: '💸',
+    title: `${fmtPct(totalDiscrecional/totalGastosCOP*100)} del gasto es discrecional`,
+    text: `Restaurantes, entretenimiento, compras y ropa suman <b>${fmtCOP(totalDiscrecional)}</b>.${diasFraccionados.length ? ` Además, se detectaron <b>${diasFraccionados.length} día(s)</b> con 3+ compras de la misma categoría (ej. ${capitalize(ejemploCat)} el ${fmtDate(ejemploFecha)}) — posibles compras impulsivas fraccionadas.` : ''}`
+  });
+}
 
 // 7) Comportamiento por moneda (solo si hay algo de USD -- si todo es COP, esta comparación no aplica)
 if (dataUSD.length > 0) {
