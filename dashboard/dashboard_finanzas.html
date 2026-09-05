@@ -86,7 +86,17 @@
   header.top .title-block p{
     margin:0; color: var(--text-dim); font-size: 13.5px;
   }
-  .badge-row{ display:flex; gap:10px; flex-wrap:wrap; }
+  .badge-row{ display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+  .last-updated{ font-size: 11px; color: var(--text-faint); white-space:nowrap; }
+  .pill-select{
+    background: var(--card-solid); border:1px solid var(--card-border);
+    padding: 8px 30px 8px 14px; border-radius: 999px; font-size: 12.5px; color: var(--text);
+    font-family: inherit; cursor:pointer;
+    appearance:none; -webkit-appearance:none; -moz-appearance:none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238d96ab' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position: right 10px center; background-size:13px;
+  }
+  .pill-select:hover{ border-color: var(--accent); }
   .pill{
     background: var(--card-solid); border:1px solid var(--card-border);
     padding: 8px 14px; border-radius: 999px; font-size: 12.5px; color: var(--text-dim);
@@ -312,7 +322,14 @@
       <h1>💰 Dashboard Financiero Personal</h1>
       <p>Análisis automático de movimientos — generado desde <b style="color:var(--text-dim)">finanzas.db</b>, sincronizada con el Excel, el correo y los extractos que cargues</p>
     </div>
-    <div class="badge-row" id="headerBadges"></div>
+    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+      <div class="badge-row">
+        <select id="filtroAnio" class="pill-select"></select>
+        <select id="filtroMes" class="pill-select"></select>
+      </div>
+      <div class="badge-row" id="headerBadges"></div>
+      <div class="last-updated" id="lastUpdated"></div>
+    </div>
   </header>
 
   <!-- ============================================================
@@ -334,7 +351,7 @@
     <div class="chart-card full">
       <h3>📈 Evolución de la deuda en tarjetas de crédito</h3>
       <p class="desc">Saldo acumulado estimado (compras a crédito + avances − pagos a la tarjeta), movimiento a movimiento.</p>
-      <div class="chart-holder tall"><canvas id="chartDeudaEvolucion"></canvas></div>
+      <div class="chart-holder tall" id="chartDeudaEvolucionHolder"><canvas id="chartDeudaEvolucion"></canvas></div>
     </div>
   </div>
 
@@ -487,6 +504,13 @@ const DEUDA_TARJETAS = [];
 const GENERATED_AT = "plantilla";
 /* __GENERATED_AT_END__ */
 
+// DATA/DEUDA_TARJETAS de arriba son el histórico COMPLETO, inyectado por
+// actualizar_dashboard.py. El filtro de período (más abajo) llama a
+// renderDashboard() con subconjuntos de estos dos arrays -- nunca se
+// tocan los originales.
+const DATA_COMPLETA = DATA;
+const DEUDA_COMPLETA = DEUDA_TARJETAS;
+
 /* =================================================================
    HELPERS de formato
 ================================================================= */
@@ -495,6 +519,7 @@ const fmtUSD = (n) => new Intl.NumberFormat('en-US', { style:'currency', currenc
 const fmtNum = (n) => new Intl.NumberFormat('es-CO').format(Math.round(n));
 const fmtPct = (n) => `${n.toFixed(1)}%`;
 const fmtDate = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('es-CO', { day:'2-digit', month:'short', year:'numeric' });
+const fmtDateTime = (iso) => new Date(iso).toLocaleString('es-CO', { day:'2-digit', month:'short', year:'numeric', hour:'numeric', minute:'2-digit', hour12:true });
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 const CAT_ICONS = {
@@ -516,6 +541,46 @@ const colorFor = (i) => PALETTE[i % PALETTE.length];
 Chart.defaults.color = '#8d96ab';
 Chart.defaults.font.family = "'Inter', sans-serif";
 Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+
+/* =================================================================
+   RENDERIZADO DEL DASHBOARD (parametrizado por período)
+   -----------------------------------------------------------------
+   Todo lo que sigue -- KPIs, gráficos, insights y tablas -- vive
+   adentro de esta función para poder volver a correrlo con un
+   subconjunto filtrado de movimientos (selector de año/mes, más abajo)
+   sin recargar la página. Usa los mismos nombres "DATA"/"DEUDA_TARJETAS"
+   que el resto del código ya esperaba, así que nada de la lógica interna
+   cambió -- solo quedó envuelta.
+================================================================= */
+function renderDashboard(DATA, DEUDA_TARJETAS) {
+
+// Los gráficos son instancias de Chart.js atadas a un <canvas> -- si no
+// se destruye la instancia anterior antes de crear una nueva sobre el
+// mismo canvas, Chart.js tira error. Chart.getChart(id) devuelve la
+// instancia activa de ese canvas (o nada, la primera vez).
+['chartDeudaEvolucion','chartCategorias','chartIngresosGastos','chartMoneda',
+ 'chartEvolucion','chartDistribucion','chartTendenciaMensual','chartEntidades'].forEach(id => {
+  const existente = Chart.getChart(id);
+  if (existente) existente.destroy();
+});
+
+// Período sin ningún movimiento (ej. un mes puntual sin datos todavía): en vez
+// de dejar que las cuentas de más abajo produzcan NaN/"undefined" por todos
+// lados, mostramos un estado vacío prolijo en cada sección y cortamos acá.
+if (!DATA.length) {
+  document.getElementById('kpiGrid').innerHTML =
+    '<p style="color:var(--text-faint); font-size:13px; padding:6px 0;">No hay movimientos registrados en el período seleccionado.</p>';
+  document.getElementById('kpiGridDeuda').innerHTML = '';
+  document.getElementById('chartDeudaEvolucionHolder').innerHTML =
+    '<p style="color:var(--text-faint); font-size:13px;">No se detectaron compras, avances ni pagos de tarjeta de crédito en los movimientos del período seleccionado.</p>';
+  document.getElementById('insightsGrid').innerHTML =
+    '<p style="color:var(--text-faint); font-size:13px; padding:6px 0;">Todavía no hay suficientes movimientos en este período para generar insights automáticos.</p>';
+  ['tbodyUltimos','tbodyMayoresGastos','tbodyMayoresIngresos','tbodyMoneda','tbodyDeuda'].forEach(id => {
+    document.getElementById(id).innerHTML =
+      '<tr><td colspan="10" style="color:var(--text-faint); font-size:13px; text-align:center; padding:14px;">Sin movimientos en este período.</td></tr>';
+  });
+  return;
+}
 
 /* =================================================================
    PRE-PROCESAMIENTO DE DATOS
@@ -583,15 +648,15 @@ function sortMapDesc(map){
 
 // Gasto por categoría (COP)
 const gastoPorCategoria = sortMapDesc(groupSum(gastosCOP, r=>r.categoria));
-// Categoría con mayor gasto
-const [catTop, catTopMonto] = gastoPorCategoria[0];
+// Categoría con mayor gasto (con respaldo por si el período filtrado no tiene ningún gasto)
+const [catTop, catTopMonto] = gastoPorCategoria[0] || ['sin datos', 0];
 // Promedio mensual de gasto REAL de caja (COP): total gasto real / nº de meses distintos presentes en los datos
 const mesesPresentes = [...new Set(dataCOP.map(r=>r.fecha.slice(0,7)))].sort();
-const promedioMensualGasto = totalGastoReal / mesesPresentes.length;
+const promedioMensualGasto = mesesPresentes.length ? totalGastoReal / mesesPresentes.length : 0;
 // Entidades más utilizadas (por nº de movimientos y por monto)
 const entidadCount = sortMapDesc(groupCount(DATA, r=>r.entidad));
 const entidadMonto = sortMapDesc(groupSum(dataCOP, r=>r.entidad));
-const entidadTop = entidadCount[0][0];
+const entidadTop = entidadCount[0]?.[0] || 'sin datos';
 // Distribución por moneda (nº movimientos)
 const monedaCount = groupCount(DATA, r=>r.moneda);
 // Rango de fechas
@@ -604,8 +669,8 @@ const fechaMin = fechas[0], fechaMax = fechas[fechas.length-1];
 document.getElementById('headerBadges').innerHTML = `
   <div class="pill"><span class="dot"></span> ${DATA.length} movimientos cargados</div>
   <div class="pill">🗓️ ${fmtDate(fechaMin)} → ${fmtDate(fechaMax)}</div>
-  <div class="pill">🕒 Generado el ${fmtDate(GENERATED_AT)}</div>
 `;
+document.getElementById('lastUpdated').textContent = `Última actualización del dashboard: ${fmtDateTime(GENERATED_AT)}`;
 
 /* =================================================================
    KPIs
@@ -666,7 +731,7 @@ kpiGrid.innerHTML = `
     <div class="icon">🏦</div>
     <div class="label">Entidad más utilizada</div>
     <div class="value" style="font-size:19px;">${entidadTop}</div>
-    <div class="sub">${entidadCount[0][1]} movimientos · ${fmtCOP(entidadMonto.find(e=>e[0]===entidadTop)?.[1]||0)}</div>
+    <div class="sub">${entidadCount[0]?.[1] || 0} movimientos · ${fmtCOP(entidadMonto.find(e=>e[0]===entidadTop)?.[1]||0)}</div>
   </div>
 `;
 
@@ -706,6 +771,10 @@ document.getElementById('kpiGridDeuda').innerHTML = `
 /* =================================================================
    GRÁFICO — Evolución de la deuda en tarjetas de crédito
 ================================================================= */
+// El contenedor se repone desde cero en cada render (con un <canvas> fresco)
+// antes de decidir qué mostrar — así funciona sin importar qué haya quedado
+// dibujado ahí en la llamada anterior (gráfico o mensaje de "sin datos").
+document.getElementById('chartDeudaEvolucionHolder').innerHTML = '<canvas id="chartDeudaEvolucion"></canvas>';
 if (DEUDA_TARJETAS.length) {
   new Chart(document.getElementById('chartDeudaEvolucion'), {
     type: 'line',
@@ -740,8 +809,8 @@ if (DEUDA_TARJETAS.length) {
     }
   });
 } else {
-  document.getElementById('chartDeudaEvolucion').closest('.chart-card').innerHTML =
-    '<p style="color:var(--text-faint); font-size:13px;">No se detectaron compras, avances ni pagos de tarjeta de crédito en los movimientos cargados.</p>';
+  document.getElementById('chartDeudaEvolucionHolder').innerHTML =
+    '<p style="color:var(--text-faint); font-size:13px;">No se detectaron compras, avances ni pagos de tarjeta de crédito en los movimientos del período seleccionado.</p>';
 }
 
 /* =================================================================
@@ -856,7 +925,7 @@ new Chart(document.getElementById('chartEvolucion'), {
    TOP 5 CATEGORÍAS — leaderboard (HTML + barras de progreso)
 ================================================================= */
 const top5 = gastoPorCategoria.slice(0,5);
-const maxTop5 = top5[0][1];
+const maxTop5 = top5[0]?.[1] || 0;
 document.getElementById('leaderboard').innerHTML = top5.map(([cat,monto],i)=>{
   const pct = (monto/maxTop5*100).toFixed(0);
   const rankClass = i===0?'top1':i===1?'top2':i===2?'top3':'';
@@ -1162,6 +1231,41 @@ document.getElementById('tbodyDeuda').innerHTML = [...DEUDA_TARJETAS].reverse().
       <td class="num">${fmtCOP(d.saldo_acumulado)}</td>
     </tr>`;
 }).join('') || '<tr><td colspan="6" style="text-align:center; color:var(--text-faint);">Sin movimientos de tarjeta de crédito detectados.</td></tr>';
+
+} // ---- fin de renderDashboard() ----
+
+/* =================================================================
+   SELECTOR DE PERÍODO (año / mes) -- filtra TODO el dashboard
+================================================================= */
+const selAnio = document.getElementById('filtroAnio');
+const selMes = document.getElementById('filtroMes');
+
+const aniosDisponibles = [...new Set(DATA_COMPLETA.map(r => r.fecha.slice(0,4)))].sort().reverse();
+selAnio.innerHTML = '<option value="todos">Todos los años</option>' +
+  aniosDisponibles.map(a => `<option value="${a}">${a}</option>`).join('');
+
+const NOMBRES_MES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+selMes.innerHTML = '<option value="todos">Todos los meses</option>' +
+  NOMBRES_MES.map((nombre, i) => `<option value="${String(i+1).padStart(2,'0')}">${capitalize(nombre)}</option>`).join('');
+
+function aplicarFiltroPeriodo() {
+  const anio = selAnio.value;
+  const mes = selMes.value;
+  if (anio === 'todos') {
+    renderDashboard(DATA_COMPLETA, DEUDA_COMPLETA);
+    return;
+  }
+  const prefijo = mes === 'todos' ? anio : `${anio}-${mes}`;
+  renderDashboard(
+    DATA_COMPLETA.filter(r => r.fecha.startsWith(prefijo)),
+    DEUDA_COMPLETA.filter(r => r.fecha.startsWith(prefijo))
+  );
+}
+
+selAnio.addEventListener('change', aplicarFiltroPeriodo);
+selMes.addEventListener('change', aplicarFiltroPeriodo);
+
+renderDashboard(DATA_COMPLETA, DEUDA_COMPLETA); // primera carga: histórico completo, sin filtro
 
 /* =================================================================
    TABS interactivos
