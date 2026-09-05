@@ -205,3 +205,4 @@ en la base de datos; no afecta los totales de ingreso/gasto/deuda.
 Ninguna credencial (API keys, contraseñas de correo) va escrita en texto
 plano en el código: siempre por variable de entorno o archivo local
 ignorado por git.
+
