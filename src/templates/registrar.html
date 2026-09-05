@@ -9,6 +9,14 @@
     <p>Cargá un gasto o ingreso puntual a mano — se clasifica y se inserta en <b style="color:var(--text-dim)">finanzas.db</b> igual que cualquier otra fuente.</p>
   </div>
 
+  {% if usuario_rol == 'admin' %}
+  <div style="display:flex; align-items:center; gap:8px; margin: 18px 0 0; padding: 10px 14px; border-radius: 10px;
+              font-size: 13px; background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.28); color: var(--text);">
+    ⚠️ Se va a registrar para la cuenta de <b style="color:#fbbf24">{{ usuario_viendo_nombre }}</b> —
+    revisá "Viendo perfil de" (menú de la izquierda) si no es la que querés.
+  </div>
+  {% endif %}
+
   <div class="card" style="margin-top: 26px;">
     <form id="formRegistrar">
       <div class="field-row">

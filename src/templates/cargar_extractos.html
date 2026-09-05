@@ -32,6 +32,18 @@
   .info-card .item svg{ width:17px; height:17px; color: var(--accent-2); flex-shrink:0; margin-top:2px; }
   .info-card .item p{ margin:0; font-size:12.5px; color: var(--text-dim); line-height:1.5; }
   .info-card .item b{ color: var(--text); }
+
+  /* Aviso de a qué cuenta se le va a cargar el archivo -- solo aplica a
+     admin (un usuario normal solo puede afectar la suya, sin ambigüedad
+     posible). Existe porque una carga terminó una vez en la cuenta
+     equivocada por tener seleccionado otro perfil en "cambiar vista"
+     sin darse cuenta. */
+  .aviso-cuenta{
+    display:flex; align-items:center; gap:8px; margin: 0 0 18px;
+    padding: 10px 14px; border-radius: 10px; font-size: 13px;
+    background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.28); color: var(--text);
+  }
+  .aviso-cuenta b{ color: #fbbf24; }
 </style>
 {% endblock %}
 
@@ -42,6 +54,13 @@
     <h1>📥 Cargar extracto bancario</h1>
     <p>Subí un Excel o un PDF de extracto — se procesa y se inserta en <b style="color:var(--text-dim)">finanzas.db</b> sin duplicar lo que ya esté registrado.</p>
   </div>
+
+  {% if usuario_rol == 'admin' %}
+  <div class="aviso-cuenta">
+    ⚠️ Estás por cargar movimientos para la cuenta de <b>{{ usuario_viendo_nombre }}</b>.
+    Si no es la que querés, cambiala primero en "Viendo perfil de" (menú de la izquierda).
+  </div>
+  {% endif %}
 
   <div class="upload-layout">
 
@@ -102,7 +121,7 @@
       </div>
       <div class="item">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
-        <p><b>Automático:</b> el dashboard se regenera solo apenas termina de insertar — no hace falta correr nada más.</p>
+        <p><b>Al instante:</b> el dashboard lee la base de datos en cada carga de página — apenas insertes, ya está reflejado, sin ningún paso extra.</p>
       </div>
     </div>
 
@@ -138,6 +157,15 @@ archivoInput.addEventListener('change', () => {
 
 document.getElementById('formCarga').addEventListener('submit', async (e) => {
   e.preventDefault();
+
+  {% if usuario_rol == 'admin' %}
+  // Confirmación explícita solo para admin -- es quien puede tener
+  // seleccionado el perfil de OTRA persona en "Viendo perfil de" y no
+  // haberse dado cuenta (esto ya pasó una vez de verdad).
+  const confirmado = confirm('¿Confirmás que este archivo es de la cuenta de "{{ usuario_viendo_nombre }}"?');
+  if (!confirmado) return;
+  {% endif %}
+
   const datos = new FormData(e.target);
   const resultado = document.getElementById('resultado');
   const btn = document.getElementById('btnSubmit');
