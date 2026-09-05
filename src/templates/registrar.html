@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Registrar movimiento{% endblock %}
+
+{% block content %}
+<div class="page-wrap" style="max-width: 640px;">
+
+  <div class="page-header">
+    <h1>➕ Registrar movimiento</h1>
+    <p>Cargá un gasto o ingreso puntual a mano — se clasifica y se inserta en <b style="color:var(--text-dim)">finanzas.db</b> igual que cualquier otra fuente.</p>
+  </div>
+
+  <div class="card" style="margin-top: 26px;">
+    <form id="formRegistrar">
+      <div class="field-row">
+        <div>
+          <label class="field-label">Fecha</label>
+          <input type="date" name="fecha" id="campoFecha" class="field-input" required>
+        </div>
+        <div>
+          <label class="field-label">Tipo</label>
+          <select name="tipo" class="field-select">
+            <option value="gasto">Gasto</option>
+            <option value="ingreso">Ingreso</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div>
+          <label class="field-label">Monto</label>
+          <input type="number" name="monto" class="field-input" step="0.01" min="0" placeholder="23000" required>
+        </div>
+        <div>
+          <label class="field-label">Moneda</label>
+          <select name="moneda" class="field-select">
+            <option value="COP">COP</option>
+            <option value="USD">USD</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="field-label">Descripción</label>
+      <input type="text" name="descripcion" class="field-input" placeholder="Uber, Mercado, Salario..." required>
+
+      <div class="field-row">
+        <div>
+          <label class="field-label">Categoría</label>
+          <input type="text" name="categoria" class="field-input" list="listaCategorias" placeholder="transporte, comida...">
+          <datalist id="listaCategorias">
+            {% for c in categorias %}<option value="{{ c }}">{% endfor %}
+          </datalist>
+        </div>
+        <div>
+          <label class="field-label">Entidad</label>
+          <input type="text" name="entidad" class="field-input" list="listaEntidades" placeholder="Bancolombia, Nequi...">
+          <datalist id="listaEntidades">
+            {% for e in entidades %}<option value="{{ e }}">{% endfor %}
+          </datalist>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-primary" id="btnRegistrar">Registrar</button>
+    </form>
+
+    <div id="resultado" class="result-box" style="display:none;"></div>
+  </div>
+</div>
+
+<script>
+document.getElementById('campoFecha').valueAsDate = new Date();
+
+document.getElementById('formRegistrar').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const datos = new FormData(e.target);
+  const resultado = document.getElementById('resultado');
+  const btn = document.getElementById('btnRegistrar');
+
+  resultado.style.display = 'block';
+  resultado.className = 'result-box loading';
+  resultado.textContent = 'Guardando...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/registrar-movimiento', { method: 'POST', body: datos });
+    const json = await res.json();
+    if (!res.ok || !json.ok) {
+      resultado.className = 'result-box error';
+      resultado.textContent = '❌ ' + (json.error || 'Error desconocido');
+      return;
+    }
+    if (json.duplicados > 0) {
+      resultado.className = 'result-box error';
+      resultado.textContent = '⚠️ No se guardó: ya existe un movimiento con la misma fecha y monto (posible duplicado).';
+      return;
+    }
+    resultado.className = 'result-box ok';
+    resultado.textContent = '✅ Movimiento registrado. El dashboard ya se actualizó.';
+    e.target.reset();
+    document.getElementById('campoFecha').valueAsDate = new Date();
+  } catch (err) {
+    resultado.className = 'result-box error';
+    resultado.textContent = '❌ No se pudo conectar con el servidor.';
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+{% endblock %}

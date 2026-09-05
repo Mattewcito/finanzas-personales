@@ -271,6 +271,23 @@ def obtener_movimientos(conn: sqlite3.Connection) -> list[dict]:
     return out
 
 
+def obtener_categorias(conn: sqlite3.Connection) -> list[str]:
+    """Categorías distintas ya usadas, para autocompletar el formulario de
+    registro manual (evita que cada quien escriba la misma categoría con
+    variantes distintas)."""
+    cur = conn.execute(
+        "SELECT DISTINCT categoria FROM movimientos WHERE categoria IS NOT NULL AND categoria != '' ORDER BY categoria"
+    )
+    return [r["categoria"] for r in cur.fetchall()]
+
+
+def obtener_entidades(conn: sqlite3.Connection) -> list[str]:
+    cur = conn.execute(
+        "SELECT DISTINCT entidad FROM movimientos WHERE entidad IS NOT NULL AND entidad != '' ORDER BY entidad"
+    )
+    return [r["entidad"] for r in cur.fetchall()]
+
+
 def obtener_ledger_deuda(conn: sqlite3.Connection) -> list[dict]:
     cur = conn.execute(
         """SELECT fecha, tipo_movimiento, monto, descripcion, entidad, saldo_acumulado
