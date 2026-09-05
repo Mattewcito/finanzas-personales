@@ -88,6 +88,23 @@
   }
   .badge-row{ display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
   .last-updated{ font-size: 11px; color: var(--text-faint); white-space:nowrap; }
+  /* Texto de "movimientos cargados": informativo (sin fondo de botón/pill),
+     pero más marcado que .last-updated -- es el dato dinámico que reacciona
+     al filtro de período, y debe notarse más que la fecha de actualización. */
+  .movimientos-info{
+    font-size: 13.5px; font-weight:600; color: var(--text);
+    display:flex; align-items:center; gap:6px; white-space:nowrap;
+  }
+  .movimientos-info .dot{ width:7px; height:7px; border-radius:50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
+  /* Estado vacío / mensaje informativo destacable -- para que un "sin datos"
+     se note a simple vista en vez de perderse como texto gris genérico. */
+  .empty-state{
+    display:flex; align-items:center; gap:10px;
+    padding:12px 16px; margin:4px 0;
+    background: rgba(124,108,251,0.08); border:1px solid rgba(124,108,251,0.22);
+    border-radius: var(--radius-sm); color: var(--text-dim); font-size:13px;
+  }
+  .empty-state b{ color: var(--text); }
   .pill-select{
     background: var(--card-solid); border:1px solid var(--card-border);
     padding: 8px 30px 8px 14px; border-radius: 999px; font-size: 12.5px; color: var(--text);
@@ -322,12 +339,13 @@
       <h1>💰 Dashboard Financiero Personal</h1>
       <p>Análisis automático de movimientos — generado desde <b style="color:var(--text-dim)">finanzas.db</b>, sincronizada con el Excel, el correo y los extractos que cargues</p>
     </div>
-    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:10px;">
+      <div class="badge-row" id="rangoTotalBadge"></div>
       <div class="badge-row">
         <select id="filtroAnio" class="pill-select"></select>
         <select id="filtroMes" class="pill-select"></select>
       </div>
-      <div class="badge-row" id="headerBadges"></div>
+      <div class="movimientos-info" id="movimientosInfo"></div>
       <div class="last-updated" id="lastUpdated"></div>
     </div>
   </header>
@@ -341,11 +359,7 @@
        TARJETAS DE CRÉDITO Y DEUDA
        ============================================================ -->
   <div class="section-title" id="deuda"><h2>💳 Tarjetas de crédito y deuda</h2><div class="line"></div><span class="tag">clasificación automática por texto</span></div>
-  <p style="margin:-6px 0 14px; font-size:12px; color:var(--text-faint); max-width:820px;">
-    Separa las compras cargadas a tarjeta de crédito (deuda, no es caja hasta que se paga) de tu gasto real en efectivo/débito.
-    La clasificación se infiere de patrones en la descripción de cada movimiento (ej. "T.Cred", "T.Deb", "Avance") —
-    no es asesoría tributaria; verificá estos números con tu contador antes de usarlos para declarar renta.
-  </p>
+  <p id="resumenDeuda" style="margin:-6px 0 14px; font-size:12.5px; color:var(--text-dim); max-width:820px;"></p>
   <div class="kpi-grid" id="kpiGridDeuda"></div>
   <div class="charts-grid" style="margin-top:16px;">
     <div class="chart-card full">
@@ -522,6 +536,18 @@ const fmtDate = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('es-CO',
 const fmtDateTime = (iso) => new Date(iso).toLocaleString('es-CO', { day:'2-digit', month:'short', year:'numeric', hour:'numeric', minute:'2-digit', hour12:true });
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/* =================================================================
+   HEADER — información que NO depende del filtro de período
+   (se calcula una sola vez sobre el histórico completo, así nunca
+   queda desactualizada si el período filtrado no tiene movimientos)
+================================================================= */
+if (DATA_COMPLETA.length) {
+  const fechasCompletas = [...new Set(DATA_COMPLETA.map(r => r.fecha))].sort();
+  document.getElementById('rangoTotalBadge').innerHTML =
+    `<div class="pill">🗓️ Datos desde <b>${fmtDate(fechasCompletas[0])}</b> hasta <b>${fmtDate(fechasCompletas[fechasCompletas.length - 1])}</b></div>`;
+}
+document.getElementById('lastUpdated').textContent = `Última actualización del dashboard: ${fmtDateTime(GENERATED_AT)}`;
+
 const CAT_ICONS = {
   salario:'💼', transferencias:'🔁', suscripciones:'📱', restaurantes:'🍽️', comida:'🍔',
   'crédito':'💳', transporte:'🚌', entretenimiento:'🎬', compras:'🛍️', retiro:'🏧',
@@ -564,20 +590,41 @@ function renderDashboard(DATA, DEUDA_TARJETAS) {
   if (existente) existente.destroy();
 });
 
+// Texto dinámico: reacciona al período seleccionado en los filtros de
+// año/mes (a diferencia del badge de "Datos desde... hasta..." de arriba,
+// que siempre muestra la cobertura TOTAL sin importar el filtro activo).
+// Va ANTES del corte por período vacío de abajo -- si no, un período sin
+// datos dejaría este texto pegado con el conteo del período anterior.
+{
+  const anioSel = document.getElementById('filtroAnio');
+  const mesSel = document.getElementById('filtroMes');
+  let periodoTxt = 'en total';
+  if (anioSel && anioSel.value !== 'todos') {
+    periodoTxt = (mesSel && mesSel.value !== 'todos')
+      ? `en ${mesSel.selectedOptions[0].text.toLowerCase()} de ${anioSel.value}`
+      : `en ${anioSel.value}`;
+  }
+  document.getElementById('movimientosInfo').innerHTML =
+    `<span class="dot"></span> <b>${DATA.length}</b> movimiento${DATA.length === 1 ? '' : 's'} cargado${DATA.length === 1 ? '' : 's'} ${periodoTxt}`;
+}
+
 // Período sin ningún movimiento (ej. un mes puntual sin datos todavía): en vez
 // de dejar que las cuentas de más abajo produzcan NaN/"undefined" por todos
 // lados, mostramos un estado vacío prolijo en cada sección y cortamos acá.
 if (!DATA.length) {
   document.getElementById('kpiGrid').innerHTML =
-    '<p style="color:var(--text-faint); font-size:13px; padding:6px 0;">No hay movimientos registrados en el período seleccionado.</p>';
+    '<div class="empty-state">📭 No hay movimientos registrados en el período seleccionado.</div>';
   document.getElementById('kpiGridDeuda').innerHTML = '';
+  document.getElementById('resumenDeuda').textContent =
+    'No se registraron movimientos de tarjeta de crédito en el período seleccionado.';
   document.getElementById('chartDeudaEvolucionHolder').innerHTML =
-    '<p style="color:var(--text-faint); font-size:13px;">No se detectaron compras, avances ni pagos de tarjeta de crédito en los movimientos del período seleccionado.</p>';
+    '<div class="empty-state">💳 No se detectaron compras, avances ni pagos de tarjeta de crédito en los movimientos del período seleccionado.</div>';
   document.getElementById('insightsGrid').innerHTML =
-    '<p style="color:var(--text-faint); font-size:13px; padding:6px 0;">Todavía no hay suficientes movimientos en este período para generar insights automáticos.</p>';
+    '<div class="empty-state">🧠 Todavía no hay suficientes movimientos en este período para generar insights automáticos.</div>';
+  document.getElementById('leaderboard').innerHTML = '';
   ['tbodyUltimos','tbodyMayoresGastos','tbodyMayoresIngresos','tbodyMoneda','tbodyDeuda'].forEach(id => {
     document.getElementById(id).innerHTML =
-      '<tr><td colspan="10" style="color:var(--text-faint); font-size:13px; text-align:center; padding:14px;">Sin movimientos en este período.</td></tr>';
+      '<tr><td colspan="10" style="padding:14px;"><div class="empty-state" style="justify-content:center;">Sin movimientos en este período.</div></td></tr>';
   });
   return;
 }
@@ -626,6 +673,13 @@ const balanceCajaReal = totalIngresosReales + totalAvancesCredito - totalGastoRe
 // Saldo actual estimado de deuda en tarjetas de crédito (último punto del ledger cronológico).
 const deudaActual = DEUDA_TARJETAS.length ? DEUDA_TARJETAS[DEUDA_TARJETAS.length - 1].saldo_acumulado : 0;
 
+// Resumen de la sección: números reales del período seleccionado en vez de
+// un texto genérico fijo -- solo se agrega la explicación metodológica
+// cuando sí hay algo que explicar.
+document.getElementById('resumenDeuda').innerHTML = DEUDA_TARJETAS.length
+  ? `Saldo estimado actual: <b style="color:var(--text)">${fmtCOP(deudaActual)}</b> — ${gastosCredito.length} compra${gastosCredito.length===1?'':'s'} a crédito, ${avancesCredito.length} avance${avancesCredito.length===1?'':'s'} y ${pagosTarjeta.length} pago${pagosTarjeta.length===1?'':'s'} registrados en el período seleccionado. Clasificación automática por texto (ej. "T.Cred", "T.Deb", "Avance") — no es asesoría tributaria, verificá estos números con tu contador antes de usarlos para declarar renta.`
+  : `No se registraron movimientos de tarjeta de crédito en el período seleccionado. La clasificación es automática por texto (ej. "T.Cred", "T.Deb", "Avance") — no es asesoría tributaria.`;
+
 function groupSum(arr, keyFn){
   const map = new Map();
   for(const r of arr){
@@ -659,19 +713,6 @@ const entidadMonto = sortMapDesc(groupSum(dataCOP, r=>r.entidad));
 const entidadTop = entidadCount[0]?.[0] || 'sin datos';
 // Distribución por moneda (nº movimientos)
 const monedaCount = groupCount(DATA, r=>r.moneda);
-// Rango de fechas
-const fechas = [...new Set(DATA.map(r=>r.fecha))].sort();
-const fechaMin = fechas[0], fechaMax = fechas[fechas.length-1];
-
-/* =================================================================
-   HEADER — badges
-================================================================= */
-document.getElementById('headerBadges').innerHTML = `
-  <div class="pill"><span class="dot"></span> ${DATA.length} movimientos cargados</div>
-  <div class="pill">🗓️ ${fmtDate(fechaMin)} → ${fmtDate(fechaMax)}</div>
-`;
-document.getElementById('lastUpdated').textContent = `Última actualización del dashboard: ${fmtDateTime(GENERATED_AT)}`;
-
 /* =================================================================
    KPIs
 ================================================================= */
@@ -810,7 +851,7 @@ if (DEUDA_TARJETAS.length) {
   });
 } else {
   document.getElementById('chartDeudaEvolucionHolder').innerHTML =
-    '<p style="color:var(--text-faint); font-size:13px;">No se detectaron compras, avances ni pagos de tarjeta de crédito en los movimientos del período seleccionado.</p>';
+    '<div class="empty-state">💳 No se detectaron compras, avances ni pagos de tarjeta de crédito en los movimientos del período seleccionado.</div>';
 }
 
 /* =================================================================
@@ -1236,7 +1277,7 @@ document.getElementById('tbodyDeuda').innerHTML = [...DEUDA_TARJETAS].reverse().
       <td class="num" style="color:${esPago ? 'var(--green)' : 'var(--red)'}">${esPago ? '−' : '+'} ${fmtCOP(d.monto)}</td>
       <td class="num">${fmtCOP(d.saldo_acumulado)}</td>
     </tr>`;
-}).join('') || '<tr><td colspan="6" style="text-align:center; color:var(--text-faint);">Sin movimientos de tarjeta de crédito detectados.</td></tr>';
+}).join('') || '<tr><td colspan="6" style="padding:14px;"><div class="empty-state" style="justify-content:center;">Sin movimientos de tarjeta de crédito detectados.</div></td></tr>';
 
 } // ---- fin de renderDashboard() ----
 
