@@ -7,9 +7,19 @@ finanzas.db real. La fixture "client" parchea db_finanzas.DATA_DIR ANTES
 de importar app.py por primera vez -- por eso ningún otro archivo de
 test debe hacer "import app" fuera de esta fixture (los valores como
 UPLOADS_DIR se calculan una sola vez, al importar).
+
+También parchea actualizar_dashboard.PROJECT_ROOT/LOG_PATH: varias rutas
+(src/routes/dashboard.py, src/routes/usuarios.py) llaman a
+actualizar_dashboard.main() de forma síncrona, y esos dos valores también
+se calculan una sola vez al importar el módulo -- si no se parchean acá,
+cada corrida de estos tests sobrescribe de verdad
+data/dashboard_<id>.html y data/actualizar_dashboard.log con datos de
+prueba (bug de regresión real, detectado y corregido el 2026-09-05: ver
+tests/test_actualizar_dashboard.py para el detalle del aislamiento).
 """
 import pytest
 import db_finanzas as db
+import actualizar_dashboard as ad
 
 
 @pytest.fixture
@@ -17,6 +27,8 @@ def app_ctx(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DATA_DIR", tmp_path)
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "finanzas.db")
     monkeypatch.setattr(db, "XLSX_PATH", tmp_path / "finanzas_personales.xlsx")
+    monkeypatch.setattr(ad, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(ad, "LOG_PATH", tmp_path / "actualizar_dashboard.log")
 
     import app as flaskapp  # primera y única importación de app.py en toda la corrida de tests
     flaskapp.app.config.update(TESTING=True)
