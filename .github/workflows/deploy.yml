@@ -31,7 +31,10 @@ jobs:
 
     steps:
       - name: Desplegar (con rollback automático si falla)
-        shell: powershell
+        # -ExecutionPolicy Bypass: la política de PowerShell de la cuenta que
+        # corre el runner bloquea ejecutar scripts por defecto -- esto lo
+        # evita solo para este paso, sin tocar la configuración de la PC.
+        shell: powershell -ExecutionPolicy Bypass -Command ". '{0}'"
         run: |
           $ErrorActionPreference = "Stop"
           Set-Location "C:\finanzas-deploy"
