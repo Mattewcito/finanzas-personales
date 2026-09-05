@@ -158,6 +158,13 @@ def cambiar_vista():
 
 # ----------------------------- Rutas de la app -----------------------------
 
+@app.route("/health")
+def health():
+    """Sin login a propósito: la usa el pipeline de despliegue para
+    confirmar que el contenedor arrancó bien antes de darlo por bueno."""
+    return jsonify(ok=True), 200
+
+
 @app.route("/")
 @login_required
 def home():
