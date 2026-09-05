@@ -48,6 +48,7 @@ for _stream in (sys.stdout, sys.stderr):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
 import db_finanzas as db  # mismo folder (src/) — sincronización, esquema y consultas
+import perfil_financiero  # motor de clasificación de hábitos financieros por usuario
 
 PROJECT_ROOT = db.PROJECT_ROOT
 TEMPLATE_PATH = PROJECT_ROOT / "dashboard" / "dashboard_finanzas.html"  # versionada en git, SIN datos reales
@@ -82,11 +83,12 @@ def _reemplazar_bloque(html: str, marcador: str, nuevo_contenido: str) -> str:
     return patron.sub(lambda _: nuevo_bloque, html, count=1)
 
 
-def inyectar_en_html(html: str, movimientos: list[dict], ledger_deuda: list[dict]) -> str:
-    """Reemplaza los bloques DATA, DEUDA_TARJETAS y GENERATED_AT dentro
-    del HTML, usando los marcadores de comentario como anclas. Falla
-    ruidosamente (excepción) si algún marcador no se encuentra, para no
-    corromper el archivo silenciosamente."""
+def inyectar_en_html(html: str, movimientos: list[dict], ledger_deuda: list[dict], perfil: dict) -> str:
+    """Reemplaza los bloques DATA, DEUDA_TARJETAS, GENERATED_AT y
+    PERFIL_FINANCIERO dentro del HTML, usando los marcadores de
+    comentario como anclas. Falla ruidosamente (excepción) si algún
+    marcador no se encuentra, para no corromper el archivo
+    silenciosamente."""
 
     data_json = json.dumps(movimientos, ensure_ascii=False, indent=0)
     html = _reemplazar_bloque(html, "DATA", f"const DATA = {data_json};")
@@ -96,6 +98,9 @@ def inyectar_en_html(html: str, movimientos: list[dict], ledger_deuda: list[dict
 
     ahora = datetime.datetime.now().isoformat(timespec="seconds")
     html = _reemplazar_bloque(html, "GENERATED_AT", f'const GENERATED_AT = "{ahora}"; // fecha y hora de generación del dashboard')
+
+    perfil_json = json.dumps(perfil, ensure_ascii=False, indent=0)
+    html = _reemplazar_bloque(html, "PERFIL_FINANCIERO", f"const PERFIL_FINANCIERO = {perfil_json};")
 
     return html
 
@@ -117,12 +122,16 @@ def main() -> int:
             for u in usuarios:
                 movimientos = db.obtener_movimientos(conn, usuario_id=u["id"])
                 ledger_deuda = db.obtener_ledger_deuda(conn, usuario_id=u["id"])
+                # Perfil de hábitos financieros: se calcula sobre TODO el
+                # historial del usuario (no tiene sentido recalcularlo por
+                # período filtrado, ver src/perfil_financiero.py).
+                perfil = perfil_financiero.generar_perfil(movimientos, ledger_deuda)
 
                 # Siempre parte de la PLANTILLA (sin datos), nunca del HTML
                 # generado la vez anterior — así nunca queda un dato viejo
                 # pegado por error, y un usuario nunca hereda datos de otro.
                 html_plantilla = TEMPLATE_PATH.read_text(encoding="utf-8")
-                html_nuevo = inyectar_en_html(html_plantilla, movimientos, ledger_deuda)
+                html_nuevo = inyectar_en_html(html_plantilla, movimientos, ledger_deuda, perfil)
                 html_path_usuario(u["id"]).write_text(html_nuevo, encoding="utf-8")
 
                 saldo = ledger_deuda[-1]["saldo_acumulado"] if ledger_deuda else 0.0
