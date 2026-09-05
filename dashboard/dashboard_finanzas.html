@@ -625,20 +625,22 @@ function renderDashboard(DATA, DEUDA_TARJETAS) {
   document.getElementById('movimientosInfo').innerHTML =
     `<span class="dot"></span> <b>${DATA.length}</b> movimiento${DATA.length === 1 ? '' : 's'} cargado${DATA.length === 1 ? '' : 's'} ${periodoTxt}`;
 
-  // Rango de fechas: cuando hay un AÑO concreto seleccionado, se muestra el
-  // calendario completo del período (el mes entero, o el año entero) en vez
-  // de la última fecha con movimiento -- así un mes en curso (o con huecos
-  // de carga) no aparenta estar "desactualizado" contra la fecha de arriba.
-  // Si el período incluye hoy, se corta en la fecha actual en vez de sequir
-  // hasta fin de mes/año, ya que esos días todavía no pasaron.
-  // Con "Todos los años" + un mes específico no hay un único calendario que
-  // mostrar (abarca varios años), así que ahí sí se usa el rango real de
-  // los datos filtrados; igual con "Todos los años" y "Todos los meses".
+  // Rango de fechas: se muestra el calendario completo del período (mes
+  // y/o año entero) en vez de la última fecha con movimiento -- así un
+  // período en curso (o con huecos de carga) no aparenta estar
+  // "desactualizado" contra la fecha de "Última actualización" de abajo.
+  // Si el período incluye hoy, se corta en la fecha actual, ya que esos
+  // días todavía no pasaron. Solo "Todos los años" + "Todos los meses"
+  // (sin ningún filtro) no tiene un calendario propio -- ahí se usa el
+  // rango real del histórico completo.
+  const pad = n => String(n).padStart(2, '0');
+  const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
   let rangoHTML = '';
+
   if (anioVal !== 'todos') {
+    // Año concreto: mes completo, o el año completo si mes = "todos".
     const anio = parseInt(anioVal, 10);
-    const pad = n => String(n).padStart(2, '0');
-    const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     let inicio, fin;
     if (mesVal !== 'todos') {
       const mesIdx = parseInt(mesVal, 10) - 1;
@@ -648,19 +650,28 @@ function renderDashboard(DATA, DEUDA_TARJETAS) {
       inicio = new Date(anio, 0, 1);
       fin = new Date(anio, 11, 31);
     }
-    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
     if (fin > hoy) fin = hoy;
     if (fin >= inicio) {
       rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(iso(inicio))}</b> hasta <b>${fmtDate(iso(fin))}</b></div>`;
     }
   } else if (mesVal === 'todos') {
+    // Sin ningún filtro: rango real de todo el histórico cargado.
     if (DATA_COMPLETA.length) {
       const fechasCompletas = [...new Set(DATA_COMPLETA.map(r => r.fecha))].sort();
       rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(fechasCompletas[0])}</b> hasta <b>${fmtDate(fechasCompletas[fechasCompletas.length - 1])}</b></div>`;
     }
   } else if (DATA.length) {
-    const fechasPeriodo = [...new Set(DATA.map(r => r.fecha))].sort();
-    rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(fechasPeriodo[0])}</b> hasta <b>${fmtDate(fechasPeriodo[fechasPeriodo.length - 1])}</b></div>`;
+    // "Todos los años" + un mes específico: puede abarcar varios años --
+    // se toma el mes completo desde el primer año con datos hasta el
+    // mes completo del último año con datos (cortado en hoy si aplica).
+    const aniosEnPeriodo = [...new Set(DATA.map(r => r.fecha.slice(0, 4)))].sort();
+    const mesIdx = parseInt(mesVal, 10) - 1;
+    let inicio = new Date(parseInt(aniosEnPeriodo[0], 10), mesIdx, 1);
+    let fin = new Date(parseInt(aniosEnPeriodo[aniosEnPeriodo.length - 1], 10), mesIdx + 1, 0);
+    if (fin > hoy) fin = hoy;
+    if (fin >= inicio) {
+      rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(iso(inicio))}</b> hasta <b>${fmtDate(iso(fin))}</b></div>`;
+    }
   }
   document.getElementById('rangoTotalBadge').innerHTML = rangoHTML;
 }
