@@ -611,25 +611,58 @@ function renderDashboard(DATA, DEUDA_TARJETAS) {
 {
   const anioSel = document.getElementById('filtroAnio');
   const mesSel = document.getElementById('filtroMes');
+  const anioVal = anioSel ? anioSel.value : 'todos';
+  const mesVal = mesSel ? mesSel.value : 'todos';
+
   let periodoTxt = 'en total';
-  if (anioSel && anioSel.value !== 'todos') {
-    periodoTxt = (mesSel && mesSel.value !== 'todos')
-      ? `en ${mesSel.selectedOptions[0].text.toLowerCase()} de ${anioSel.value}`
-      : `en ${anioSel.value}`;
+  if (anioVal !== 'todos' && mesVal !== 'todos') {
+    periodoTxt = `en ${mesSel.selectedOptions[0].text.toLowerCase()} de ${anioVal}`;
+  } else if (anioVal !== 'todos') {
+    periodoTxt = `en ${anioVal}`;
+  } else if (mesVal !== 'todos') {
+    periodoTxt = `en ${mesSel.selectedOptions[0].text.toLowerCase()} (todos los años)`;
   }
   document.getElementById('movimientosInfo').innerHTML =
     `<span class="dot"></span> <b>${DATA.length}</b> movimiento${DATA.length === 1 ? '' : 's'} cargado${DATA.length === 1 ? '' : 's'} ${periodoTxt}`;
 
-  // Rango de fechas DEL PERÍODO FILTRADO (dinámico): si estuviera fijo
-  // mostrando el total, al estar justo arriba de los selects de año/mes
-  // se lee como si reflejara el filtro activo, y no es así -- confunde.
-  if (DATA.length) {
+  // Rango de fechas: cuando hay un AÑO concreto seleccionado, se muestra el
+  // calendario completo del período (el mes entero, o el año entero) en vez
+  // de la última fecha con movimiento -- así un mes en curso (o con huecos
+  // de carga) no aparenta estar "desactualizado" contra la fecha de arriba.
+  // Si el período incluye hoy, se corta en la fecha actual en vez de sequir
+  // hasta fin de mes/año, ya que esos días todavía no pasaron.
+  // Con "Todos los años" + un mes específico no hay un único calendario que
+  // mostrar (abarca varios años), así que ahí sí se usa el rango real de
+  // los datos filtrados; igual con "Todos los años" y "Todos los meses".
+  let rangoHTML = '';
+  if (anioVal !== 'todos') {
+    const anio = parseInt(anioVal, 10);
+    const pad = n => String(n).padStart(2, '0');
+    const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    let inicio, fin;
+    if (mesVal !== 'todos') {
+      const mesIdx = parseInt(mesVal, 10) - 1;
+      inicio = new Date(anio, mesIdx, 1);
+      fin = new Date(anio, mesIdx + 1, 0); // último día de ese mes
+    } else {
+      inicio = new Date(anio, 0, 1);
+      fin = new Date(anio, 11, 31);
+    }
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    if (fin > hoy) fin = hoy;
+    if (fin >= inicio) {
+      rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(iso(inicio))}</b> hasta <b>${fmtDate(iso(fin))}</b></div>`;
+    }
+  } else if (mesVal === 'todos') {
+    if (DATA_COMPLETA.length) {
+      const fechasCompletas = [...new Set(DATA_COMPLETA.map(r => r.fecha))].sort();
+      rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(fechasCompletas[0])}</b> hasta <b>${fmtDate(fechasCompletas[fechasCompletas.length - 1])}</b></div>`;
+    }
+  } else if (DATA.length) {
     const fechasPeriodo = [...new Set(DATA.map(r => r.fecha))].sort();
-    document.getElementById('rangoTotalBadge').innerHTML =
-      `<div class="pill">🗓️ Desde <b>${fmtDate(fechasPeriodo[0])}</b> hasta <b>${fmtDate(fechasPeriodo[fechasPeriodo.length - 1])}</b></div>`;
-  } else {
-    document.getElementById('rangoTotalBadge').innerHTML = '';
+    rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(fechasPeriodo[0])}</b> hasta <b>${fmtDate(fechasPeriodo[fechasPeriodo.length - 1])}</b></div>`;
   }
+  document.getElementById('rangoTotalBadge').innerHTML = rangoHTML;
 }
 
 // Período sin ningún movimiento (ej. un mes puntual sin datos todavía): en vez
@@ -1322,10 +1355,23 @@ selMes.innerHTML = '<option value="todos">Todos los meses</option>' +
 function aplicarFiltroPeriodo() {
   const anio = selAnio.value;
   const mes = selMes.value;
-  if (anio === 'todos') {
+
+  if (anio === 'todos' && mes === 'todos') {
     renderDashboard(DATA_COMPLETA, DEUDA_COMPLETA);
     return;
   }
+
+  if (anio === 'todos') {
+    // Mes específico pero "Todos los años": no hay un prefijo "YYYY-MM" único
+    // para usar con startsWith -- hay que comparar solo el componente MM,
+    // agrupando ese mes a través de todos los años disponibles.
+    renderDashboard(
+      DATA_COMPLETA.filter(r => r.fecha.slice(5, 7) === mes),
+      DEUDA_COMPLETA.filter(r => r.fecha.slice(5, 7) === mes)
+    );
+    return;
+  }
+
   const prefijo = mes === 'todos' ? anio : `${anio}-${mes}`;
   renderDashboard(
     DATA_COMPLETA.filter(r => r.fecha.startsWith(prefijo)),
