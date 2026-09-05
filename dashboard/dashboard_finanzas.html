@@ -183,6 +183,24 @@
   .section-title .line{ flex:1; height:1px; background: linear-gradient(90deg, var(--card-border), transparent); }
   .section-title .tag{ font-size: 11px; color: var(--text-faint); background: var(--card-solid); border:1px solid var(--card-border); padding:3px 9px; border-radius:999px; }
 
+  /* Switch "Movimientos" -- prende/apaga la tabla paginada de TODOS los
+     movimientos. No toca en nada la lógica ni el texto de "5 vistas". */
+  .switch-toggle{ display:flex; align-items:center; gap:8px; cursor:pointer; user-select:none; }
+  .switch-toggle input{ position:absolute; opacity:0; width:0; height:0; }
+  .switch-toggle .switch-slider{
+    position:relative; width:34px; height:19px; border-radius:999px; flex-shrink:0;
+    background: var(--card-hover); border:1px solid var(--card-border);
+    transition: background .15s ease, border-color .15s ease;
+  }
+  .switch-toggle .switch-slider::before{
+    content:''; position:absolute; top:2px; left:2px; width:13px; height:13px; border-radius:50%;
+    background: var(--text-dim); transition: transform .15s ease, background .15s ease;
+  }
+  .switch-toggle input:checked + .switch-slider{ background: var(--accent); border-color: var(--accent); }
+  .switch-toggle input:checked + .switch-slider::before{ transform: translateX(15px); background:#fff; }
+  .switch-toggle .switch-label{ font-size: 12.5px; color: var(--text-dim); font-weight:600; }
+  .switch-toggle input:checked ~ .switch-label{ color: var(--text); }
+
   /* ===========================================================
      5) CHARTS GRID
      =========================================================== */
@@ -329,6 +347,26 @@
   .cat-chip{ font-size:11.5px; color: var(--text-dim); text-transform:capitalize; }
   .pane{ display:none; }
   .pane.active{ display:block; }
+
+  /* Tarjeta "Todos los movimientos" (paginada) -- reusa las mismas
+     clases de tabla de arriba (table-scroll, tag-tipo, cat-chip, etc.),
+     solo le suma encabezado propio + controles de paginado. */
+  #todosMovimientosCard{ margin-top: 16px; padding: 4px 0 0; }
+  .todos-mov-header{ padding: 14px 16px 4px; }
+  .todos-mov-header h3{ margin:0; font-size:14px; display:flex; align-items:center; gap:8px; }
+  .todos-mov-header h3 .tag{ font-size: 11px; font-weight:400; color: var(--text-faint); background: var(--bg-soft); border:1px solid var(--card-border); padding:3px 9px; border-radius:999px; }
+  .paginacion{
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    padding: 14px 16px; border-top: 1px solid var(--card-border);
+  }
+  .paginacion button{
+    background: var(--card-hover); border:1px solid var(--card-border); color: var(--text-dim);
+    font-family:inherit; font-size:12.5px; font-weight:600; padding:6px 12px; border-radius:8px; cursor:pointer;
+    transition: background .15s, color .15s;
+  }
+  .paginacion button:hover:not(:disabled){ color: var(--text); background: var(--card-solid); }
+  .paginacion button:disabled{ opacity:.4; cursor:default; }
+  .paginacion .pagina-actual{ font-size:12.5px; color: var(--text-dim); padding: 0 6px; white-space:nowrap; }
 
   /* ===========================================================
      8) FOOTER
@@ -522,7 +560,33 @@
   <!-- ============================================================
        TABLAS
        ============================================================ -->
-  <div class="section-title" id="movimientos"><h2>📋 Movimientos</h2><div class="line"></div><span class="tag">5 vistas</span></div>
+  <div class="section-title" id="movimientos">
+    <h2>📋 Movimientos</h2><div class="line"></div>
+    <span class="tag">5 vistas</span>
+    <label class="switch-toggle" title="Ver todos los movimientos del período, con paginado">
+      <input type="checkbox" id="toggleTodosMovimientos">
+      <span class="switch-slider"></span>
+      <span class="switch-label">Movimientos</span>
+    </label>
+  </div>
+
+  <!-- ============================================================
+       TODOS LOS MOVIMIENTOS (paginado) — activado con el switch de
+       arriba. No reemplaza ni toca nada de las "5 vistas" de abajo,
+       que siguen funcionando exactamente igual siempre.
+       ============================================================ -->
+  <div class="table-card" id="todosMovimientosCard" hidden>
+    <div class="todos-mov-header">
+      <h3>📑 Todos los movimientos <span class="tag" id="todosMovimientosCount"></span></h3>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Descripción</th><th>Entidad</th><th style="text-align:right">Monto</th></tr></thead>
+        <tbody id="tbodyTodosMovimientos"></tbody>
+      </table>
+    </div>
+    <div class="paginacion" id="paginacionTodosMovimientos"></div>
+  </div>
 
   <div class="table-card">
     <div class="tabs" id="tabs">
@@ -694,12 +758,81 @@ const GRAFICOS_REGISTRY = {};
 // actualizada en cada render para poder leerla.
 let GASTO_POR_CATEGORIA_ACTUAL = [];
 
+// Estado de "Todos los movimientos" (switch en la sección Movimientos):
+// vive afuera de renderDashboard() para sobrevivir entre renders -- si
+// está prendido y cambiás de filtro, tiene que seguir prendido y
+// mostrar la página 1 del nuevo período filtrado, no apagarse solo.
+const TODOS_MOV_POR_PAGINA = 25;
+let todosMovActivo = false;
+let todosMovPagina = 1;
+let DATA_ACTUAL = []; // el DATA (ya filtrado) del último renderDashboard() -- lo usa el switch al prenderse
+
 function crearGrafico(canvasId, config) {
   GRAFICOS_REGISTRY[canvasId] = config;
   return new Chart(document.getElementById(canvasId), config);
 }
 
+// Antes vivía adentro de renderDashboard() -- se movió acá (mismo
+// comportamiento, ni una línea distinta) porque "Todos los
+// movimientos" también la necesita desde afuera de esa función.
+function rowHTML(r, withTipo){
+  const monto = r.moneda === 'USD' ? fmtUSD(r.monto) : fmtCOP(r.monto);
+  return `
+    <tr>
+      <td>${fmtDate(r.fecha)}</td>
+      ${withTipo ? `<td><span class="tag-tipo ${r.tipo}">${r.tipo}</span></td>` : ''}
+      <td><span class="cat-chip">${catIcon(r.categoria)} ${r.categoria}</span></td>
+      <td>${r.descripcion}</td>
+      <td>${r.entidad}</td>
+      <td class="num" style="color:${r.tipo==='ingreso'?'var(--green)':'var(--red)'}">${r.tipo==='ingreso'?'+':'-'} ${monto}</td>
+    </tr>`;
+}
+
+/* =================================================================
+   "TODOS LOS MOVIMIENTOS" — switch en la sección Movimientos
+   -----------------------------------------------------------------
+   Tabla paginada aparte, totalmente independiente de las "5 vistas"
+   (esas no se tocan ni se comparten nada con esto). Respeta el filtro
+   de período vigente porque recibe el mismo DATA ya filtrado que usa
+   renderDashboard() -- nunca el histórico completo.
+================================================================= */
+function renderTodosMovimientos(DATA) {
+  const ordenados = [...DATA].map((r,i)=>({...r,_i:i})).sort((a,b)=> b.fecha.localeCompare(a.fecha) || b._i - a._i);
+  const total = ordenados.length;
+  const totalPaginas = Math.max(1, Math.ceil(total / TODOS_MOV_POR_PAGINA));
+  if (todosMovPagina > totalPaginas) todosMovPagina = totalPaginas;
+  if (todosMovPagina < 1) todosMovPagina = 1;
+
+  const desde = (todosMovPagina - 1) * TODOS_MOV_POR_PAGINA;
+  const pagina = ordenados.slice(desde, desde + TODOS_MOV_POR_PAGINA);
+
+  document.getElementById('todosMovimientosCount').textContent =
+    `${total} movimiento${total === 1 ? '' : 's'}`;
+
+  document.getElementById('tbodyTodosMovimientos').innerHTML = total
+    ? pagina.map(r => rowHTML(r, true)).join('')
+    : '<tr><td colspan="6" style="padding:14px;"><div class="empty-state" style="justify-content:center;">Sin movimientos en este período.</div></td></tr>';
+
+  document.getElementById('paginacionTodosMovimientos').innerHTML = `
+    <button type="button" onclick="cambiarPaginaTodosMovimientos(-1)" ${todosMovPagina <= 1 ? 'disabled' : ''}>‹ Anterior</button>
+    <span class="pagina-actual">Página ${todosMovPagina} de ${totalPaginas}</span>
+    <button type="button" onclick="cambiarPaginaTodosMovimientos(1)" ${todosMovPagina >= totalPaginas ? 'disabled' : ''}>Siguiente ›</button>
+  `;
+}
+
+window.cambiarPaginaTodosMovimientos = function (delta) {
+  todosMovPagina += delta;
+  renderTodosMovimientos(DATA_ACTUAL);
+};
+
 function renderDashboard(DATA, DEUDA_TARJETAS) {
+
+// "Todos los movimientos" (switch): vuelve a página 1 en cada cambio de
+// filtro y se re-renderiza si está prendido -- si está apagado no hace
+// falta tocar nada, la tarjeta sigue oculta.
+DATA_ACTUAL = DATA;
+todosMovPagina = 1;
+if (todosMovActivo) renderTodosMovimientos(DATA);
 
 // Los gráficos son instancias de Chart.js atadas a un <canvas> -- si no
 // se destruye la instancia anterior antes de crear una nueva sobre el
@@ -1391,19 +1524,6 @@ document.getElementById('insightsGrid').innerHTML = insights.map(ins => `
 /* =================================================================
    TABLAS
 ================================================================= */
-function rowHTML(r, withTipo){
-  const monto = r.moneda === 'USD' ? fmtUSD(r.monto) : fmtCOP(r.monto);
-  return `
-    <tr>
-      <td>${fmtDate(r.fecha)}</td>
-      ${withTipo ? `<td><span class="tag-tipo ${r.tipo}">${r.tipo}</span></td>` : ''}
-      <td><span class="cat-chip">${catIcon(r.categoria)} ${r.categoria}</span></td>
-      <td>${r.descripcion}</td>
-      <td>${r.entidad}</td>
-      <td class="num" style="color:${r.tipo==='ingreso'?'var(--green)':'var(--red)'}">${r.tipo==='ingreso'?'+':'-'} ${monto}</td>
-    </tr>`;
-}
-
 // Últimos movimientos (por fecha desc; a igualdad de fecha, se respeta el orden inverso de carga)
 const ultimos = [...DATA].map((r,i)=>({...r,_i:i})).sort((a,b)=> b.fecha.localeCompare(a.fecha) || b._i - a._i).slice(0,12);
 document.getElementById('tbodyUltimos').innerHTML = ultimos.map(r=>rowHTML(r, true)).join('');
@@ -1508,6 +1628,17 @@ function aplicarFiltroPeriodo() {
 
 selAnio.addEventListener('change', aplicarFiltroPeriodo);
 selMes.addEventListener('change', aplicarFiltroPeriodo);
+
+// Switch "Movimientos": prende/apaga la tarjeta de "Todos los
+// movimientos" paginada. No toca el sistema de tabs de "5 vistas".
+document.getElementById('toggleTodosMovimientos').addEventListener('change', (e) => {
+  todosMovActivo = e.target.checked;
+  document.getElementById('todosMovimientosCard').hidden = !todosMovActivo;
+  if (todosMovActivo) {
+    todosMovPagina = 1;
+    renderTodosMovimientos(DATA_ACTUAL);
+  }
+});
 
 /* =================================================================
    MODAL DE GRÁFICOS EXPANDIBLES
