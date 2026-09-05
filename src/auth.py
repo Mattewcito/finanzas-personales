@@ -48,14 +48,26 @@ def viendo_id() -> int:
 @auth_bp.app_context_processor
 def inyectar_globales():
     usuarios_disponibles = []
+    # Por defecto, "la cuenta que se está viendo" es la propia -- si sos
+    # admin viendo el perfil de otro, esto pasa a ser el nombre de esa
+    # otra cuenta (ver cargar_extractos.html / registrar.html: se usa
+    # para que el admin confirme a quién le está cargando datos antes de
+    # mandarlos, después de que una carga terminó en la cuenta
+    # equivocada por tener seleccionado otro perfil sin darse cuenta).
+    usuario_viendo_nombre = session.get("nombre")
     if session.get("rol") == "admin":
         with db.conexion() as conn:
             usuarios_disponibles = db.listar_usuarios(conn)
+            if viendo_id() != session.get("usuario_id"):
+                cuenta_vista = db.obtener_usuario(conn, viendo_id())
+                if cuenta_vista:
+                    usuario_viendo_nombre = cuenta_vista["nombre_mostrado"]
     return {
         "modo": MODO,
         "usuario_nombre": session.get("nombre"),
         "usuario_rol": session.get("rol"),
         "viendo_id": viendo_id(),
+        "usuario_viendo_nombre": usuario_viendo_nombre,
         "usuarios_disponibles": usuarios_disponibles,
     }
 
