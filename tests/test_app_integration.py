@@ -112,3 +112,176 @@ def test_dedup_no_duplica_mismo_dia_y_monto(client):
 
     assert r1.get_json()["nuevos"] == 1
     assert r2.get_json()["duplicados"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Validación de /api/registrar-movimiento (más allá del happy path y dedup)
+# ---------------------------------------------------------------------------
+
+def test_registrar_movimiento_sin_fecha_da_error_400(client):
+    login(client, "admin_test", "clave-admin-123")
+    resp = client.post("/api/registrar-movimiento", data={
+        "fecha": "", "tipo": "gasto", "monto": "1000",
+        "descripcion": "Sin fecha", "categoria": "otros",
+        "moneda": "COP", "entidad": "Test",
+    })
+    assert resp.status_code == 400
+    assert resp.get_json()["ok"] is False
+
+
+def test_registrar_movimiento_sin_descripcion_da_error_400(client):
+    login(client, "admin_test", "clave-admin-123")
+    resp = client.post("/api/registrar-movimiento", data={
+        "fecha": "2026-03-01", "tipo": "gasto", "monto": "1000",
+        "descripcion": "", "categoria": "otros",
+        "moneda": "COP", "entidad": "Test",
+    })
+    assert resp.status_code == 400
+    assert resp.get_json()["ok"] is False
+
+
+def test_registrar_movimiento_con_monto_no_numerico_da_error_400(client):
+    login(client, "admin_test", "clave-admin-123")
+    resp = client.post("/api/registrar-movimiento", data={
+        "fecha": "2026-03-01", "tipo": "gasto", "monto": "no-es-un-numero",
+        "descripcion": "Monto inválido", "categoria": "otros",
+        "moneda": "COP", "entidad": "Test",
+    })
+    assert resp.status_code == 400
+    assert resp.get_json()["ok"] is False
+
+
+def test_registrar_movimiento_con_monto_cero_o_negativo_da_error_400(client):
+    login(client, "admin_test", "clave-admin-123")
+    for monto in ("0", "-500"):
+        resp = client.post("/api/registrar-movimiento", data={
+            "fecha": "2026-03-01", "tipo": "gasto", "monto": monto,
+            "descripcion": "Monto no positivo", "categoria": "otros",
+            "moneda": "COP", "entidad": "Test",
+        })
+        assert resp.status_code == 400
+        assert resp.get_json()["ok"] is False
+
+
+# ---------------------------------------------------------------------------
+# Control de acceso por rol en rutas de usuarios (blueprint "usuarios")
+# ---------------------------------------------------------------------------
+
+def test_usuario_normal_no_puede_ver_pagina_crear_usuario(client):
+    """La página /crear-usuario redirige (no da 403) cuando el rol no es
+    admin -- así es como está implementado en routes/usuarios.py."""
+    login(client, "user_test", "clave-user-456")
+    resp = client.get("/crear-usuario")
+    assert resp.status_code == 302
+    assert "/login" not in resp.headers["Location"]
+
+
+def test_usuario_normal_no_puede_llamar_api_crear_usuario(client):
+    login(client, "user_test", "clave-user-456")
+    resp = client.post("/api/crear-usuario", data={
+        "username": "nuevo_x", "nombre": "Nuevo X",
+        "password": "clave-nueva", "rol": "usuario",
+    })
+    assert resp.status_code == 403
+
+
+def test_usuario_normal_no_puede_llamar_api_editar_usuario(client, app_ctx):
+    _, admin_id, user_id = app_ctx
+    login(client, "user_test", "clave-user-456")
+    resp = client.post(f"/api/editar-usuario/{admin_id}", data={
+        "username": "hackeado", "nombre": "Hackeado", "password": "", "rol": "admin",
+    })
+    assert resp.status_code == 403
+
+
+def test_admin_puede_crear_usuario_nuevo_via_api(client):
+    login(client, "admin_test", "clave-admin-123")
+    resp = client.post("/api/crear-usuario", data={
+        "username": "user_nuevo", "nombre": "Usuario Nuevo",
+        "password": "clave-nueva-123", "rol": "usuario",
+    })
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["ok"] is True
+    assert isinstance(body["id"], int)
+
+
+def test_admin_puede_editar_usuario_creado_por_el(client):
+    login(client, "admin_test", "clave-admin-123")
+    creado = client.post("/api/crear-usuario", data={
+        "username": "user_editable", "nombre": "Antes de editar",
+        "password": "clave-nueva-123", "rol": "usuario",
+    })
+    nuevo_id = creado.get_json()["id"]
+
+    resp = client.post(f"/api/editar-usuario/{nuevo_id}", data={
+        "username": "user_editable", "nombre": "Después de editar",
+        "password": "", "rol": "usuario",
+    })
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+
+
+# ---------------------------------------------------------------------------
+# /mi-perfil y /api/actualizar-perfil
+# ---------------------------------------------------------------------------
+
+def test_usuario_puede_editar_su_propio_perfil(client):
+    login(client, "user_test", "clave-user-456")
+    resp = client.post("/api/actualizar-perfil", data={
+        "username": "user_test_renombrado",
+        "nombre": "Usuario Renombrado",
+        "password": "clave-nueva-789",
+    })
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+
+
+def test_editar_perfil_actualiza_nombre_en_sesion_sin_relogin(client):
+    """El cambio de nombre debe reflejarse en session['nombre'] de una,
+    sin que el usuario tenga que volver a loguearse."""
+    login(client, "user_test", "clave-user-456")
+
+    resp = client.post("/api/actualizar-perfil", data={
+        "username": "user_test",
+        "nombre": "Nombre Actualizado En Sesion",
+        "password": "",
+    })
+    assert resp.status_code == 200
+
+    with client.session_transaction() as sess:
+        assert sess["nombre"] == "Nombre Actualizado En Sesion"
+
+
+# ---------------------------------------------------------------------------
+# /editar-usuario/<id> con un id que no existe
+# ---------------------------------------------------------------------------
+
+def test_editar_usuario_inexistente_redirige_en_vez_de_reventar(client):
+    login(client, "admin_test", "clave-admin-123")
+    resp = client.get("/editar-usuario/999999")
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith("/crear-usuario")
+
+
+# ---------------------------------------------------------------------------
+# Rutas protegidas sin sesión (regresión de blueprints: que a nadie se le
+# haya olvidado el decorador @login_required al mover la ruta)
+# ---------------------------------------------------------------------------
+
+def test_registrar_redirige_a_login_sin_sesion(client):
+    resp = client.get("/registrar")
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]
+
+
+def test_crear_usuario_redirige_a_login_sin_sesion(client):
+    resp = client.get("/crear-usuario")
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]
+
+
+def test_mi_perfil_redirige_a_login_sin_sesion(client):
+    resp = client.get("/mi-perfil")
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]
