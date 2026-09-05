@@ -377,15 +377,26 @@
   ::-webkit-scrollbar{ height:8px; width:8px; }
   ::-webkit-scrollbar-thumb{ background: #232a3d; border-radius:8px; }
 
-  /* Menú de navegación entre secciones — flota en el margen derecho, fuera de .wrap */
+  /* Menú de navegación entre secciones -- ANTES flotaba con position:fixed
+     adivinando si había margen libre a la derecha de .wrap (eso se
+     rompía en ciertos anchos intermedios). Ahora es una columna sticky
+     DENTRO del layout real (.page-layout, más abajo): siempre tiene su
+     espacio propio reservado, nunca se superpone a nada, y se queda
+     visible mientras se scrollea sin moverse de su lugar. */
+  .page-layout{
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 20px;
+  }
   .side-nav{
-    position: fixed;
-    top: 120px;
-    right: 24px;
+    position: sticky;
+    top: 24px;
     display: flex;
     flex-direction: column;
     gap: 4px;
-    z-index: 50;
+    flex-shrink: 0;
+    width: 158px;
   }
   .side-nav a{
     padding: 8px 14px;
@@ -398,47 +409,44 @@
     text-align: right;
   }
   .side-nav a:hover{ background: var(--card-hover); color:#fff; }
+  .side-nav a.active{ background: var(--card-solid); border-color: var(--card-border); color: var(--accent-2); font-weight:600; }
+  /* Por debajo de este ancho ya no entran .wrap (1360px) + el gap + esta
+     columna sin apretar el contenido principal -- se oculta en vez de
+     forzarlo. Las secciones siguen siendo navegables scrolleando normal. */
+  @media (max-width: 1560px){ .side-nav{ display:none; } }
+
+  /* Botón "volver arriba": independiente del side-nav (ese se oculta en
+     pantallas angostas; este SIEMPRE debe poder aparecer). Fijo en la
+     esquina inferior derecha del viewport, se muestra solo al scrollear. */
   .btn-subir{
-    margin-top: 10px;
-    padding: 8px 14px;
-    border-radius: 8px;
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 60;
+    padding: 10px 16px;
+    border-radius: 999px;
     font-size: 12.5px;
+    font-weight: 600;
     color: var(--text-dim);
     background: var(--card-solid);
     border: 1px solid var(--card-border);
+    box-shadow: var(--shadow);
     cursor: pointer;
-    text-align: right;
     font-family: inherit;
     opacity: 0;
     pointer-events: none;
-    transition: opacity .2s;
+    transform: translateY(8px);
+    transition: opacity .2s, transform .2s;
   }
-  .btn-subir.visible{ opacity: 1; pointer-events: auto; }
+  .btn-subir.visible{ opacity: 1; pointer-events: auto; transform: none; }
   .btn-subir:hover{ background: var(--card-hover); color:#fff; }
-  .side-nav a.active{ background: var(--card-solid); border-color: var(--card-border); color: var(--accent-2); font-weight:600; }
-  /* Si la ventana no tiene margen suficiente a la izquierda de .wrap, mejor
-     ocultarlo que superponerlo. El cálculo real: .wrap tiene max-width
-     1360px y queda centrado, así que su borde derecho de contenido cae en
-     (viewport + 1360) / 2; el side-nav (~150px de ancho, "right: 24px")
-     necesita que ese borde quede a la izquierda del suyo. Eso da un punto
-     de cruce real cerca de los 1700px -- el umbral viejo (1500px) dejaba
-     una franja de ~200px (portátiles comunes) donde el nav quedaba flotando
-     ENCIMA del header en vez de ocultarse. Con margen de sobra acá. */
-  @media (max-width: 1800px){ .side-nav{ display:none; } }
 </style>
 </head>
 <body>
 
-<nav class="side-nav" id="sideNav">
-  <a href="#kpiGrid" data-section="kpiGrid">Resumen</a>
-  <a href="#perfil" data-section="perfil">Tu perfil</a>
-  <a href="#deuda" data-section="deuda">Tarjetas y deuda</a>
-  <a href="#analisis" data-section="analisis">Análisis visual</a>
-  <a href="#insights" data-section="insights">Insights</a>
-  <a href="#movimientos" data-section="movimientos">Movimientos</a>
-  <button class="btn-subir" id="btnSubir" type="button">⬆ Subir arriba</button>
-</nav>
+<button class="btn-subir" id="btnSubir" type="button">⬆ Subir arriba</button>
 
+<div class="page-layout">
 <div class="wrap">
 
   <!-- ============================================================
@@ -588,7 +596,7 @@
     <div class="paginacion" id="paginacionTodosMovimientos"></div>
   </div>
 
-  <div class="table-card">
+  <div class="table-card" id="cincoVistasCard">
     <div class="tabs" id="tabs">
       <button class="tab-btn active" data-pane="paneUltimos">Últimos movimientos</button>
       <button class="tab-btn" data-pane="paneMayoresGastos">Mayores gastos</button>
@@ -634,6 +642,17 @@
   <footer>
     Dashboard generado automáticamente desde <b>finanzas_personales.xlsx</b> · Todos los cálculos se ejecutan en el navegador, sin backend ni conexión a servidores externos de datos.
   </footer>
+
+</div>
+
+<nav class="side-nav" id="sideNav">
+  <a href="#kpiGrid" data-section="kpiGrid">Resumen</a>
+  <a href="#perfil" data-section="perfil">Tu perfil</a>
+  <a href="#deuda" data-section="deuda">Tarjetas y deuda</a>
+  <a href="#analisis" data-section="analisis">Análisis visual</a>
+  <a href="#insights" data-section="insights">Insights</a>
+  <a href="#movimientos" data-section="movimientos">Movimientos</a>
+</nav>
 
 </div>
 
@@ -1629,11 +1648,14 @@ function aplicarFiltroPeriodo() {
 selAnio.addEventListener('change', aplicarFiltroPeriodo);
 selMes.addEventListener('change', aplicarFiltroPeriodo);
 
-// Switch "Movimientos": prende/apaga la tarjeta de "Todos los
-// movimientos" paginada. No toca el sistema de tabs de "5 vistas".
+// Switch "Movimientos": es excluyente con las "5 vistas" -- prender uno
+// apaga (oculta) el otro, nunca los dos a la vez. La lógica interna de
+// cada uno (tabs, filtros, paginado) sigue exactamente igual, esto solo
+// decide cuál de las dos tarjetas se ve.
 document.getElementById('toggleTodosMovimientos').addEventListener('change', (e) => {
   todosMovActivo = e.target.checked;
   document.getElementById('todosMovimientosCard').hidden = !todosMovActivo;
+  document.getElementById('cincoVistasCard').hidden = todosMovActivo;
   if (todosMovActivo) {
     todosMovPagina = 1;
     renderTodosMovimientos(DATA_ACTUAL);
