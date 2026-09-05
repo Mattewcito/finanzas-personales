@@ -209,6 +209,57 @@
   .chart-holder{ position: relative; height: 260px; }
   .chart-holder.tall{ height: 300px; }
 
+  /* Gráficos expandibles: click en la tarjeta para verla en grande con
+     una tabla de detalle debajo (ver modal más abajo). */
+  .chart-card.expandible{ cursor: pointer; position: relative; transition: transform .15s ease, box-shadow .15s ease; }
+  .chart-card.expandible:hover{ transform: translateY(-2px); box-shadow: 0 10px 26px rgba(0,0,0,0.28); }
+  .chart-card.expandible::after{
+    content: '🔍 Ver en grande';
+    position: absolute; top: 16px; right: 18px;
+    font-size: 11px; color: var(--text-dim); background: var(--card-hover);
+    padding: 3px 9px; border-radius: 999px; border: 1px solid var(--card-border);
+    opacity: 0; transition: opacity .15s ease; pointer-events: none;
+  }
+  .chart-card.expandible:hover::after{ opacity: 1; }
+
+  /* Modal de gráfico expandido */
+  .modal-grafico-overlay{
+    position: fixed; inset: 0; background: rgba(0,0,0,0.62);
+    display:flex; align-items:center; justify-content:center; padding: 24px;
+    z-index: 1000; opacity: 0; pointer-events: none; transition: opacity .15s ease;
+  }
+  .modal-grafico-overlay.open{ opacity: 1; pointer-events: auto; }
+  .modal-grafico-card{
+    background: var(--card-solid); border: 1px solid var(--card-border); border-radius: var(--radius);
+    width: min(920px, 100%); max-height: 88vh; display:flex; flex-direction:column; overflow:hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+  }
+  .modal-grafico-header{ display:flex; align-items:center; justify-content:space-between; padding: 16px 22px; border-bottom: 1px solid var(--card-border); flex-shrink:0; }
+  .modal-grafico-header h3{ margin:0; font-size: 15px; }
+  .modal-grafico-cerrar{ background:none; border:none; color: var(--text-dim); font-size: 22px; line-height:1; cursor:pointer; padding: 4px 8px; }
+  .modal-grafico-cerrar:hover{ color: var(--text); }
+  .modal-grafico-body{ padding: 18px 22px 22px; overflow-y: auto; }
+  .modal-grafico-canvas-holder{ height: 340px; margin-bottom: 18px; }
+  .tabla-detalle-modal{ width:100%; border-collapse: collapse; font-size: 12.5px; }
+  .tabla-detalle-modal th, .tabla-detalle-modal td{ padding: 7px 10px; border-bottom: 1px solid var(--card-border); text-align:left; }
+  .tabla-detalle-modal th{ color: var(--text-dim); font-weight:600; }
+  .tabla-detalle-modal td:not(:first-child), .tabla-detalle-modal th:not(:first-child){ text-align:right; }
+
+  /* Tarjeta de perfil financiero personalizado */
+  .perfil-card{
+    background: var(--card-solid); border: 1px solid var(--card-border); border-radius: var(--radius);
+    padding: 20px 22px; box-shadow: var(--shadow); display:flex; flex-direction:column; gap:10px;
+  }
+  .perfil-card .arquetipo{ font-size: 16px; font-weight:800; display:flex; align-items:center; gap:8px; }
+  .perfil-card .descripcion{ margin:0; font-size: 13px; color: var(--text-dim); max-width: 780px; }
+  .perfil-card .consejos{ list-style:none; margin: 6px 0 0; padding:0; display:flex; flex-direction:column; gap:8px; }
+  .perfil-card .consejos li{
+    font-size: 12.5px; color: var(--text); background: rgba(124,108,251,0.08);
+    border: 1px solid rgba(124,108,251,0.22); border-radius: var(--radius-sm);
+    padding: 9px 12px; display:flex; gap:8px; align-items:flex-start;
+  }
+  .perfil-card .aviso{ margin: 4px 0 0; font-size: 10.5px; color: var(--text-faint); }
+
   /* Leaderboard (Top categorías) */
   .leaderboard{ display:flex; flex-direction:column; gap:10px; margin-top: 6px; }
   .lb-row{ display:flex; align-items:center; gap:10px; }
@@ -335,6 +386,7 @@
 
 <nav class="side-nav" id="sideNav">
   <a href="#kpiGrid" data-section="kpiGrid">Resumen</a>
+  <a href="#perfil" data-section="perfil">Tu perfil</a>
   <a href="#deuda" data-section="deuda">Tarjetas y deuda</a>
   <a href="#analisis" data-section="analisis">Análisis visual</a>
   <a href="#insights" data-section="insights">Insights</a>
@@ -376,13 +428,19 @@
   <div class="kpi-grid" id="kpiGrid"></div>
 
   <!-- ============================================================
+       PERFIL FINANCIERO PERSONALIZADO
+       ============================================================ -->
+  <div class="section-title" id="perfil"><h2>🧭 Tu perfil financiero</h2><div class="line"></div><span class="tag">generado a partir de todo tu historial</span></div>
+  <div class="perfil-card" id="perfilFinancieroCard"></div>
+
+  <!-- ============================================================
        TARJETAS DE CRÉDITO Y DEUDA
        ============================================================ -->
   <div class="section-title" id="deuda"><h2>💳 Tarjetas de crédito y deuda</h2><div class="line"></div><span class="tag">clasificación automática por texto</span></div>
   <p id="resumenDeuda" style="margin:-6px 0 14px; font-size:12.5px; color:var(--text-dim); max-width:820px;"></p>
   <div class="kpi-grid" id="kpiGridDeuda"></div>
   <div class="charts-grid" style="margin-top:16px;">
-    <div class="chart-card full">
+    <div class="chart-card full expandible" onclick="abrirModalGrafico('chartDeudaEvolucion','📈 Evolución de la deuda en tarjetas de crédito')">
       <h3>📈 Evolución de la deuda en tarjetas de crédito</h3>
       <p class="desc">Saldo acumulado estimado (compras a crédito + avances − pagos a la tarjeta), movimiento a movimiento.</p>
       <div class="chart-holder tall" id="chartDeudaEvolucionHolder"><canvas id="chartDeudaEvolucion"></canvas></div>
@@ -396,49 +454,49 @@
 
   <div class="charts-grid">
 
-    <div class="chart-card full">
+    <div class="chart-card full expandible" onclick="abrirModalGrafico('chartCategorias','🏷️ Gastos por categoría')">
       <h3>🏷️ Gastos por categoría</h3>
       <p class="desc">Monto total gastado (COP) en cada categoría, de mayor a menor.</p>
       <div class="chart-holder tall"><canvas id="chartCategorias"></canvas></div>
     </div>
 
-    <div class="chart-card">
+    <div class="chart-card expandible" onclick="abrirModalGrafico('chartIngresosGastos','⚖️ Ingresos vs. gastos')">
       <h3>⚖️ Ingresos vs. gastos</h3>
       <p class="desc">Solo caja real — excluye compras y avances de tarjeta de crédito (ver sección "Tarjetas de crédito").</p>
       <div class="chart-holder"><canvas id="chartIngresosGastos"></canvas></div>
     </div>
 
-    <div class="chart-card">
+    <div class="chart-card expandible" onclick="abrirModalGrafico('chartMoneda','💱 Distribución por moneda')">
       <h3>💱 Distribución por moneda</h3>
       <p class="desc">Cantidad de movimientos según la moneda utilizada.</p>
       <div class="chart-holder"><canvas id="chartMoneda"></canvas></div>
     </div>
 
-    <div class="chart-card full">
+    <div class="chart-card full expandible" onclick="abrirModalGrafico('chartEvolucion','📈 Evolución temporal de gastos')">
       <h3>📈 Evolución temporal de gastos</h3>
       <p class="desc">Gasto diario (COP) a lo largo del período — ayuda a detectar picos de consumo.</p>
       <div class="chart-holder tall"><canvas id="chartEvolucion"></canvas></div>
     </div>
 
-    <div class="chart-card">
+    <div class="chart-card expandible" onclick="abrirModalLeaderboard()">
       <h3>🏆 Top 5 categorías</h3>
       <p class="desc">Las categorías que más peso tienen en tus gastos.</p>
       <div class="leaderboard" id="leaderboard"></div>
     </div>
 
-    <div class="chart-card">
+    <div class="chart-card expandible" onclick="abrirModalGrafico('chartDistribucion','🥧 Distribución porcentual de gastos')">
       <h3>🥧 Distribución porcentual de gastos</h3>
       <p class="desc">Participación (%) de cada categoría sobre el gasto total.</p>
       <div class="chart-holder"><canvas id="chartDistribucion"></canvas></div>
     </div>
 
-    <div class="chart-card full">
+    <div class="chart-card full expandible" onclick="abrirModalGrafico('chartTendenciaMensual','🗓️ Tendencia mensual')">
       <h3>🗓️ Tendencia mensual</h3>
       <p class="desc">Ingresos vs. gastos mes a mes (COP). Los meses con datos incompletos están marcados.</p>
       <div class="chart-holder tall"><canvas id="chartTendenciaMensual"></canvas></div>
     </div>
 
-    <div class="chart-card full">
+    <div class="chart-card full expandible" onclick="abrirModalGrafico('chartEntidades','🏦 Entidades financieras más usadas')">
       <h3>🏦 Entidades financieras más usadas</h3>
       <p class="desc">Monto movilizado y número de transacciones por entidad.</p>
       <div class="chart-holder"><canvas id="chartEntidades"></canvas></div>
@@ -538,6 +596,15 @@ const DEUDA_TARJETAS = [];
 const GENERATED_AT = "plantilla";
 /* __GENERATED_AT_END__ */
 
+/* =================================================================
+   PERFIL FINANCIERO — arquetipo de hábitos + consejos personalizados.
+   Lo genera src/perfil_financiero.py a partir de TODO el historial del
+   usuario (no cambia con los filtros de año/mes) — no editar a mano.
+================================================================= */
+/* __PERFIL_FINANCIERO_START__ */
+const PERFIL_FINANCIERO = {"arquetipo":"Sin datos suficientes","descripcion":"Todavía no hay movimientos registrados para generar un perfil.","consejos":[],"metricas":{}};
+/* __PERFIL_FINANCIERO_END__ */
+
 // DATA/DEUDA_TARJETAS de arriba son el histórico COMPLETO, inyectado por
 // actualizar_dashboard.py. El filtro de período (más abajo) llama a
 // renderDashboard() con subconjuntos de estos dos arrays -- nunca se
@@ -562,6 +629,25 @@ const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
    calcula dentro de renderDashboard() (ver más abajo).
 ================================================================= */
 document.getElementById('lastUpdated').textContent = `Última actualización del dashboard: ${fmtDateTime(GENERATED_AT)}`;
+
+/* =================================================================
+   PERFIL FINANCIERO — tampoco depende del filtro de período (un hábito
+   es un patrón de largo plazo, se calcula sobre TODO el historial en
+   src/perfil_financiero.py). Se renderiza una sola vez acá, no dentro
+   de renderDashboard().
+================================================================= */
+(function renderPerfilFinanciero() {
+  const el = document.getElementById('perfilFinancieroCard');
+  const perfil = PERFIL_FINANCIERO || {};
+  const consejos = Array.isArray(perfil.consejos) ? perfil.consejos : [];
+
+  el.innerHTML = `
+    <div class="arquetipo">🧭 ${perfil.arquetipo || 'Sin datos suficientes'}</div>
+    <p class="descripcion">${perfil.descripcion || ''}</p>
+    ${consejos.length ? `<ul class="consejos">${consejos.map(c => `<li>💡 ${c}</li>`).join('')}</ul>` : ''}
+    <p class="aviso">Perfil generado automáticamente por reglas sobre tu historial completo (no es asesoría financiera profesional) — se actualiza solo cuando se regenera el dashboard.</p>
+  `;
+})();
 
 const CAT_ICONS = {
   salario:'💼', transferencias:'🔁', suscripciones:'📱', restaurantes:'🍽️', comida:'🍔',
@@ -593,6 +679,25 @@ Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
    que el resto del código ya esperaba, así que nada de la lógica interna
    cambió -- solo quedó envuelta.
 ================================================================= */
+// Guarda la config ORIGINAL (plana, sin mutar por Chart.js) de cada
+// gráfico creado con crearGrafico() -- así el modal de "ver en grande"
+// puede reconstruirlo desde cero en vez de reutilizar el objeto interno
+// ya resuelto de la instancia viva (eso rompía a Chart.js con un error
+// críptico). Vive afuera de renderDashboard() para sobrevivir entre
+// renders -- cada llamada a crearGrafico() la va pisando sola.
+const GRAFICOS_REGISTRY = {};
+
+// gastoPorCategoria vive DENTRO de renderDashboard() (se recalcula en
+// cada render según el filtro) -- el modal del ranking de categorías se
+// abre desde afuera de esa función, así que necesita su propia copia
+// actualizada en cada render para poder leerla.
+let GASTO_POR_CATEGORIA_ACTUAL = [];
+
+function crearGrafico(canvasId, config) {
+  GRAFICOS_REGISTRY[canvasId] = config;
+  return new Chart(document.getElementById(canvasId), config);
+}
+
 function renderDashboard(DATA, DEUDA_TARJETAS) {
 
 // Los gráficos son instancias de Chart.js atadas a un <canvas> -- si no
@@ -693,6 +798,11 @@ if (!DATA.length) {
   document.getElementById('insightsGrid').innerHTML =
     '<div class="empty-state">🧠 Todavía no hay suficientes movimientos en este período para generar insights automáticos.</div>';
   document.getElementById('leaderboard').innerHTML = '';
+  GASTO_POR_CATEGORIA_ACTUAL = []; // que el modal del ranking tampoco muestre datos de un período anterior
+  // Ninguno de los crearGrafico() de más abajo llega a correr en este
+  // corte -- sin este reseteo, el modal de "ver en grande" seguiría
+  // ofreciendo abrir el gráfico del ÚLTIMO período que sí tuvo datos.
+  Object.keys(GRAFICOS_REGISTRY).forEach(id => delete GRAFICOS_REGISTRY[id]);
   ['tbodyUltimos','tbodyMayoresGastos','tbodyMayoresIngresos','tbodyMoneda','tbodyDeuda'].forEach(id => {
     document.getElementById(id).innerHTML =
       '<tr><td colspan="10" style="padding:14px;"><div class="empty-state" style="justify-content:center;">Sin movimientos en este período.</div></td></tr>';
@@ -773,6 +883,7 @@ function sortMapDesc(map){
 
 // Gasto por categoría (COP)
 const gastoPorCategoria = sortMapDesc(groupSum(gastosCOP, r=>r.categoria));
+GASTO_POR_CATEGORIA_ACTUAL = gastoPorCategoria; // para el modal del ranking completo, fuera de esta función
 // Categoría con mayor gasto (con respaldo por si el período filtrado no tiene ningún gasto)
 const [catTop, catTopMonto] = gastoPorCategoria[0] || ['sin datos', 0];
 // Promedio mensual de gasto REAL de caja (COP): total gasto real / nº de meses distintos presentes en los datos
@@ -888,7 +999,7 @@ document.getElementById('kpiGridDeuda').innerHTML = `
 // dibujado ahí en la llamada anterior (gráfico o mensaje de "sin datos").
 document.getElementById('chartDeudaEvolucionHolder').innerHTML = '<canvas id="chartDeudaEvolucion"></canvas>';
 if (DEUDA_TARJETAS.length) {
-  new Chart(document.getElementById('chartDeudaEvolucion'), {
+  crearGrafico('chartDeudaEvolucion', {
     type: 'line',
     data: {
       labels: DEUDA_TARJETAS.map(d => fmtDate(d.fecha)),
@@ -921,6 +1032,7 @@ if (DEUDA_TARJETAS.length) {
     }
   });
 } else {
+  delete GRAFICOS_REGISTRY['chartDeudaEvolucion']; // sin canvas en este período -- que el modal no reabra el de un período anterior
   document.getElementById('chartDeudaEvolucionHolder').innerHTML =
     '<div class="empty-state">💳 No se detectaron compras, avances ni pagos de tarjeta de crédito en los movimientos del período seleccionado.</div>';
 }
@@ -928,7 +1040,7 @@ if (DEUDA_TARJETAS.length) {
 /* =================================================================
    GRÁFICO 1 — Gastos por categoría (barra horizontal)
 ================================================================= */
-new Chart(document.getElementById('chartCategorias'), {
+crearGrafico('chartCategorias', {
   type: 'bar',
   data: {
     labels: gastoPorCategoria.map(([c])=>capitalize(c)),
@@ -957,7 +1069,7 @@ new Chart(document.getElementById('chartCategorias'), {
 /* =================================================================
    GRÁFICO 2 — Ingresos vs gastos (totales)
 ================================================================= */
-new Chart(document.getElementById('chartIngresosGastos'), {
+crearGrafico('chartIngresosGastos', {
   type: 'bar',
   data: {
     labels: ['Ingresos reales', 'Gasto real (caja)'],
@@ -981,7 +1093,7 @@ new Chart(document.getElementById('chartIngresosGastos'), {
 /* =================================================================
    GRÁFICO 3 — Distribución por moneda (nº movimientos)
 ================================================================= */
-new Chart(document.getElementById('chartMoneda'), {
+crearGrafico('chartMoneda', {
   type: 'doughnut',
   data: {
     labels: [...monedaCount.keys()],
@@ -1007,7 +1119,7 @@ new Chart(document.getElementById('chartMoneda'), {
 ================================================================= */
 const gastoPorDia = sortMapDesc(groupSum(gastosCOP, r=>r.fecha)); // desc, lo reordenamos cronológicamente
 const gastoPorDiaChrono = [...gastoPorDia].sort((a,b)=> a[0].localeCompare(b[0]));
-new Chart(document.getElementById('chartEvolucion'), {
+crearGrafico('chartEvolucion', {
   type: 'line',
   data: {
     labels: gastoPorDiaChrono.map(([d])=> fmtDate(d)),
@@ -1054,7 +1166,7 @@ document.getElementById('leaderboard').innerHTML = top5.map(([cat,monto],i)=>{
 /* =================================================================
    GRÁFICO 5 — Distribución porcentual de gastos (doughnut)
 ================================================================= */
-new Chart(document.getElementById('chartDistribucion'), {
+crearGrafico('chartDistribucion', {
   type: 'doughnut',
   data: {
     labels: gastoPorCategoria.map(([c])=>capitalize(c)),
@@ -1084,7 +1196,7 @@ const mesesOrdenados = mesesPresentes; // ya ordenados cronológicamente
 const MESES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const mesLabel = (m) => { const [y,mm] = m.split('-'); return `${MESES_ES[parseInt(mm,10)-1]} ${y}`; };
 
-new Chart(document.getElementById('chartTendenciaMensual'), {
+crearGrafico('chartTendenciaMensual', {
   type: 'line',
   data: {
     labels: mesesOrdenados.map(mesLabel),
@@ -1119,7 +1231,7 @@ new Chart(document.getElementById('chartTendenciaMensual'), {
 /* =================================================================
    GRÁFICO 7 — Entidades financieras más usadas
 ================================================================= */
-new Chart(document.getElementById('chartEntidades'), {
+crearGrafico('chartEntidades', {
   type: 'bar',
   data: {
     labels: entidadMonto.map(([e])=>e),
@@ -1396,6 +1508,93 @@ function aplicarFiltroPeriodo() {
 selAnio.addEventListener('change', aplicarFiltroPeriodo);
 selMes.addEventListener('change', aplicarFiltroPeriodo);
 
+/* =================================================================
+   MODAL DE GRÁFICOS EXPANDIBLES
+   -----------------------------------------------------------------
+   Click en cualquier tarjeta de gráfico (o en el ranking de Top 5) para
+   verla en grande con una tabla de detalle debajo. Reutiliza el MISMO
+   objeto data/options del gráfico original, por referencia -- así los
+   tooltips y colores quedan idénticos sin duplicar configuración por
+   gráfico, y agregar un gráfico nuevo a futuro no requiere tocar esto.
+================================================================= */
+let modalChartInstance = null;
+
+function abrirModalGrafico(canvasId, titulo) {
+  const config = GRAFICOS_REGISTRY[canvasId];
+  if (!config) return; // ej. gráfico de deuda cuando el período no tiene movimientos de tarjeta
+
+  document.getElementById('modalGraficoTitulo').textContent = titulo;
+  document.getElementById('modalGrafico').classList.add('open');
+  document.getElementById('modalGraficoCanvasHolder').style.display = '';
+
+  if (modalChartInstance) { modalChartInstance.destroy(); modalChartInstance = null; }
+  modalChartInstance = new Chart(document.getElementById('modalGraficoCanvas'), {
+    type: config.type,
+    data: config.data,
+    options: { ...config.options, maintainAspectRatio: false, responsive: true }
+  });
+
+  document.getElementById('modalGraficoTabla').innerHTML = tablaDetalleDesdeConfig(config);
+}
+
+function tablaDetalleDesdeConfig(config) {
+  const labels = config.data.labels || [];
+  const datasets = config.data.datasets || [];
+  if (!labels.length || !datasets.length) {
+    return '<p class="desc">Sin datos suficientes para mostrar el detalle.</p>';
+  }
+  const encabezados = datasets.map(ds => ds.label || 'Valor');
+  let html = '<table class="tabla-detalle-modal"><thead><tr><th>Detalle</th>' +
+    encabezados.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>';
+  labels.forEach((lab, i) => {
+    html += `<tr><td>${lab}</td>` +
+      datasets.map(ds => `<td>${fmtNum(ds.data[i] ?? 0)}</td>`).join('') + '</tr>';
+  });
+  html += '</tbody></table>';
+  return html;
+}
+
+function abrirModalLeaderboard() {
+  document.getElementById('modalGraficoTitulo').textContent = '🏆 Ranking completo de categorías por gasto';
+  document.getElementById('modalGrafico').classList.add('open');
+  document.getElementById('modalGraficoCanvasHolder').style.display = 'none';
+  if (modalChartInstance) { modalChartInstance.destroy(); modalChartInstance = null; }
+
+  if (!GASTO_POR_CATEGORIA_ACTUAL.length) {
+    document.getElementById('modalGraficoTabla').innerHTML = '<p class="desc">Sin datos suficientes para mostrar el detalle.</p>';
+    return;
+  }
+  const maxAll = GASTO_POR_CATEGORIA_ACTUAL[0]?.[1] || 0;
+  document.getElementById('modalGraficoTabla').innerHTML = GASTO_POR_CATEGORIA_ACTUAL.map(([cat, monto], i) => {
+    const pct = maxAll ? (monto / maxAll * 100).toFixed(0) : 0;
+    return `
+      <div class="lb-row">
+        <div class="lb-rank">${i + 1}</div>
+        <div class="lb-body">
+          <div class="lb-top"><span class="name">${catIcon(cat)} ${cat}</span><span class="amt">${fmtCOP(monto)}</span></div>
+          <div class="lb-bar"><span style="width:${pct}%; background:${colorFor(i)};"></span></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function cerrarModalGrafico() {
+  document.getElementById('modalGrafico').classList.remove('open');
+  if (modalChartInstance) { modalChartInstance.destroy(); modalChartInstance = null; }
+}
+
+// En un DOMContentLoaded -- el <div id="modalGrafico"> vive más abajo en
+// el HTML (después de este <script>), así que todavía no existe en el
+// DOM si se busca de forma síncrona acá mismo.
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('modalGrafico').addEventListener('click', (e) => {
+    if (e.target.id === 'modalGrafico') cerrarModalGrafico(); // click en el fondo, no en la tarjeta
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') cerrarModalGrafico();
+  });
+});
+
 renderDashboard(DATA_COMPLETA, DEUDA_COMPLETA); // primera carga: histórico completo, sin filtro
 
 /* =================================================================
@@ -1451,6 +1650,24 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 </script>
+
+<!-- ============================================================
+     MODAL DE GRÁFICO EXPANDIDO (ver JS: abrirModalGrafico/abrirModalLeaderboard)
+     ============================================================ -->
+<div class="modal-grafico-overlay" id="modalGrafico">
+  <div class="modal-grafico-card">
+    <div class="modal-grafico-header">
+      <h3 id="modalGraficoTitulo"></h3>
+      <button type="button" class="modal-grafico-cerrar" onclick="cerrarModalGrafico()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-grafico-body">
+      <div class="modal-grafico-canvas-holder" id="modalGraficoCanvasHolder">
+        <canvas id="modalGraficoCanvas"></canvas>
+      </div>
+      <div id="modalGraficoTabla"></div>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
