@@ -28,6 +28,7 @@ Vista:
 
 import sqlite3
 import datetime
+from contextlib import contextmanager
 from pathlib import Path
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -108,6 +109,20 @@ def conectar() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+@contextmanager
+def conexion():
+    """Context manager sobre conectar(): garantiza conn.close() incluso
+    si algo lanza una excepción en el medio. Reemplaza el patrón repetido
+    `conn = db.conectar(); try: ...; finally: conn.close()` que se
+    duplicaba en cada ruta de app.py -- mismo comportamiento, menos
+    código repetido. Uso: `with db.conexion() as conn: ...`."""
+    conn = conectar()
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def _migrar_columna_usuario_id(conn: sqlite3.Connection) -> None:
