@@ -198,8 +198,10 @@
   }
   .switch-toggle input:checked + .switch-slider{ background: var(--accent); border-color: var(--accent); }
   .switch-toggle input:checked + .switch-slider::before{ transform: translateX(15px); background:#fff; }
-  .switch-toggle .switch-label{ font-size: 12.5px; color: var(--text-dim); font-weight:600; }
-  .switch-toggle input:checked ~ .switch-label{ color: var(--text); }
+  /* La etiqueta "Movimientos" solo se muestra con el switch prendido --
+     apagado, queda solo el switch (sin texto) al lado de "5 vistas". */
+  .switch-toggle .switch-label{ font-size: 12.5px; color: var(--text); font-weight:600; display:none; }
+  .switch-toggle input:checked ~ .switch-label{ display:inline; }
 
   /* ===========================================================
      5) CHARTS GRID
