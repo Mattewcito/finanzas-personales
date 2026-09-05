@@ -66,10 +66,18 @@ gracias a `restart: unless-stopped`):
 | `C:\Finanzas personales` (esta, donde editás código) | `finanzas-app-dev` | 5001 | Probar cambios antes de subirlos |
 | `C:\finanzas-deploy` (dedicada, nunca se edita a mano) | `finanzas-app-online` | 5002 | Versión estable, accesible por Tailscale |
 
-Las dos leen **la misma base de datos real** (`C:\Finanzas personales\data`)
-aunque el código de cada una pueda estar en una versión distinta -- eso lo
-resuelve `docker-compose.override.yml` en cada carpeta (no se sube a git,
-es específico de esta máquina).
+Las dos comparten **solo la fuente real de datos** -- `finanzas.db` y el
+Excel que escribe el bot de Gmail (`C:\Finanzas personales\data`) -- vía
+montajes de archivo individuales en el `docker-compose.override.yml` de
+`finanzas-deploy` (no se sube a git, es específico de esta máquina). El
+dashboard generado (`dashboard_<id>.html`), el log y los uploads son
+LOCALES a cada carpeta: cada una los regenera con su propio código, así
+que lo que se ve en producción (5002) siempre es lo que ya está en
+`master`, nunca algo que se esté probando en la carpeta de trabajo
+(5001). `finanzas-deploy` regenera los suyos automáticamente después de
+cada deploy (paso agregado en `.github/workflows/deploy.yml`); esta
+carpeta lo hace vía la tarea programada diaria o corriendo
+`actualizar_dashboard.py` a mano.
 
 Para levantar/reconstruir cualquiera de las dos a mano:
 ```bash

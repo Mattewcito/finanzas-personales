@@ -57,6 +57,20 @@ jobs:
             }
             if (-not $ok) { throw "El contenedor no respondio correctamente despues de desplegar." }
 
+            Write-Host "Regenerando los dashboards de produccion con el codigo recien desplegado..."
+            # Desde 2026-09-05, esta carpeta ya NO comparte los dashboards
+            # generados con la carpeta de trabajo (docker-compose.override.yml
+            # solo comparte finanzas.db y el Excel) -- asi que production
+            # necesita su propia regeneracion despues de cada deploy, en vez
+            # de depender de la tarea programada de la carpeta de trabajo.
+            # Best-effort: si esto falla, se avisa pero NO se revierte el
+            # deploy completo (la app en si ya paso el health check de arriba).
+            try {
+              docker exec -w /app/src finanzas-app-online python actualizar_dashboard.py
+            } catch {
+              Write-Warning "No se pudieron regenerar los dashboards de produccion: $_"
+            }
+
             Write-Host "Despliegue exitoso."
           } catch {
             Write-Host "FALLO el despliegue: $_"
