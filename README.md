@@ -73,19 +73,35 @@ Para usar la versión online desde el celular: instalá la app de Tailscale
 la PC, y entrá a `http://<ip-de-tailscale-de-tu-pc>:5002` (la IP la ves
 corriendo `tailscale ip -4` en la PC, o en la app de Tailscale).
 
-## Despliegue automático
+## Pruebas automáticas y despliegue automático
 
-Cada push a `master` (por ejemplo, al fusionar un Pull Request) reconstruye
-y levanta solo el contenedor de `C:\finanzas-deploy` -- no hace falta
-correr nada a mano ni tocar la carpeta de trabajo.
+El pipeline (`.github/workflows/deploy.yml`) tiene 2 pasos:
 
-Cómo funciona: hay un [runner de GitHub Actions](https://docs.github.com/actions/hosting-your-own-runners)
+1. **`test`** -- corre en la nube de GitHub (gratis) en cada push y en
+   cada Pull Request: instala dependencias y corre `pytest` (`tests/`).
+   Cubre la clasificación caja-real/deuda, los parsers de notificaciones
+   de Bancolombia, y la app (login, permisos, aislamiento de datos entre
+   usuarios). Si algo falla acá, el PR queda marcado con una ❌ y el
+   despliegue **no se ejecuta**.
+2. **`deploy`** -- solo corre si `test` pasó Y el push fue directo a
+   `master` (no en PRs). Se ejecuta en el runner instalado en esta PC:
+   actualiza `C:\finanzas-deploy` y reconstruye el contenedor. Si después
+   de desplegar el contenedor no responde bien (`/health`), el pipeline
+   **revierte solo** al commit anterior y reconstruye con esa versión --
+   así un despliegue roto no te deja sin dashboard.
+
+Correr las pruebas a mano:
+```bash
+py -m pip install -r requirements-dev.txt
+pytest -v
+```
+
+Cómo funciona el runner: hay un [runner de GitHub Actions](https://docs.github.com/actions/hosting-your-own-runners)
 instalado como servicio de Windows en esta misma PC (`C:\actions-runner`).
-GitHub le avisa a ese servicio cuando hay un push a `master` (conexión
-saliente, no hace falta abrir ningún puerto), y el workflow
-(`.github/workflows/deploy.yml`) corre `git reset --hard origin/master` +
-`docker compose up -d --build` sobre `C:\finanzas-deploy` -- nunca sobre
-la carpeta de trabajo, para no pisar nada que estés probando ahí.
+GitHub le avisa a ese servicio cuando hay un push (conexión saliente, no
+hace falta abrir ningún puerto), y el paso de despliegue corre sobre
+`C:\finanzas-deploy` -- nunca sobre la carpeta de trabajo, para no pisar
+nada que estés probando ahí.
 
 Instalación (una sola vez):
 1. `git clone` este repo en `C:\finanzas-deploy` (carpeta dedicada, aparte
@@ -189,3 +205,4 @@ en la base de datos; no afecta los totales de ingreso/gasto/deuda.
 Ninguna credencial (API keys, contraseñas de correo) va escrita en texto
 plano en el código: siempre por variable de entorno o archivo local
 ignorado por git.
+
