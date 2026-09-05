@@ -94,8 +94,8 @@ def inyectar_en_html(html: str, movimientos: list[dict], ledger_deuda: list[dict
     deuda_json = json.dumps(ledger_deuda, ensure_ascii=False, indent=0)
     html = _reemplazar_bloque(html, "DEUDA_TARJETAS", f"const DEUDA_TARJETAS = {deuda_json};")
 
-    hoy = datetime.date.today().isoformat()
-    html = _reemplazar_bloque(html, "GENERATED_AT", f'const GENERATED_AT = "{hoy}"; // fecha de generación del dashboard')
+    ahora = datetime.datetime.now().isoformat(timespec="seconds")
+    html = _reemplazar_bloque(html, "GENERATED_AT", f'const GENERATED_AT = "{ahora}"; // fecha y hora de generación del dashboard')
 
     return html
 
