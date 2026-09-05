@@ -10,10 +10,17 @@ reemplazables/opcionales por diseño.
 ## Estado actual
 
 - ✅ **Fase 0 — Base de datos real**: los datos viven en `data/finanzas.db`
-  (SQLite), no en el Excel. El Excel se mantiene como fuente de entrada
-  (todavía es lo único que actualiza el bot de lectura de correo viejo) y
-  se sincroniza automáticamente a la base de datos cada vez que se
-  regenera el dashboard.
+  (SQLite), no en el Excel. El Excel es un canal de ingesta EN
+  TRANSICIÓN hacia salida (`src/actualizar_dashboard.py` lo sincroniza
+  a la BD solo si sigue existiendo -- si no, no hace nada): el bot
+  externo de Gmail que lo escribía se está reemplazando por
+  `leer_correo.py`, que ya inserta directo a la BD.
+- ✅ **Dashboard dinámico**: el dashboard (`dashboard/dashboard_finanzas.html`)
+  es un único archivo estático que le pide sus datos a
+  `GET /api/dashboard-data` al cargar, respetando la sesión (y, si sos
+  admin, la cuenta que estés viendo). Ya no hay "regenerar" ni archivos
+  HTML por usuario en disco -- cualquier cambio en la BD se ve apenas
+  se recarga la página.
 - 🚧 **Fase 1 — Ingesta local de correo** (`src/leer_correo.py`): lee las
   notificaciones de Bancolombia directo de Gmail por IMAP (contraseña de
   aplicación, no navegador automatizado — Google bloquea logins por
@@ -23,9 +30,10 @@ reemplazables/opcionales por diseño.
   de tarjeta. **Nu queda pendiente** (solo manda extractos mensuales, no
   alertas por movimiento — se sigue cubriendo con `reconciliar_extractos.py`).
   Ver "Configurar la lectura de correo" abajo.
-- ✅ **App con interfaz** (`src/app.py`): servidor Flask con menú lateral
-  colapsable — Dashboard (embebido) y Cargar extractos (subir Excel/PDF
-  desde el navegador, se inserta con dedup y regenera el dashboard solo).
+- ✅ **App con interfaz** (`src/app.py`, blueprints en `src/auth.py` y
+  `src/routes/`): servidor Flask con menú lateral colapsable — Dashboard
+  (embebido, dinámico) y Cargar extractos (subir Excel/PDF desde el
+  navegador, se inserta con dedup, visible al instante).
 - ✅ **Docker + Tailscale**: la app corre dockerizada (puerto 5002,
   `docker-compose.yml`) para poder verla desde el celular/tablet estando
   fuera de casa, **sin exponerla a internet público** — el acceso es vía
@@ -42,7 +50,7 @@ reemplazables/opcionales por diseño.
   instalado en esta misma PC (ver `.github/workflows/deploy.yml` y
   "Despliegue automático" abajo).
 - ✅ **Perfil financiero por hábitos** (`src/perfil_financiero.py`): cada
-  vez que se regenera el dashboard, se clasifica a cada usuario en un
+  vez que el dashboard pide sus datos, se clasifica a ese usuario en un
   arquetipo (ahorrador, en alerta por deuda, ingresos irregulares, etc.)
   a partir de TODO su historial, con una descripción y consejos
   generados automáticamente por reglas (no IA). Se muestra en la sección
@@ -67,17 +75,14 @@ gracias a `restart: unless-stopped`):
 | `C:\finanzas-deploy` (dedicada, nunca se edita a mano) | `finanzas-app-online` | 5002 | Versión estable, accesible por Tailscale |
 
 Las dos comparten **solo la fuente real de datos** -- `finanzas.db` y el
-Excel que escribe el bot de Gmail (`C:\Finanzas personales\data`) -- vía
+Excel, mientras siga activo (`C:\Finanzas personales\data`) -- vía
 montajes de archivo individuales en el `docker-compose.override.yml` de
 `finanzas-deploy` (no se sube a git, es específico de esta máquina). El
-dashboard generado (`dashboard_<id>.html`), el log y los uploads son
-LOCALES a cada carpeta: cada una los regenera con su propio código, así
-que lo que se ve en producción (5002) siempre es lo que ya está en
-`master`, nunca algo que se esté probando en la carpeta de trabajo
-(5001). `finanzas-deploy` regenera los suyos automáticamente después de
-cada deploy (paso agregado en `.github/workflows/deploy.yml`); esta
-carpeta lo hace vía la tarea programada diaria o corriendo
-`actualizar_dashboard.py` a mano.
+dashboard ya es dinámico (lee la BD por API, no hay ningún HTML
+generado que compartir), así que lo que se ve en producción (5002)
+siempre refleja el código de `master`, nunca lo que se esté probando en
+la carpeta de trabajo (5001) -- ambas leen la misma BD, cada una con su
+propia versión del código.
 
 Para levantar/reconstruir cualquiera de las dos a mano:
 ```bash
@@ -149,7 +154,7 @@ Finanzas personales/
 │   │   └── usuarios.py          # blueprint: alta/edición de cuentas, editar el propio perfil
 │   ├── db_finanzas.py           # esquema, clasificación de movimientos, sincronización, consultas
 │   ├── perfil_financiero.py     # clasifica a cada usuario en un arquetipo de hábitos + consejos
-│   ├── actualizar_dashboard.py  # corre a diario: sincroniza + regenera el dashboard de cada usuario
+│   ├── actualizar_dashboard.py  # sincroniza finanzas.db desde el Excel, mientras siga activo
 │   ├── migrar_a_sqlite.py       # migración/reset puntual de la base de datos
 │   ├── crear_usuario.py         # alta de cuentas por línea de comandos
 │   ├── leer_correo.py           # ingesta local de notificaciones bancarias por Gmail/IMAP
@@ -170,14 +175,20 @@ que solo arma la app y los registra. Ver la cabecera de `src/app.py` y
 ## Cómo funciona el flujo diario
 
 ```
-Gmail (tarea externa, 8:00 AM)
+Gmail (tarea externa, 8:00 AM) -- mientras el Excel siga activo
    -> escribe data/finanzas_personales.xlsx
 Tarea de Windows "ActualizarDashboardFinanzas" (9:30 AM)
    -> corre src/actualizar_dashboard.py
-      -> sincroniza el Excel a data/finanzas.db
-      -> consulta la base de datos ya enriquecida (medio de pago, deuda)
-      -> regenera dashboard/dashboard_finanzas.html
+      -> sincroniza el Excel a data/finanzas.db (si el archivo existe)
+En cualquier momento, al abrir el dashboard:
+   -> el navegador pide GET /api/dashboard-data
+      -> Flask consulta finanzas.db (ya enriquecida: medio de pago, deuda)
+      -> devuelve movimientos + ledger de deuda + perfil financiero, siempre al día
 ```
+
+Una vez que `leer_correo.py` reemplace del todo al bot externo de Gmail
+y se borre el Excel, tanto `actualizar_dashboard.py` como la tarea
+programada dejan de tener trabajo que hacer -- se pueden borrar los dos.
 
 ## Modelo de datos: caja real vs. deuda de tarjeta
 
@@ -206,7 +217,7 @@ Requiere Python 3.11+ y las dependencias de `requirements.txt`:
 py -m pip install -r requirements.txt
 cd src
 py migrar_a_sqlite.py       # sincroniza/verifica la base de datos
-py actualizar_dashboard.py  # sincroniza + regenera el dashboard
+py actualizar_dashboard.py  # sincroniza finanzas.db desde el Excel (si sigue activo)
 ```
 
 ## Configurar la lectura de correo (Fase 1)

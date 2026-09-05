@@ -297,3 +297,101 @@ def test_mi_perfil_redirige_a_login_sin_sesion(client):
     resp = client.get("/mi-perfil")
     assert resp.status_code == 302
     assert "/login" in resp.headers["Location"]
+
+
+# ---------------------------------------------------------------------------
+# GET /api/dashboard-data -- el dashboard ahora es dinámico: el navegador
+# pide sus datos por AJAX en vez de leer un HTML pre-generado (ver
+# routes/dashboard.py::api_dashboard_data y tests/test_actualizar_dashboard.py
+# para el cambio en actualizar_dashboard.py que esto reemplazó).
+# ---------------------------------------------------------------------------
+
+def test_dashboard_data_redirige_a_login_sin_sesion(client):
+    resp = client.get("/api/dashboard-data")
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]
+
+
+def test_dashboard_data_con_sesion_devuelve_json_con_las_cuatro_claves(client):
+    login(client, "admin_test", "clave-admin-123")
+    resp = client.get("/api/dashboard-data")
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert set(body.keys()) == {"movimientos", "ledger_deuda", "perfil", "generated_at"}
+
+
+def test_dashboard_data_usuario_sin_movimientos_devuelve_listas_vacias_sin_reventar(client):
+    """Caso disperso: un usuario recién creado, sin ningún movimiento
+    cargado todavía. No debe reventar (NaN%, división por cero) -- debe
+    devolver listas vacías y un perfil con arquetipo 'Sin datos
+    suficientes' (ver perfil_financiero.clasificar_perfil)."""
+    login(client, "user_test", "clave-user-456")
+    resp = client.get("/api/dashboard-data")
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["movimientos"] == []
+    assert body["ledger_deuda"] == []
+    assert body["perfil"]["arquetipo"] == "Sin datos suficientes"
+
+
+def test_dashboard_data_aisla_movimientos_entre_usuarios(client, app_ctx):
+    """Los movimientos que registra un usuario no deben aparecer en la
+    respuesta de /api/dashboard-data de otro (fuga de datos entre
+    usuarios, el bug de regresión ya visto antes en este proyecto)."""
+    _, admin_id, user_id = app_ctx
+
+    login(client, "admin_test", "clave-admin-123")
+    client.post("/api/registrar-movimiento", data={
+        "fecha": "2026-01-15", "tipo": "gasto", "monto": "10000",
+        "descripcion": "Solo del admin", "categoria": "otros",
+        "moneda": "COP", "entidad": "Test",
+    })
+    resp_admin = client.get("/api/dashboard-data")
+    client.get("/logout")
+
+    login(client, "user_test", "clave-user-456")
+    resp_user = client.get("/api/dashboard-data")
+
+    descripciones_admin = {m["descripcion"] for m in resp_admin.get_json()["movimientos"]}
+    descripciones_user = {m["descripcion"] for m in resp_user.get_json()["movimientos"]}
+
+    assert "Solo del admin" in descripciones_admin
+    assert "Solo del admin" not in descripciones_user
+    assert descripciones_user == set()
+
+
+def test_dashboard_data_tras_cambiar_vista_muestra_datos_de_la_cuenta_vista(client, app_ctx):
+    """Si el admin cambia de perfil vía /cambiar-vista, /api/dashboard-data
+    debe devolver los datos de la cuenta que está viendo ahora, no los
+    propios del admin (viendo_id(), no usuario_id de sesión)."""
+    _, admin_id, user_id = app_ctx
+
+    login(client, "admin_test", "clave-admin-123")
+    client.post("/api/registrar-movimiento", data={
+        "fecha": "2026-01-15", "tipo": "gasto", "monto": "5000",
+        "descripcion": "Movimiento del admin", "categoria": "otros",
+        "moneda": "COP", "entidad": "Test",
+    })
+
+    conn = db.conectar()
+    db.insertar_movimientos(
+        conn,
+        [{
+            "fecha": "2026-01-20", "tipo": "gasto", "categoria": "otros", "moneda": "COP",
+            "monto": 7000.0, "descripcion": "Movimiento del usuario normal", "entidad": "Test",
+        }],
+        origen="manual",
+        usuario_id=user_id,
+    )
+    conn.close()
+
+    cambio = client.post("/cambiar-vista", data={"usuario_id": user_id})
+    assert cambio.status_code == 302
+
+    resp = client.get("/api/dashboard-data")
+    descripciones = {m["descripcion"] for m in resp.get_json()["movimientos"]}
+
+    assert "Movimiento del usuario normal" in descripciones
+    assert "Movimiento del admin" not in descripciones

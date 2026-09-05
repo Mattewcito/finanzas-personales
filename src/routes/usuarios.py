@@ -6,7 +6,6 @@ Alta y edición de cuentas (solo admin) y edición del propio perfil.
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
 
 import db_finanzas as db
-import actualizar_dashboard
 from auth import login_required
 
 usuarios_bp = Blueprint("usuarios", __name__)
@@ -44,8 +43,8 @@ def api_crear_usuario():
         db.crear_esquema(conn)
         nuevo_id = db.crear_usuario(conn, username, password, rol, nombre)
 
-    actualizar_dashboard.main()  # genera el dashboard (vacío) del usuario nuevo de una vez
-
+    # No hace falta "generar" nada -- /api/dashboard-data va a devolver
+    # listas vacías para este usuario la primera vez que entre.
     return jsonify(ok=True, id=nuevo_id)
 
 

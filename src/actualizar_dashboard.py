@@ -1,27 +1,25 @@
 """
 actualizar_dashboard.py
 ========================
-Lee la PLANTILLA dashboard/dashboard_finanzas.html (versionada en git, sin
-datos reales) y genera data/dashboard_finanzas.html (con tus datos reales
-adentro, ignorado por git) — ese segundo archivo es el que abrís con doble
-clic todos los días.
+Hasta 2026-09-05 este script generaba un HTML por usuario con los datos
+horneados adentro (`data/dashboard_<id>.html`), que era lo que Flask
+servía tal cual. El dashboard ahora es DINÁMICO: `/vista/dashboard`
+sirve un único archivo estático (`dashboard/dashboard_finanzas.html`) y
+el navegador le pide sus propios datos a `/api/dashboard-data` al
+cargar (ver `routes/dashboard.py::api_dashboard_data`) -- ya no hay
+"regenerar" ni archivos por usuario en disco.
 
-Pensado para correr desatendido todos los días vía una tarea programada
-de Windows (Task Scheduler), después de que el bot que sincroniza el
-Excel desde Gmail haya terminado (hasta que la lectura de correo se
-reemplace por una automatización local propia).
+Lo único que le queda a este script es sincronizar `data/finanzas.db`
+desde `data/finanzas_personales.xlsx`, mientras el Excel siga siendo un
+canal de ingesta activo (el bot externo de Gmail que lo escribe todavía
+no se reemplazó del todo por `leer_correo.py`, que ya inserta directo a
+la BD). Si el Excel no existe, correr este script no hace nada -- no es
+un error.
 
-  1. Sincroniza data/finanzas.db desde data/finanzas_personales.xlsx.
-  2. Consulta los movimientos ya enriquecidos y el ledger de deuda DESDE
-     la base de datos (esa lógica vive en db_finanzas.py, un solo lugar).
-  3. Reemplaza los bloques embebidos en dashboard_finanzas.html (DATA,
-     DEUDA_TARJETAS y GENERATED_AT) usando marcadores de comentario.
-  4. Sólo sobrescribe el HTML si todo el proceso fue exitoso — si algo
-     falla, el dashboard existente queda intacto y el error se registra
-     en actualizar_dashboard.log
-
-No requiere red ni backend: todo corre localmente con openpyxl + sqlite3
-(ambos ya vienen con Python, sin instalar nada adicional).
+Sigue pensado para correr desatendido vía la tarea programada de
+Windows ("ActualizarDashboardFinanzas"), pero una vez que el Excel se
+retire del todo, ese script y esa tarea programada dejan de tener
+trabajo que hacer y se pueden borrar.
 
 ⚠️ NOTA IMPORTANTE (no es asesoría tributaria):
 La clasificación débito/crédito es automática, basada en patrones de
@@ -32,12 +30,9 @@ real de caja. Esto es una herramienta de organización personal; antes
 de usar estos números para declarar renta, verificalos con tu contador.
 """
 
-import json
-import re
 import sys
 import datetime
 import traceback
-from pathlib import Path
 
 # La consola de Windows (Task Scheduler incluido) suele usar cp1252, que no
 # puede imprimir flechas/tildes especiales. Forzamos UTF-8 en stdout/stderr
@@ -47,18 +42,10 @@ for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
-import db_finanzas as db  # mismo folder (src/) — sincronización, esquema y consultas
-import perfil_financiero  # motor de clasificación de hábitos financieros por usuario
+import db_finanzas as db  # mismo folder (src/) — sincronización y esquema
 
 PROJECT_ROOT = db.PROJECT_ROOT
-TEMPLATE_PATH = PROJECT_ROOT / "dashboard" / "dashboard_finanzas.html"  # versionada en git, SIN datos reales
 LOG_PATH = PROJECT_ROOT / "data" / "actualizar_dashboard.log"
-
-
-def html_path_usuario(usuario_id: int) -> Path:
-    """Cada usuario tiene su propio dashboard generado (datos separados,
-    2026-09-05) -- nunca uno combinado. data/dashboard_<id>.html, gitignored."""
-    return PROJECT_ROOT / "data" / f"dashboard_{usuario_id}.html"
 
 
 def log(msg: str) -> None:
@@ -69,89 +56,23 @@ def log(msg: str) -> None:
         f.write(line + "\n")
 
 
-def _bloque(marcador: str, contenido: str) -> str:
-    return f"/* __{marcador}_START__ */\n{contenido}\n/* __{marcador}_END__ */"
-
-
-def _reemplazar_bloque(html: str, marcador: str, nuevo_contenido: str) -> str:
-    patron = re.compile(rf"/\* __{marcador}_START__ \*/.*?/\* __{marcador}_END__ \*/", re.DOTALL)
-    if not patron.search(html):
-        raise ValueError(f"No se encontraron los marcadores __{marcador}_START__/__{marcador}_END__ en el HTML.")
-    nuevo_bloque = _bloque(marcador, nuevo_contenido)
-    # Se usa una función como reemplazo (no un string) para que re.sub no interprete
-    # secuencias tipo \1 dentro del JSON generado.
-    return patron.sub(lambda _: nuevo_bloque, html, count=1)
-
-
-def inyectar_en_html(html: str, movimientos: list[dict], ledger_deuda: list[dict], perfil: dict) -> str:
-    """Reemplaza los bloques DATA, DEUDA_TARJETAS, GENERATED_AT y
-    PERFIL_FINANCIERO dentro del HTML, usando los marcadores de
-    comentario como anclas. Falla ruidosamente (excepción) si algún
-    marcador no se encuentra, para no corromper el archivo
-    silenciosamente."""
-
-    data_json = json.dumps(movimientos, ensure_ascii=False, indent=0)
-    html = _reemplazar_bloque(html, "DATA", f"const DATA = {data_json};")
-
-    deuda_json = json.dumps(ledger_deuda, ensure_ascii=False, indent=0)
-    html = _reemplazar_bloque(html, "DEUDA_TARJETAS", f"const DEUDA_TARJETAS = {deuda_json};")
-
-    ahora = datetime.datetime.now().isoformat(timespec="seconds")
-    html = _reemplazar_bloque(html, "GENERATED_AT", f'const GENERATED_AT = "{ahora}"; // fecha y hora de generación del dashboard')
-
-    perfil_json = json.dumps(perfil, ensure_ascii=False, indent=0)
-    html = _reemplazar_bloque(html, "PERFIL_FINANCIERO", f"const PERFIL_FINANCIERO = {perfil_json};")
-
-    return html
-
-
 def main() -> int:
     try:
-        if not TEMPLATE_PATH.exists():
-            raise FileNotFoundError(f"No se encontró la plantilla {TEMPLATE_PATH}")
-
         conn = db.conectar()
         try:
             db.crear_esquema(conn)  # no-op si ya existe; asegura que la BD esté lista aunque sea la primera corrida
 
-            # El Excel es un canal de ingesta EN TRANSICIÓN hacia salida (ver
-            # perfil_financiero y leer_correo.py -- el resto de los orígenes ya
-            # escriben directo a la BD). Si no está, no es un error: se
-            # salta la sincronización y se sigue con lo que ya haya en la BD.
             if db.XLSX_PATH.exists():
                 stats = db.sincronizar_desde_excel(conn)
-                resumen_excel = f"Excel sincronizado ({stats['movimientos']} filas, {stats['fecha_min']} a {stats['fecha_max']})."
+                log(f"OK — Excel sincronizado ({stats['movimientos']} filas, {stats['fecha_min']} a {stats['fecha_max']}).")
             else:
-                resumen_excel = "Sin Excel activo -- los movimientos vienen directo de la BD."
-
-            usuarios = db.listar_usuarios(conn)
-
-            resumenes = []
-            for u in usuarios:
-                movimientos = db.obtener_movimientos(conn, usuario_id=u["id"])
-                ledger_deuda = db.obtener_ledger_deuda(conn, usuario_id=u["id"])
-                # Perfil de hábitos financieros: se calcula sobre TODO el
-                # historial del usuario (no tiene sentido recalcularlo por
-                # período filtrado, ver src/perfil_financiero.py).
-                perfil = perfil_financiero.generar_perfil(movimientos, ledger_deuda)
-
-                # Siempre parte de la PLANTILLA (sin datos), nunca del HTML
-                # generado la vez anterior — así nunca queda un dato viejo
-                # pegado por error, y un usuario nunca hereda datos de otro.
-                html_plantilla = TEMPLATE_PATH.read_text(encoding="utf-8")
-                html_nuevo = inyectar_en_html(html_plantilla, movimientos, ledger_deuda, perfil)
-                html_path_usuario(u["id"]).write_text(html_nuevo, encoding="utf-8")
-
-                saldo = ledger_deuda[-1]["saldo_acumulado"] if ledger_deuda else 0.0
-                resumenes.append(f"{u['nombre_mostrado']} (id={u['id']}): {len(movimientos)} mov., deuda ${saldo:,.0f}")
+                log("OK — sin Excel activo, nada que sincronizar (el dashboard ya lee la BD directo).")
         finally:
             conn.close()
-
-        log(f"OK — {resumen_excel} Dashboards regenerados -> " + " | ".join(resumenes))
         return 0
 
     except Exception as e:
-        log(f"ERROR — el dashboard NO se actualizó: {e}")
+        log(f"ERROR — la sincronización con el Excel falló: {e}")
         log(traceback.format_exc())
         return 1
 

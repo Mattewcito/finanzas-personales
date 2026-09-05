@@ -12,7 +12,7 @@ from pathlib import Path
 from flask import Blueprint, render_template, request, jsonify, send_from_directory, send_file
 
 import db_finanzas as db
-import actualizar_dashboard
+import perfil_financiero
 from auth import login_required, viendo_id
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
@@ -20,6 +20,16 @@ import reconciliar_extractos as rex  # parsers de PDF ya construidos y probados
 
 UPLOADS_DIR = db.DATA_DIR / "uploads"
 UPLOADS_DIR.mkdir(exist_ok=True)
+
+# La plantilla del dashboard ya NO se "hornea" con datos por usuario --
+# es un único archivo estático que pide sus datos por AJAX a
+# /api/dashboard-data al cargar (ver dashboard/dashboard_finanzas.html,
+# función iniciarDashboard()). Ver el commit que introdujo esto para el
+# porqué del cambio: el modelo viejo (un dashboard_<id>.html generado
+# por usuario, escrito en disco) es lo que causaba que dev/producción
+# se pisaran entre sí al compartir esa carpeta, y necesitaba un paso de
+# "regenerar" manual cada vez que cambiaban los datos.
+DASHBOARD_DIR = db.PROJECT_ROOT / "dashboard"
 
 dashboard_bp = Blueprint("dashboard", __name__)
 
@@ -33,7 +43,26 @@ def home():
 @dashboard_bp.route("/vista/dashboard")
 @login_required
 def vista_dashboard():
-    return send_from_directory(db.DATA_DIR, f"dashboard_{viendo_id()}.html")
+    return send_from_directory(DASHBOARD_DIR, "dashboard_finanzas.html")
+
+
+@dashboard_bp.route("/api/dashboard-data")
+@login_required
+def api_dashboard_data():
+    """Todo lo que el dashboard necesita para el perfil que se esté
+    viendo ahora mismo (respeta viendo_id(), igual que cualquier otra
+    ruta): movimientos, ledger de deuda, y el perfil financiero por
+    hábitos -- calculado al vuelo, no desde un archivo pre-generado."""
+    with db.conexion() as conn:
+        movimientos = db.obtener_movimientos(conn, usuario_id=viendo_id())
+        ledger_deuda = db.obtener_ledger_deuda(conn, usuario_id=viendo_id())
+    perfil = perfil_financiero.generar_perfil(movimientos, ledger_deuda)
+    return jsonify(
+        movimientos=movimientos,
+        ledger_deuda=ledger_deuda,
+        perfil=perfil,
+        generated_at=datetime.datetime.now().isoformat(timespec="seconds"),
+    )
 
 
 @dashboard_bp.route("/registrar")
@@ -75,9 +104,9 @@ def api_registrar_movimiento():
         db.crear_esquema(conn)
         stats = db.insertar_movimientos(conn, [movimiento], origen="manual", usuario_id=viendo_id())
 
-    if stats["nuevos"] > 0:
-        actualizar_dashboard.main()
-
+    # El dashboard ya no se regenera a mano -- /api/dashboard-data lee la
+    # BD en cada carga de página, así que este movimiento ya está
+    # disponible ni bien el navegador vuelva a pedirlo.
     return jsonify(ok=True, **stats)
 
 
@@ -153,8 +182,6 @@ def api_cargar_extracto():
     with db.conexion() as conn:
         db.crear_esquema(conn)
         stats = db.insertar_movimientos(conn, movimientos, origen=f"upload_{tipo}", usuario_id=viendo_id())
-
-    actualizar_dashboard.main()  # regenera los dashboards de todos los usuarios
 
     return jsonify(ok=True, **stats)
 
