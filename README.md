@@ -10,10 +10,17 @@ reemplazables/opcionales por diseño.
 ## Estado actual
 
 - ✅ **Fase 0 — Base de datos real**: los datos viven en `data/finanzas.db`
-  (SQLite), no en el Excel. El Excel se mantiene como fuente de entrada
-  (todavía es lo único que actualiza el bot de lectura de correo viejo) y
-  se sincroniza automáticamente a la base de datos cada vez que se
-  regenera el dashboard.
+  (SQLite), no en el Excel. El Excel es un canal de ingesta EN
+  TRANSICIÓN hacia salida (`src/actualizar_dashboard.py` lo sincroniza
+  a la BD solo si sigue existiendo -- si no, no hace nada): el bot
+  externo de Gmail que lo escribía se está reemplazando por
+  `leer_correo.py`, que ya inserta directo a la BD.
+- ✅ **Dashboard dinámico**: el dashboard (`dashboard/dashboard_finanzas.html`)
+  es un único archivo estático que le pide sus datos a
+  `GET /api/dashboard-data` al cargar, respetando la sesión (y, si sos
+  admin, la cuenta que estés viendo). Ya no hay "regenerar" ni archivos
+  HTML por usuario en disco -- cualquier cambio en la BD se ve apenas
+  se recarga la página.
 - 🚧 **Fase 1 — Ingesta local de correo** (`src/leer_correo.py`): lee las
   notificaciones de Bancolombia directo de Gmail por IMAP (contraseña de
   aplicación, no navegador automatizado — Google bloquea logins por
@@ -23,9 +30,10 @@ reemplazables/opcionales por diseño.
   de tarjeta. **Nu queda pendiente** (solo manda extractos mensuales, no
   alertas por movimiento — se sigue cubriendo con `reconciliar_extractos.py`).
   Ver "Configurar la lectura de correo" abajo.
-- ✅ **App con interfaz** (`src/app.py`): servidor Flask con menú lateral
-  colapsable — Dashboard (embebido) y Cargar extractos (subir Excel/PDF
-  desde el navegador, se inserta con dedup y regenera el dashboard solo).
+- ✅ **App con interfaz** (`src/app.py`, blueprints en `src/auth.py` y
+  `src/routes/`): servidor Flask con menú lateral colapsable — Dashboard
+  (embebido, dinámico) y Cargar extractos (subir Excel/PDF desde el
+  navegador, se inserta con dedup, visible al instante).
 - ✅ **Docker + Tailscale**: la app corre dockerizada (puerto 5002,
   `docker-compose.yml`) para poder verla desde el celular/tablet estando
   fuera de casa, **sin exponerla a internet público** — el acceso es vía
@@ -41,6 +49,15 @@ reemplazables/opcionales por diseño.
   levanta el contenedor Docker solo, vía un runner de GitHub Actions
   instalado en esta misma PC (ver `.github/workflows/deploy.yml` y
   "Despliegue automático" abajo).
+- ✅ **Perfil financiero por hábitos** (`src/perfil_financiero.py`): cada
+  vez que el dashboard pide sus datos, se clasifica a ese usuario en un
+  arquetipo (ahorrador, en alerta por deuda, ingresos irregulares, etc.)
+  a partir de TODO su historial, con una descripción y consejos
+  generados automáticamente por reglas (no IA). Se muestra en la sección
+  "Tu perfil financiero" del dashboard.
+- ✅ **Gráficos expandibles**: click en cualquier gráfico (o en el
+  ranking de Top 5 categorías) para verlo en grande con una tabla de
+  detalle debajo.
 - 🔜 **Fase 2 — Documentos y DIAN**: guardar y vincular facturas,
   extractos y contratos a los movimientos.
 - 🔜 **Fase 3 — Dashboard v2**: planificador de pago de deuda,
@@ -57,10 +74,15 @@ gracias a `restart: unless-stopped`):
 | `C:\Finanzas personales` (esta, donde editás código) | `finanzas-app-dev` | 5001 | Probar cambios antes de subirlos |
 | `C:\finanzas-deploy` (dedicada, nunca se edita a mano) | `finanzas-app-online` | 5002 | Versión estable, accesible por Tailscale |
 
-Las dos leen **la misma base de datos real** (`C:\Finanzas personales\data`)
-aunque el código de cada una pueda estar en una versión distinta -- eso lo
-resuelve `docker-compose.override.yml` en cada carpeta (no se sube a git,
-es específico de esta máquina).
+Las dos comparten **solo la fuente real de datos** -- `finanzas.db` y el
+Excel, mientras siga activo (`C:\Finanzas personales\data`) -- vía
+montajes de archivo individuales en el `docker-compose.override.yml` de
+`finanzas-deploy` (no se sube a git, es específico de esta máquina). El
+dashboard ya es dinámico (lee la BD por API, no hay ningún HTML
+generado que compartir), así que lo que se ve en producción (5002)
+siempre refleja el código de `master`, nunca lo que se esté probando en
+la carpeta de trabajo (5001) -- ambas leen la misma BD, cada una con su
+propia versión del código.
 
 Para levantar/reconstruir cualquiera de las dos a mano:
 ```bash
@@ -123,28 +145,50 @@ Finanzas personales/
 │   ├── finanzas_personales.xlsx #   Excel fuente (lo escribe el bot de correo)
 │   └── finanzas.db              #   base de datos SQLite (fuente de verdad para el dashboard)
 ├── dashboard/
-│   └── dashboard_finanzas.html  # dashboard offline, abrir con doble clic
+│   └── dashboard_finanzas.html  # plantilla del dashboard (sin datos), versionada en git
 ├── src/
+│   ├── app.py                   # raíz de la app Flask: crea el objeto Flask y registra los blueprints
+│   ├── auth.py                  # blueprint de autenticación (login/logout/cambiar de perfil)
+│   ├── routes/
+│   │   ├── dashboard.py         # blueprint: ver el dashboard, registrar movimientos, cargar extractos
+│   │   └── usuarios.py          # blueprint: alta/edición de cuentas, editar el propio perfil
 │   ├── db_finanzas.py           # esquema, clasificación de movimientos, sincronización, consultas
-│   ├── actualizar_dashboard.py  # corre a diario: sincroniza + regenera el dashboard
+│   ├── perfil_financiero.py     # clasifica a cada usuario en un arquetipo de hábitos + consejos
+│   ├── actualizar_dashboard.py  # sincroniza finanzas.db desde el Excel, mientras siga activo
 │   ├── migrar_a_sqlite.py       # migración/reset puntual de la base de datos
+│   ├── crear_usuario.py         # alta de cuentas por línea de comandos
+│   ├── leer_correo.py           # ingesta local de notificaciones bancarias por Gmail/IMAP
+│   ├── templates/                # plantillas Jinja de la interfaz (login, registrar, cargar extractos, etc.)
 │   └── tools/
-│       └── reconciliar_extractos.py  # parseo de extractos PDF -> Excel, con dedup por (fecha, monto)
+│       └── reconciliar_extractos.py  # parseo de extractos PDF -> movimientos, con dedup por (fecha, monto)
+├── tests/                        # pytest: clasificación, parsers de correo, integración de la app
 ├── docs/                        # (futuro) facturas, extractos, contratos escaneados — NUNCA se sube a git
 └── requirements.txt
 ```
 
+Patrón de diseño: **Flask Blueprints** -- cada área del producto (auth,
+dashboard, usuarios) vive en su propio archivo/blueprint en vez de tener
+todas las rutas en un único `app.py`; `app.py` queda como raíz delgada
+que solo arma la app y los registra. Ver la cabecera de `src/app.py` y
+`src/auth.py` para el detalle de qué vive en cada uno.
+
 ## Cómo funciona el flujo diario
 
 ```
-Gmail (tarea externa, 8:00 AM)
+Gmail (tarea externa, 8:00 AM) -- mientras el Excel siga activo
    -> escribe data/finanzas_personales.xlsx
 Tarea de Windows "ActualizarDashboardFinanzas" (9:30 AM)
    -> corre src/actualizar_dashboard.py
-      -> sincroniza el Excel a data/finanzas.db
-      -> consulta la base de datos ya enriquecida (medio de pago, deuda)
-      -> regenera dashboard/dashboard_finanzas.html
+      -> sincroniza el Excel a data/finanzas.db (si el archivo existe)
+En cualquier momento, al abrir el dashboard:
+   -> el navegador pide GET /api/dashboard-data
+      -> Flask consulta finanzas.db (ya enriquecida: medio de pago, deuda)
+      -> devuelve movimientos + ledger de deuda + perfil financiero, siempre al día
 ```
+
+Una vez que `leer_correo.py` reemplace del todo al bot externo de Gmail
+y se borre el Excel, tanto `actualizar_dashboard.py` como la tarea
+programada dejan de tener trabajo que hacer -- se pueden borrar los dos.
 
 ## Modelo de datos: caja real vs. deuda de tarjeta
 
@@ -173,7 +217,7 @@ Requiere Python 3.11+ y las dependencias de `requirements.txt`:
 py -m pip install -r requirements.txt
 cd src
 py migrar_a_sqlite.py       # sincroniza/verifica la base de datos
-py actualizar_dashboard.py  # sincroniza + regenera el dashboard
+py actualizar_dashboard.py  # sincroniza finanzas.db desde el Excel (si sigue activo)
 ```
 
 ## Configurar la lectura de correo (Fase 1)

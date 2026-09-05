@@ -12,5 +12,9 @@ services:
       - MODO_LABEL=Local   # la carpeta de despliegue lo pisa a "Online" en su propio override
     volumes:
       - ./data:/app/data
+      # dashboard_finanzas.html es un único archivo estático que el
+      # navegador carga y le pide sus datos a /api/dashboard-data por su
+      # cuenta -- este montaje es solo para poder editarlo sin
+      # reconstruir la imagen, no para "regenerar" nada (eso ya no existe).
       - ./dashboard:/app/dashboard
     restart: unless-stopped   # si Docker se reinicia o el contenedor se cae, vuelve a levantarse solo

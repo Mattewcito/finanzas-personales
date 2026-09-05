@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import sys,json; d=json.load(sys.stdin); f=(d.get('tool_input') or {}).get('file_path') or (d.get('tool_response') or {}).get('filePath') or ''; bs=chr(92); n=f.replace(bs,'/').lower(); msg={'hookSpecificOutput':{'hookEventName':'PostToolUse','additionalContext':'Se acaba de crear o editar '+f+' -- antes de dar el cambio por terminado, invoca el subagente test-engineer (Agent tool, subagent_type: test-engineer) para que escriba las pruebas pytest correspondientes.'}}; print(json.dumps(msg)) if (n.endswith('.py') and '/src/' in n) else None\" 2>/dev/null"
+          }
+        ]
+      }
+    ]
+  }
+}
