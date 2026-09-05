@@ -29,6 +29,10 @@ venv/
 !.vscode/settings.json
 !.vscode/extensions.json
 
+# Overrides de Docker Compose específicos de cada máquina (rutas absolutas,
+# nombres de contenedor) -- nunca deben subirse ni pisarse con git reset.
+docker-compose.override.yml
+
 # Excepciones (deben ir al final para ganarle a las reglas de arriba):
 # archivos *.example.json son plantillas sin datos reales, sí se versionan.
 !data/*.example.json

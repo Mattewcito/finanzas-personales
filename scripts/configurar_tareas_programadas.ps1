@@ -1,6 +1,14 @@
 <#
   configurar_tareas_programadas.ps1
   ====================================
+  OBSOLETO desde que ambas versiones (dev y online) corren en Docker con
+  "restart: unless-stopped" -- Docker ya las mantiene siempre arriba,
+  sin necesitar estas tareas. Se deja el script como referencia; si
+  preferís volver al modelo anterior (sin Docker para dev), seguís
+  pudiendo correrlo. Si no, podés desactivar/borrar las tareas
+  "FinanzasDev" y "FinanzasDocker" desde el Programador de tareas de
+  Windows.
+
   Crea las 2 tareas programadas del proyecto Finanzas Personales:
 
     1. FinanzasDev     -> corre "py app.py" (servidor de desarrollo,

@@ -4,6 +4,13 @@ name: Deploy
 # un Pull Request). Corre en el runner auto-hospedado instalado en la PC
 # donde vive el contenedor Docker -- no en la nube de GitHub, porque el
 # contenedor y sus datos viven localmente.
+#
+# Corre sobre C:\finanzas-deploy -- una carpeta APARTE de la carpeta de
+# trabajo, dedicada solo a esto (nunca se edita a mano). Así el "git reset
+# --hard" que actualiza el código para producción nunca pisa nada que se
+# esté probando en la carpeta de desarrollo. Ambas leen la misma base de
+# datos real (ver docker-compose.override.yml en cada carpeta, no
+# versionado).
 on:
   push:
     branches: [master]
@@ -16,7 +23,7 @@ jobs:
       - name: Actualizar el código y reconstruir el contenedor
         shell: cmd
         run: |
-          cd /d "C:\Finanzas personales"
+          cd /d "C:\finanzas-deploy"
           git fetch origin master
           git reset --hard origin/master
           docker compose up -d --build
