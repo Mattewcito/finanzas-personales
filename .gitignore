@@ -1,0 +1,29 @@
+# ============================================================
+# NUNCA subir datos financieros reales ni credenciales a GitHub.
+# Todo lo que sea información personal real vive solo en local.
+# ============================================================
+
+# Datos reales (Excel, base de datos, extractos, facturas escaneadas)
+data/
+docs/*
+!docs/.gitkeep
+
+# Credenciales / secretos locales
+.env
+*.key
+credenciales*
+secrets*
+
+# Logs
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editor
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
