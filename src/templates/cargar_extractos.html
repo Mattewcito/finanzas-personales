@@ -54,6 +54,10 @@
           <option value="pdf_tarjeta">PDF — Extracto de tarjeta de crédito</option>
         </select>
 
+        <p id="ayudaPlantilla" style="margin:8px 0 0; font-size:12px;">
+          ¿No sabés qué formato lleva? <a href="/plantilla-excel" style="color:var(--accent-2); font-weight:600;">Descargá la plantilla</a>, completala y subila acá mismo.
+        </p>
+
         <div id="camposTarjeta" class="field-row" style="display:none;">
           <div>
             <label class="field-label">Marca de la tarjeta</label>
@@ -112,6 +116,7 @@ const dzFile = document.getElementById('dzFile');
 
 document.getElementById('tipoArchivo').addEventListener('change', (e) => {
   document.getElementById('camposTarjeta').style.display = e.target.value === 'pdf_tarjeta' ? 'grid' : 'none';
+  document.getElementById('ayudaPlantilla').style.display = e.target.value === 'excel' ? 'block' : 'none';
 });
 
 dropzone.addEventListener('click', () => archivoInput.click());
@@ -151,7 +156,11 @@ document.getElementById('formCarga').addEventListener('submit', async (e) => {
       return;
     }
     resultado.className = 'result-box ok';
-    resultado.textContent = `✅ ${json.nuevos} movimiento(s) nuevo(s) insertado(s), ${json.duplicados} ya existían.\nEl dashboard ya se actualizó con estos datos.`;
+    const lineas = [`✅ ${json.nuevos} movimiento(s) nuevo(s) insertado(s).`];
+    if (json.duplicados_bd > 0) lineas.push(`${json.duplicados_bd} ya estaban guardados de antes (mismo día y monto).`);
+    if (json.duplicados_lote > 0) lineas.push(`${json.duplicados_lote} estaban repetidos dentro del mismo archivo.`);
+    lineas.push('El dashboard ya se actualizó con estos datos.');
+    resultado.textContent = lineas.join('\n');
   } catch (err) {
     resultado.className = 'result-box error';
     resultado.textContent = '❌ No se pudo conectar con el servidor.';
