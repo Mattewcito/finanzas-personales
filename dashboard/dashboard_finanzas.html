@@ -1042,6 +1042,12 @@ const [catTop, catTopMonto] = gastoPorCategoria[0] || ['sin datos', 0];
 // Promedio mensual de gasto REAL de caja (COP): total gasto real / nº de meses distintos presentes en los datos
 const mesesPresentes = [...new Set(dataCOP.map(r=>r.fecha.slice(0,7)))].sort();
 const promedioMensualGasto = mesesPresentes.length ? totalGastoReal / mesesPresentes.length : 0;
+// Formato de etiqueta de mes ("Ene 2026") reutilizado por todos los gráficos
+// que agregan por mes (deuda de tarjetas, evolución de gastos, tendencia
+// mensual) -- definido acá, antes de su primer uso, para que esté disponible
+// en toda la función.
+const MESES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const mesLabel = (m) => { const [y,mm] = m.split('-'); return `${MESES_ES[parseInt(mm,10)-1]} ${y}`; };
 // Entidades más utilizadas (por nº de movimientos y por monto)
 const entidadCount = sortMapDesc(groupCount(DATA, r=>r.entidad));
 const entidadMonto = sortMapDesc(groupSum(dataCOP, r=>r.entidad));
@@ -1152,13 +1158,40 @@ document.getElementById('kpiGridDeuda').innerHTML = `
 // dibujado ahí en la llamada anterior (gráfico o mensaje de "sin datos").
 document.getElementById('chartDeudaEvolucionHolder').innerHTML = '<canvas id="chartDeudaEvolucion"></canvas>';
 if (DEUDA_TARJETAS.length) {
+  // Mismo criterio que chartEvolucion (más abajo): con más de 2 meses
+  // distintos en el período, un punto por movimiento puede volverse una
+  // maraña de decenas/cientos de puntos apretados e ilegibles -- agregamos
+  // por mes en ese caso. OJO: saldo_acumulado es un NIVEL (saldo de deuda),
+  // no un flujo -- agregar por mes NO es sumar los saldos del mes, es tomar
+  // el ÚLTIMO saldo_acumulado registrado dentro de cada mes (el saldo al
+  // cierre de ese mes). DEUDA_TARJETAS viene ordenado cronológicamente, así
+  // que el último valor visto para cada mes es, por construcción, el de cierre.
+  const agregarDeudaPorMes = mesesPresentes.length > 2;
+  let labelsDeuda, dataDeuda, movsPorMesArr;
+  if (agregarDeudaPorMes) {
+    const cierrePorMes = new Map(); // mes -> último saldo_acumulado visto
+    const movsPorMes = new Map();   // mes -> cantidad de movimientos ese mes
+    for (const d of DEUDA_TARJETAS) {
+      const mes = d.fecha.slice(0,7);
+      cierrePorMes.set(mes, d.saldo_acumulado); // se pisa con cada movimiento -- el último gana
+      movsPorMes.set(mes, (movsPorMes.get(mes)||0) + 1);
+    }
+    const mesesDeuda = [...cierrePorMes.keys()].sort();
+    labelsDeuda = mesesDeuda.map(mesLabel);
+    dataDeuda = mesesDeuda.map(m => cierrePorMes.get(m));
+    movsPorMesArr = mesesDeuda.map(m => movsPorMes.get(m));
+  } else {
+    labelsDeuda = DEUDA_TARJETAS.map(d => fmtDate(d.fecha));
+    dataDeuda = DEUDA_TARJETAS.map(d => d.saldo_acumulado);
+  }
+
   crearGrafico('chartDeudaEvolucion', {
     type: 'line',
     data: {
-      labels: DEUDA_TARJETAS.map(d => fmtDate(d.fecha)),
+      labels: labelsDeuda,
       datasets: [{
         label: 'Saldo deuda tarjetas de crédito',
-        data: DEUDA_TARJETAS.map(d => d.saldo_acumulado),
+        data: dataDeuda,
         borderColor: '#fbbf24',
         backgroundColor: 'rgba(251,191,36,0.12)',
         fill: true, tension: 0.3, borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 6,
@@ -1171,11 +1204,17 @@ if (DEUDA_TARJETAS.length) {
         legend: { display:false },
         tooltip: { callbacks: {
           label: (ctx) => `Saldo: ${fmtCOP(ctx.parsed.y)}`,
-          afterLabel: (ctx) => {
-            const d = DEUDA_TARJETAS[ctx.dataIndex];
-            const etiqueta = { credito:'Compra a crédito', avance_credito:'Avance de crédito', pago_tarjeta_credito:'Pago a tarjeta' }[d.tipo_movimiento] || d.tipo_movimiento;
-            return `${etiqueta}: ${fmtCOP(d.monto)} — ${d.descripcion}`;
-          }
+          // En modo agregado (por mes) el punto ya no representa un solo
+          // movimiento -- mostrar tipo/monto/descripción de un movimiento
+          // puntual sería engañoso, así que mostramos cuántos movimientos
+          // hubo ese mes en su lugar.
+          afterLabel: agregarDeudaPorMes
+            ? (ctx) => { const n = movsPorMesArr[ctx.dataIndex] || 0; return `${n} movimiento${n===1?'':'s'} ese mes`; }
+            : (ctx) => {
+                const d = DEUDA_TARJETAS[ctx.dataIndex];
+                const etiqueta = { credito:'Compra a crédito', avance_credito:'Avance de crédito', pago_tarjeta_credito:'Pago a tarjeta' }[d.tipo_movimiento] || d.tipo_movimiento;
+                return `${etiqueta}: ${fmtCOP(d.monto)} — ${d.descripcion}`;
+              }
         } }
       },
       scales: {
@@ -1270,15 +1309,32 @@ crearGrafico('chartMoneda', {
 /* =================================================================
    GRÁFICO 4 — Evolución temporal de gastos (línea diaria)
 ================================================================= */
-const gastoPorDia = sortMapDesc(groupSum(gastosCOP, r=>r.fecha)); // desc, lo reordenamos cronológicamente
-const gastoPorDiaChrono = [...gastoPorDia].sort((a,b)=> a[0].localeCompare(b[0]));
+// Con más de 2 meses distintos en el período, un punto por día satura el
+// gráfico (150-250+ puntos apretados e ilegibles) -- agregamos por mes en
+// ese caso, mismo umbral y mismo formato de etiqueta que chartDeudaEvolucion
+// y chartTendenciaMensual. Con 1-2 meses se mantiene el detalle diario de siempre.
+const agregarGastoPorMes = mesesPresentes.length > 2;
+let labelsEvolucion, dataEvolucion, labelSerieEvolucion;
+if (agregarGastoPorMes) {
+  const gastoPorMesEvol = groupSum(gastosCOP, r=>r.fecha.slice(0,7));
+  const mesesEvol = [...gastoPorMesEvol.keys()].sort();
+  labelsEvolucion = mesesEvol.map(mesLabel);
+  dataEvolucion = mesesEvol.map(m => gastoPorMesEvol.get(m));
+  labelSerieEvolucion = 'Gasto mensual';
+} else {
+  const gastoPorDia = sortMapDesc(groupSum(gastosCOP, r=>r.fecha)); // desc, lo reordenamos cronológicamente
+  const gastoPorDiaChrono = [...gastoPorDia].sort((a,b)=> a[0].localeCompare(b[0]));
+  labelsEvolucion = gastoPorDiaChrono.map(([d])=> fmtDate(d));
+  dataEvolucion = gastoPorDiaChrono.map(([,v])=>v);
+  labelSerieEvolucion = 'Gasto diario';
+}
 crearGrafico('chartEvolucion', {
   type: 'line',
   data: {
-    labels: gastoPorDiaChrono.map(([d])=> fmtDate(d)),
+    labels: labelsEvolucion,
     datasets: [{
-      label: 'Gasto diario',
-      data: gastoPorDiaChrono.map(([,v])=>v),
+      label: labelSerieEvolucion,
+      data: dataEvolucion,
       borderColor: '#38bdf8',
       backgroundColor: 'rgba(56,189,248,0.12)',
       fill: true,
@@ -1346,8 +1402,8 @@ crearGrafico('chartDistribucion', {
 const ingresoPorMes = groupSum(ingresosCOP, r=>r.fecha.slice(0,7));
 const gastoPorMes = groupSum(gastosCOP, r=>r.fecha.slice(0,7));
 const mesesOrdenados = mesesPresentes; // ya ordenados cronológicamente
-const MESES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-const mesLabel = (m) => { const [y,mm] = m.split('-'); return `${MESES_ES[parseInt(mm,10)-1]} ${y}`; };
+// MESES_ES / mesLabel ahora se definen más arriba (junto a mesesPresentes)
+// para que chartDeudaEvolucion y chartEvolucion también puedan usarlos.
 
 crearGrafico('chartTendenciaMensual', {
   type: 'line',
