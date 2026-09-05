@@ -114,6 +114,19 @@
     background-repeat:no-repeat; background-position: right 10px center; background-size:13px;
   }
   .pill-select:hover{ border-color: var(--accent); }
+  /* Botones de vista (trimestral/semestral/anual) -- por ahora es solo
+     el mockup visual, mismo lenguaje visual que .pill-select pero como
+     botones en vez de desplegables. Sin lógica todavía. */
+  .view-toggle{ display:flex; gap:8px; margin-top:14px; }
+  .view-toggle button{
+    background: var(--card-solid); border:1px solid var(--card-border);
+    padding: 8px 16px; border-radius: 999px; font-size: 12.5px; color: var(--text-dim);
+    font-family: inherit; cursor:pointer;
+  }
+  .view-toggle button:hover{ border-color: var(--accent); color: var(--text); }
+  .view-toggle button.active{
+    background: rgba(124,108,251,0.14); border-color: var(--accent); color: var(--text); font-weight:600;
+  }
   .pill{
     background: var(--card-solid); border:1px solid var(--card-border);
     padding: 8px 14px; border-radius: 999px; font-size: 12.5px; color: var(--text-dim);
@@ -338,6 +351,13 @@
     <div class="title-block">
       <h1>💰 Dashboard Financiero Personal</h1>
       <p>Análisis automático de movimientos — generado desde <b style="color:var(--text-dim)">finanzas.db</b>, sincronizada con el Excel, el correo y los extractos que cargues</p>
+      <!-- Vista previa visual únicamente -- todavía sin lógica de agrupación
+           (los botones no hacen nada aún, es solo para ver cómo quedan). -->
+      <div class="view-toggle">
+        <button type="button">Trimestral</button>
+        <button type="button">Semestral</button>
+        <button type="button">Anual</button>
+      </div>
     </div>
     <div style="display:flex; flex-direction:column; align-items:flex-end; gap:10px;">
       <div class="badge-row" id="rangoTotalBadge"></div>
@@ -537,15 +557,10 @@ const fmtDateTime = (iso) => new Date(iso).toLocaleString('es-CO', { day:'2-digi
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /* =================================================================
-   HEADER — información que NO depende del filtro de período
-   (se calcula una sola vez sobre el histórico completo, así nunca
-   queda desactualizada si el período filtrado no tiene movimientos)
+   HEADER — lo único que NO depende del filtro de período: la fecha de
+   generación del archivo. El rango de fechas SÍ es dinámico y se
+   calcula dentro de renderDashboard() (ver más abajo).
 ================================================================= */
-if (DATA_COMPLETA.length) {
-  const fechasCompletas = [...new Set(DATA_COMPLETA.map(r => r.fecha))].sort();
-  document.getElementById('rangoTotalBadge').innerHTML =
-    `<div class="pill">🗓️ Datos desde <b>${fmtDate(fechasCompletas[0])}</b> hasta <b>${fmtDate(fechasCompletas[fechasCompletas.length - 1])}</b></div>`;
-}
 document.getElementById('lastUpdated').textContent = `Última actualización del dashboard: ${fmtDateTime(GENERATED_AT)}`;
 
 const CAT_ICONS = {
@@ -590,11 +605,9 @@ function renderDashboard(DATA, DEUDA_TARJETAS) {
   if (existente) existente.destroy();
 });
 
-// Texto dinámico: reacciona al período seleccionado en los filtros de
-// año/mes (a diferencia del badge de "Datos desde... hasta..." de arriba,
-// que siempre muestra la cobertura TOTAL sin importar el filtro activo).
-// Va ANTES del corte por período vacío de abajo -- si no, un período sin
-// datos dejaría este texto pegado con el conteo del período anterior.
+// Textos dinámicos: reaccionan al período seleccionado en los filtros de
+// año/mes. Van ANTES del corte por período vacío de más abajo -- si no,
+// un período sin datos los dejaría pegados con los del período anterior.
 {
   const anioSel = document.getElementById('filtroAnio');
   const mesSel = document.getElementById('filtroMes');
@@ -606,6 +619,17 @@ function renderDashboard(DATA, DEUDA_TARJETAS) {
   }
   document.getElementById('movimientosInfo').innerHTML =
     `<span class="dot"></span> <b>${DATA.length}</b> movimiento${DATA.length === 1 ? '' : 's'} cargado${DATA.length === 1 ? '' : 's'} ${periodoTxt}`;
+
+  // Rango de fechas DEL PERÍODO FILTRADO (dinámico): si estuviera fijo
+  // mostrando el total, al estar justo arriba de los selects de año/mes
+  // se lee como si reflejara el filtro activo, y no es así -- confunde.
+  if (DATA.length) {
+    const fechasPeriodo = [...new Set(DATA.map(r => r.fecha))].sort();
+    document.getElementById('rangoTotalBadge').innerHTML =
+      `<div class="pill">🗓️ Desde <b>${fmtDate(fechasPeriodo[0])}</b> hasta <b>${fmtDate(fechasPeriodo[fechasPeriodo.length - 1])}</b></div>`;
+  } else {
+    document.getElementById('rangoTotalBadge').innerHTML = '';
+  }
 }
 
 // Período sin ningún movimiento (ej. un mes puntual sin datos todavía): en vez
