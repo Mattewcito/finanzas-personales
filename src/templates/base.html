@@ -107,12 +107,22 @@
     background-color: var(--card-solid); color: var(--text);
     border:1px solid var(--card-border); border-radius:6px;
   }
+  /* El trigger (más de 5 cuentas) es un <button> pero se ve IDÉNTICO al
+     <select> de siempre -- reusa .switcher-select (mismo fondo/flecha
+     de fondo) y solo ajusta lo que un <button> no hereda por defecto
+     (texto centrado, cursor). Su propio <svg> de flecha queda oculto:
+     la de fondo de .switcher-select ya alcanza. */
+  .switcher-trigger{ display:block; text-align:left; cursor:pointer; }
+  .switcher-trigger svg{ display:none; }
+  .switcher-trigger[hidden]{ display:none; } /* [hidden] del navegador pierde contra el display:block de arriba sin esto */
+
   /* Buscador de "Viendo perfil de" -- solo aparece con más de 5 cuentas
-     (ver el <select> simple arriba para 5 o menos). Una sola caja
-     (buscador + lista fusionados, mismo fondo/borde) en vez de dos
-     bloques separados -- y la lista recortada a exactamente 2 filas de
-     alto (scrollea para ver el resto) para que el conjunto completo
-     (buscador + 2 filas) ocupe lo mismo que 3 opciones de un <select>. */
+     (ver el <select> simple arriba para 5 o menos), y solo mientras el
+     trigger de arriba está desplegado (JS). Una sola caja (buscador +
+     lista fusionados, mismo fondo/borde) -- la lista recortada a
+     exactamente 2 filas de alto (scrollea para ver el resto) para que
+     el conjunto completo (buscador + 2 filas) ocupe lo mismo que 3
+     opciones de un <select>. */
   .switcher-buscador{
     border:1px solid var(--card-border); border-radius:6px; overflow:hidden;
     background-color: var(--card-solid);
@@ -124,6 +134,16 @@
     outline:none; -webkit-appearance:none; appearance:none;
   }
   .switcher-buscador input::placeholder{ color: var(--text-faint); }
+  /* Chrome ignora background-color en un input que decide autocompletar
+     (a veces incluso con autocomplete="off") y lo pinta blanco -- este
+     es el único override que de verdad lo evita. */
+  .switcher-buscador input:-webkit-autofill,
+  .switcher-buscador input:-webkit-autofill:hover,
+  .switcher-buscador input:-webkit-autofill:focus{
+    -webkit-box-shadow: 0 0 0 1000px var(--card-solid) inset !important;
+    -webkit-text-fill-color: var(--text) !important;
+    caret-color: var(--text);
+  }
   .switcher-lista{ max-height:56px; overflow-y:auto; } /* 56px = 2 filas de 28px */
   .switcher-opcion{
     display:block; box-sizing:border-box; width:100%; height:28px; line-height:28px;
@@ -286,15 +306,18 @@
       <div class="full-text" style="margin-bottom:8px;">
         <label style="display:block; font-size:10.5px; color:var(--text-faint); margin-bottom:3px;">Viendo perfil de</label>
         {% if usuarios_disponibles|length > 5 %}
-        <!-- Más de 5 cuentas: un <select> nativo se vuelve incómodo de
-             recorrer -- buscador + lista filtrable en su lugar, en una
-             sola caja fusionada. La lista muestra 2 filas (el buscador
-             ocupa el lugar de la 3ra, mismo espacio total que el select
-             de 3 opciones de abajo). La cuenta propia del admin siempre
-             aparece primero (ver auth.py::inyectar_globales), así que
-             sigue siendo fácil volver a la propia aunque la lista
-             crezca mucho. -->
-        <div class="switcher-buscador">
+        <!-- Más de 5 cuentas: cerrado se ve IGUAL que el <select> simple
+             de abajo (nombre actual + flecha) -- al hacer click se
+             despliega en su lugar el buscador + lista filtrable (2
+             filas visibles, scroll para el resto). La cuenta propia
+             del admin siempre aparece primero (ver
+             auth.py::inyectar_globales), así que sigue siendo fácil
+             volver a la propia aunque la lista crezca mucho. -->
+        <button type="button" class="switcher-select switcher-trigger" id="switcherTrigger">
+          <span>{{ usuario_viendo_nombre }}</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        <div class="switcher-buscador" id="switcherBuscador" hidden>
           <input type="text" id="buscadorViendoPerfil" autocomplete="off" placeholder="Buscar usuario...">
           <div class="switcher-lista" id="listaViendoPerfil">
             {% for u in usuarios_disponibles %}
@@ -352,13 +375,53 @@
 // cuentas -- ver base.html arriba). Filtra la lista por substring
 // (sin distinguir mayúsculas) y, al elegir una, manda el form.
 (function(){
+  const trigger = document.getElementById('switcherTrigger');
   const buscador = document.getElementById('buscadorViendoPerfil');
-  if (!buscador) return; // 5 cuentas o menos: se usa el <select> simple, nada que hacer acá
+  if (!trigger || !buscador) return; // 5 cuentas o menos: se usa el <select> simple, nada que hacer acá
 
+  const panel = document.getElementById('switcherBuscador');
   const lista = document.getElementById('listaViendoPerfil');
   const inputId = document.getElementById('inputViendoPerfilId');
   const form = document.getElementById('formViendoPerfil');
   const opciones = Array.from(lista.querySelectorAll('.switcher-opcion'));
+
+  function abrir() {
+    trigger.hidden = true;
+    panel.hidden = false;
+    buscador.value = '';
+    opciones.forEach(op => { op.hidden = false; });
+    buscador.focus();
+  }
+  function cerrar() {
+    panel.hidden = true;
+    trigger.hidden = false;
+  }
+
+  trigger.addEventListener('click', (e) => { e.stopPropagation(); abrir(); });
+
+  // Click afuera de la caja (sin elegir nada) -- vuelve al estado cerrado.
+  document.addEventListener('click', (e) => {
+    if (!panel.hidden && !panel.contains(e.target) && e.target !== trigger) cerrar();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !panel.hidden) cerrar();
+  });
+
+  // El Dashboard vive adentro de un <iframe> (mismo origen -- ver
+  // templates/dashboard.html) que es un documento aparte: un click ahí
+  // adentro NUNCA burbujea al listener de arriba, así que sin esto la
+  // caja se queda abierta si se hace click en cualquier parte del
+  // dashboard. Se engancha el mismo cierre directamente en el documento
+  // del iframe (accesible por ser mismo origen).
+  function engancharCierreEnIframe(frame) {
+    try {
+      frame.contentDocument.addEventListener('click', () => { if (!panel.hidden) cerrar(); });
+    } catch (e) {} // si algún día deja de ser mismo origen, no romper nada por esto
+  }
+  document.querySelectorAll('.app-main iframe').forEach((frame) => {
+    if (frame.contentDocument && frame.contentDocument.readyState === 'complete') engancharCierreEnIframe(frame);
+    frame.addEventListener('load', () => engancharCierreEnIframe(frame));
+  });
 
   buscador.addEventListener('input', () => {
     const q = buscador.value.trim().toLowerCase();
@@ -370,7 +433,7 @@
   opciones.forEach(op => {
     op.addEventListener('click', () => {
       inputId.value = op.dataset.id;
-      form.submit();
+      form.submit(); // recarga la página igual que el <select> simple -- no hace falta "cerrar" a mano
     });
   });
 })();
