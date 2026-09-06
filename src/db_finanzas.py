@@ -34,6 +34,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from werkzeug.security import generate_password_hash, check_password_hash
 
+import cifrado
+
 SRC_DIR = Path(__file__).resolve().parent          # .../Finanzas personales/src
 PROJECT_ROOT = SRC_DIR.parent                       # .../Finanzas personales
 DATA_DIR = PROJECT_ROOT / "data"
@@ -201,11 +203,34 @@ def _migrar_columna_cedula_correo_config(conn: sqlite3.Connection) -> None:
     _agregar_columna_si_falta(conn, "correo_config", "cedula", "TEXT")
 
 
+def _migrar_cifrado_correo_config(conn: sqlite3.Connection) -> None:
+    """Cifra en el lugar cualquier fila de correo_config que haya
+    quedado en texto plano de ANTES de que existiera cifrado.py
+    (2026-09-06) -- email/app_password/cedula pasan a estar cifrados
+    tanto para filas nuevas (ver guardar_correo_config) como viejas.
+    cifrado.esta_cifrado() hace que sea seguro correr esto una y otra
+    vez sin volver a cifrar un valor ya cifrado (lo dejaría ilegible)."""
+    filas = conn.execute("SELECT usuario_id, app_password, cedula, email FROM correo_config").fetchall()
+    for fila in filas:
+        cambios = {}
+        for campo in ("app_password", "cedula", "email"):
+            valor = fila[campo]
+            if valor and not cifrado.esta_cifrado(valor):
+                cambios[campo] = cifrado.cifrar(valor)
+        if cambios:
+            set_sql = ", ".join(f"{c} = ?" for c in cambios)
+            conn.execute(f"UPDATE correo_config SET {set_sql} WHERE usuario_id = ?",
+                         (*cambios.values(), fila["usuario_id"]))
+    if filas:
+        conn.commit()
+
+
 def crear_esquema(conn: sqlite3.Connection) -> None:
     conn.executescript(ESQUEMA_SQL)
     _migrar_columna_usuario_id(conn)
     _migrar_columna_referencia_bancaria(conn)
     _migrar_columna_cedula_correo_config(conn)
+    _migrar_cifrado_correo_config(conn)
     # DROP + recrear la vista: si ya existía de antes de agregar usuario_id
     # a su SELECT, "CREATE VIEW IF NOT EXISTS" no la actualiza sola.
     conn.execute("DROP VIEW IF EXISTS v_deuda_ledger")
@@ -450,16 +475,36 @@ def listar_usuarios(conn: sqlite3.Connection) -> list[dict]:
 
 
 # ----------------------------- Configuración de lectura de correo -----------------------------
+# email/app_password/cedula se guardan CIFRADOS en la columna (ver
+# cifrado.py) -- esta es la ÚNICA capa que cifra/descifra; el resto del
+# código (routes/correo.py, leer_correo.py) siempre trabaja con texto
+# plano en memoria, como si el cifrado no existiera.
+
+def _descifrar_fila_correo(fila: dict) -> dict:
+    """Si algún campo no se puede descifrar (clave distinta, dato
+    corrupto), queda en None en vez de tumbar toda la cuenta -- el login
+    IMAP/PDF va a fallar igual con un error claro más adelante, pero no
+    rompe el procesamiento de las DEMÁS cuentas en listar_correo_configs_activos()."""
+    fila = dict(fila)
+    for campo in ("email", "app_password", "cedula"):
+        valor = fila.get(campo)
+        if valor:
+            try:
+                fila[campo] = cifrado.descifrar(valor)
+            except ValueError:
+                fila[campo] = None
+    return fila
+
 
 def obtener_correo_config(conn: sqlite3.Connection, usuario_id: int) -> dict | None:
     r = conn.execute("SELECT * FROM correo_config WHERE usuario_id = ?", (usuario_id,)).fetchone()
-    return dict(r) if r else None
+    return _descifrar_fila_correo(r) if r else None
 
 
 def listar_correo_configs_activos(conn: sqlite3.Connection) -> list[dict]:
     """Todas las cuentas con la automatización encendida -- lo que
     leer_correo.py recorre en cada corrida de la tarea programada."""
-    return [dict(r) for r in conn.execute("SELECT * FROM correo_config WHERE activo = 1")]
+    return [_descifrar_fila_correo(r) for r in conn.execute("SELECT * FROM correo_config WHERE activo = 1")]
 
 
 def guardar_correo_config(
@@ -483,7 +528,7 @@ def guardar_correo_config(
     `cedula` es opcional (solo hace falta si se quiere que también se
     abran PDFs de extracto adjuntos, cifrados con ese número) y sigue el
     mismo criterio: vacío = no tocar la que ya había."""
-    existente = obtener_correo_config(conn, usuario_id)
+    existente = obtener_correo_config(conn, usuario_id)  # ya viene descifrado (ver _descifrar_fila_correo)
     if not app_password:
         if not existente:
             raise ValueError("Falta la contraseña de aplicación (obligatoria la primera vez que se configura).")
@@ -509,8 +554,8 @@ def guardar_correo_config(
             frecuencia_hora = excluded.frecuencia_hora,
             actualizado_en = excluded.actualizado_en
         """,
-        (usuario_id, email, app_password, imap_host, imap_port, cedula, int(bool(activo)),
-         frecuencia_tipo, frecuencia_minutos, frecuencia_hora),
+        (usuario_id, cifrado.cifrar(email), cifrado.cifrar(app_password), imap_host, imap_port,
+         cifrado.cifrar(cedula), int(bool(activo)), frecuencia_tipo, frecuencia_minutos, frecuencia_hora),
     )
     conn.commit()
 

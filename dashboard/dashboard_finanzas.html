@@ -277,6 +277,12 @@
     padding: 9px 12px; display:flex; gap:8px; align-items:flex-start;
   }
   .perfil-card .aviso{ margin: 4px 0 0; font-size: 10.5px; color: var(--text-faint); }
+  .perfil-card .consejos li.oculto{ display:none; }
+  .perfil-card .ver-mas-consejos{
+    align-self:flex-start; margin-top:2px; background:none; border:none; cursor:pointer;
+    font-size:11.5px; color: var(--accent-2); font-weight:600; font-family:inherit; padding:0;
+  }
+  .perfil-card .ver-mas-consejos:hover{ text-decoration:underline; }
 
   /* Leaderboard (Top categorías) */
   .leaderboard{ display:flex; flex-direction:column; gap:10px; margin-top: 6px; }
@@ -724,13 +730,26 @@ document.getElementById('lastUpdated').textContent = `Última actualización del
   const el = document.getElementById('perfilFinancieroCard');
   const perfil = PERFIL_FINANCIERO || {};
   const consejos = Array.isArray(perfil.consejos) ? perfil.consejos : [];
+  const VISIBLES_DE_ENTRADA = 2; // el resto queda oculto atrás de "ver más" -- para no saturar de texto
 
   el.innerHTML = `
     <div class="arquetipo">🧭 ${perfil.arquetipo || 'Sin datos suficientes'}</div>
     <p class="descripcion">${perfil.descripcion || ''}</p>
-    ${consejos.length ? `<ul class="consejos">${consejos.map(c => `<li>💡 ${c}</li>`).join('')}</ul>` : ''}
-    <p class="aviso">Perfil generado automáticamente por reglas sobre tu historial completo (no es asesoría financiera profesional) — se actualiza solo cuando se regenera el dashboard.</p>
+    ${consejos.length ? `<ul class="consejos">${consejos.map((c, i) =>
+        `<li class="${i >= VISIBLES_DE_ENTRADA ? 'oculto' : ''}">💡 ${c}</li>`).join('')}</ul>` : ''}
+    ${consejos.length > VISIBLES_DE_ENTRADA
+        ? `<button type="button" class="ver-mas-consejos" id="btnVerMasConsejos">Ver ${consejos.length - VISIBLES_DE_ENTRADA} consejo(s) más ▾</button>`
+        : ''}
+    <p class="aviso">Generado por reglas sobre tu historial — no es asesoría financiera profesional.</p>
   `;
+
+  const btnVerMas = document.getElementById('btnVerMasConsejos');
+  if (btnVerMas) {
+    btnVerMas.addEventListener('click', () => {
+      el.querySelectorAll('.consejos li.oculto').forEach(li => li.classList.remove('oculto'));
+      btnVerMas.remove();
+    });
+  }
 })();
 
 const CAT_ICONS = {
