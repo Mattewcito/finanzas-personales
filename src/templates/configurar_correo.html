@@ -102,12 +102,12 @@
     {% elif config.ultima_corrida_ok %}
       <div class="estado-dot ok"></div>
       <div class="estado-texto"><b>Funcionando bien</b>
-        <span class="detalle">Última corrida: {{ config.ultima_corrida }}</span>
+        <span class="detalle">Última corrida: <span class="fecha-local" data-iso="{{ config.ultima_corrida }}">{{ config.ultima_corrida }}</span></span>
       </div>
     {% else %}
       <div class="estado-dot error"></div>
       <div class="estado-texto"><b>Con errores</b>
-        <span class="detalle">{{ config.ultima_corrida }} — {{ config.ultimo_error }}</span>
+        <span class="detalle"><span class="fecha-local" data-iso="{{ config.ultima_corrida }}">{{ config.ultima_corrida }}</span> — {{ config.ultimo_error }}</span>
       </div>
     {% endif %}
   </div>
@@ -218,6 +218,30 @@
 const form = document.getElementById('formCorreo');
 const resultado = document.getElementById('resultado');
 const preview = document.getElementById('preview');
+
+// --- Formato de fecha/hora en español legible (ej. "Sáb 5 de sept de 2026 a las 11:22:20 pm") ---
+// El backend guarda "última corrida" como texto local (YYYY-MM-DD HH:MM:SS,
+// ya en hora de Colombia) -- acá solo se formatea para mostrar, no se
+// convierte de zona horaria.
+const DIAS_ES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const MESES_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'];
+
+function formatearFechaLocal(iso) {
+  if (!iso) return '';
+  const d = new Date(iso.replace(' ', 'T'));
+  if (isNaN(d.getTime())) return iso;
+  let horas = d.getHours();
+  const ampm = horas >= 12 ? 'pm' : 'am';
+  horas = horas % 12 || 12;
+  const mins = String(d.getMinutes()).padStart(2, '0');
+  const segs = String(d.getSeconds()).padStart(2, '0');
+  return `${DIAS_ES[d.getDay()]} ${d.getDate()} de ${MESES_ES[d.getMonth()]} de ${d.getFullYear()} a las ${horas}:${mins}:${segs} ${ampm}`;
+}
+
+document.querySelectorAll('.fecha-local').forEach((el) => {
+  const iso = el.getAttribute('data-iso');
+  if (iso) el.textContent = formatearFechaLocal(iso);
+});
 
 function mostrarResultado(clase, texto) {
   resultado.style.display = 'block';
