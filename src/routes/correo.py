@@ -2,12 +2,14 @@
 routes/correo.py
 ====================
 Configuración, desde la interfaz, de la lectura automática de correo
-(Fase 1, ver src/leer_correo.py) para la cuenta del usuario QUE INICIÓ
-SESIÓN -- igual que routes/usuarios.py::mi_perfil, esto usa siempre
-session["usuario_id"], nunca viendo_id(): es información técnica de una
-sola cuenta (el correo/contraseña de aplicación de esa persona), no algo
-que un admin deba poder tocar mientras está "viendo" el perfil de otro
-por error.
+(Fase 1, ver src/leer_correo.py) para la cuenta que se esté VIENDO
+(`viendo_id()`) -- mismo patrón que Registrar movimiento/Cargar
+extractos: un admin puede ver y modificar la configuración de cualquier
+usuario cambiando "Viendo perfil de"; un usuario normal siempre ve/edita
+la suya, porque para él `viendo_id()` es siempre su propio id. La única
+forma de que un admin configure SU PROPIA cuenta es tener su propio
+perfil seleccionado en "Viendo perfil de" (por eso esa cuenta queda
+siempre anclada primero en esa lista, ver auth.py/base.html).
 
 Endpoints:
   GET  /configurar-correo            -> página con el formulario + estado
@@ -28,11 +30,11 @@ trata como "escribir para cambiar, dejar en blanco para mantener".
 import re
 from datetime import datetime
 
-from flask import Blueprint, render_template, request, jsonify, session
+from flask import Blueprint, render_template, request, jsonify
 
 import db_finanzas as db
 import leer_correo as lc
-from auth import login_required
+from auth import login_required, viendo_id
 
 correo_bp = Blueprint("correo", __name__)
 
@@ -93,14 +95,14 @@ def _config_desde_formulario(existente: dict | None) -> tuple[dict | None, str |
 @login_required
 def configurar_correo_page():
     with db.conexion() as conn:
-        config = db.obtener_correo_config(conn, session["usuario_id"])
+        config = db.obtener_correo_config(conn, viendo_id())
     return render_template("configurar_correo.html", activo="correo", config=config)
 
 
 @correo_bp.route("/api/correo/guardar", methods=["POST"])
 @login_required
 def api_correo_guardar():
-    usuario_id = session["usuario_id"]
+    usuario_id = viendo_id()
     with db.conexion() as conn:
         existente = db.obtener_correo_config(conn, usuario_id)
         datos, error = _config_desde_formulario(existente)
@@ -128,7 +130,7 @@ def api_correo_probar():
     esté escrito en el formulario en ese momento (si algún campo viene
     vacío, usa el ya guardado, para no obligar a re-escribir la
     contraseña solo para probar)."""
-    usuario_id = session["usuario_id"]
+    usuario_id = viendo_id()
     with db.conexion() as conn:
         existente = db.obtener_correo_config(conn, usuario_id)
 
@@ -157,12 +159,12 @@ def api_correo_probar():
 @correo_bp.route("/api/correo/sincronizar-ahora", methods=["POST"])
 @login_required
 def api_correo_sincronizar_ahora():
-    usuario_id = session["usuario_id"]
+    usuario_id = viendo_id()
     with db.conexion() as conn:
         config = db.obtener_correo_config(conn, usuario_id)
 
     if not config:
-        return jsonify(ok=False, error="Todavía no configuraste tu correo."), 400
+        return jsonify(ok=False, error="Esta cuenta todavía no tiene el correo configurado."), 400
 
     # Misma ventana dinámica que usa la tarea programada: al menos 2 días,
     # ampliada para cubrir el hueco desde la última corrida (si la hubo).
@@ -181,5 +183,5 @@ def api_correo_sincronizar_ahora():
 @login_required
 def api_correo_eliminar():
     with db.conexion() as conn:
-        db.eliminar_correo_config(conn, session["usuario_id"])
+        db.eliminar_correo_config(conn, viendo_id())
     return jsonify(ok=True)

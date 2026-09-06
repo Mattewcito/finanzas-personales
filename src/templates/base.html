@@ -107,6 +107,20 @@
     background-color: var(--card-solid); color: var(--text);
     border:1px solid var(--card-border); border-radius:6px;
   }
+  /* Buscador de "Viendo perfil de" -- solo aparece con más de 5 cuentas
+     (ver el <select> simple arriba para 5 o menos). */
+  input.switcher-select{ appearance:auto; padding:5px 8px; }
+  .switcher-lista{
+    margin-top:4px; max-height:130px; overflow-y:auto;
+    border:1px solid var(--card-border); border-radius:6px; background: var(--bg-soft);
+  }
+  .switcher-opcion{
+    display:block; width:100%; text-align:left; padding:6px 8px; font-size:11.5px;
+    background:none; border:none; color: var(--text-dim); cursor:pointer; font-family:inherit;
+  }
+  .switcher-opcion:hover{ background: var(--card-hover); color:#fff; }
+  .switcher-opcion.activa{ color: var(--accent-2); font-weight:600; }
+  .switcher-opcion[hidden]{ display:none; }
 
   .app-main{ flex:1; min-width:0; }
 
@@ -255,14 +269,35 @@
 
     <div class="sidebar-footer">
       {% if usuario_rol == 'admin' and usuarios_disponibles|length > 1 %}
-      <form method="post" action="/cambiar-vista" class="full-text" style="margin-bottom:8px;">
+      <div class="full-text" style="margin-bottom:8px;">
         <label style="display:block; font-size:10.5px; color:var(--text-faint); margin-bottom:3px;">Viendo perfil de</label>
-        <select name="usuario_id" class="switcher-select" onchange="this.form.submit()">
+        {% if usuarios_disponibles|length > 5 %}
+        <!-- Más de 5 cuentas: un <select> nativo se vuelve incómodo de
+             recorrer -- buscador + lista filtrable en su lugar. La
+             cuenta propia del admin siempre aparece primero (ver
+             auth.py::inyectar_globales), así que sigue siendo fácil
+             volver a la propia aunque la lista crezca mucho. -->
+        <input type="text" id="buscadorViendoPerfil" class="switcher-select" autocomplete="off"
+               placeholder="Buscar usuario..." value="{{ usuario_viendo_nombre }}">
+        <div class="switcher-lista" id="listaViendoPerfil">
           {% for u in usuarios_disponibles %}
-          <option value="{{ u.id }}" {{ 'selected' if u.id == viendo_id else '' }}>{{ u.nombre_mostrado }}</option>
+          <button type="button" class="switcher-opcion {{ 'activa' if u.id == viendo_id else '' }}"
+                  data-id="{{ u.id }}" data-nombre="{{ u.nombre_mostrado|lower }}">{{ u.nombre_mostrado }}</button>
           {% endfor %}
-        </select>
-      </form>
+        </div>
+        <form method="post" action="/cambiar-vista" id="formViendoPerfil">
+          <input type="hidden" name="usuario_id" id="inputViendoPerfilId">
+        </form>
+        {% else %}
+        <form method="post" action="/cambiar-vista">
+          <select name="usuario_id" class="switcher-select" onchange="this.form.submit()">
+            {% for u in usuarios_disponibles %}
+            <option value="{{ u.id }}" {{ 'selected' if u.id == viendo_id else '' }}>{{ u.nombre_mostrado }}</option>
+            {% endfor %}
+          </select>
+        </form>
+        {% endif %}
+      </div>
       {% endif %}
       <span class="full-text" style="display:block;">{{ usuario_nombre }} · {{ modo }}</span>
       <a href="/logout" class="full-text" style="display:block; margin-top:4px; color:var(--text-faint); text-decoration:underline;">Cerrar sesión</a>
@@ -292,6 +327,34 @@
     colapsado = !colapsado;
     aplicar();
     try { localStorage.setItem('finanzas_sidebar_colapsado', colapsado ? '1' : '0'); } catch(e) {}
+  });
+})();
+
+// Buscador de "Viendo perfil de" (solo existe en el DOM con más de 5
+// cuentas -- ver base.html arriba). Filtra la lista por substring
+// (sin distinguir mayúsculas) y, al elegir una, manda el form.
+(function(){
+  const buscador = document.getElementById('buscadorViendoPerfil');
+  if (!buscador) return; // 5 cuentas o menos: se usa el <select> simple, nada que hacer acá
+
+  const lista = document.getElementById('listaViendoPerfil');
+  const inputId = document.getElementById('inputViendoPerfilId');
+  const form = document.getElementById('formViendoPerfil');
+  const opciones = Array.from(lista.querySelectorAll('.switcher-opcion'));
+
+  buscador.addEventListener('input', () => {
+    const q = buscador.value.trim().toLowerCase();
+    opciones.forEach(op => {
+      op.hidden = q.length > 0 && !op.dataset.nombre.includes(q);
+    });
+  });
+  buscador.addEventListener('focus', () => buscador.select());
+
+  opciones.forEach(op => {
+    op.addEventListener('click', () => {
+      inputId.value = op.dataset.id;
+      form.submit();
+    });
   });
 })();
 </script>
