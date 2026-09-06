@@ -13,7 +13,7 @@ from flask import Blueprint, render_template, request, jsonify, send_from_direct
 
 import db_finanzas as db
 import perfil_financiero
-from auth import login_required, viendo_id
+from auth import login_required, viendo_id, requiere_vista_visible
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 import reconciliar_extractos as rex  # parsers de PDF ya construidos y probados
@@ -36,32 +36,48 @@ dashboard_bp = Blueprint("dashboard", __name__)
 
 @dashboard_bp.route("/")
 @login_required
+@requiere_vista_visible("dashboard", por_viendo=True)
 def home():
     return render_template("dashboard.html", activo="dashboard")
 
 
 @dashboard_bp.route("/vista/dashboard")
 @login_required
+@requiere_vista_visible("dashboard", por_viendo=True)
 def vista_dashboard():
     return send_from_directory(DASHBOARD_DIR, "dashboard_finanzas.html")
 
 
 @dashboard_bp.route("/api/dashboard-data")
 @login_required
+@requiere_vista_visible("dashboard", por_viendo=True)
 def api_dashboard_data():
     """Todo lo que el dashboard necesita para el perfil que se esté
     viendo ahora mismo (respeta viendo_id(), igual que cualquier otra
     ruta): movimientos, ledger de deuda, y el perfil financiero por
-    hábitos -- calculado al vuelo, no desde un archivo pre-generado."""
+    hábitos -- calculado al vuelo, no desde un archivo pre-generado.
+
+    "perfil" viene en None si la cuenta vista tiene oculta la sub-vista
+    "perfil_financiero" (ver db_finanzas.VISTAS_DISPONIBLES) -- el
+    dashboard (dashboard_finanzas.html) también recibe la lista completa
+    de sub-vistas ocultas para poder esconder esas secciones del lado
+    del cliente (perfil financiero, insights), ya que ese HTML es un
+    archivo estático, no una plantilla que se pueda filtrar acá."""
     with db.conexion() as conn:
         movimientos = db.obtener_movimientos(conn, usuario_id=viendo_id())
         ledger_deuda = db.obtener_ledger_deuda(conn, usuario_id=viendo_id())
-    perfil = perfil_financiero.generar_perfil(movimientos, ledger_deuda)
+        vistas_ocultas_viendo = db.vistas_ocultas_de(conn, viendo_id())
+
+    perfil = None
+    if "perfil_financiero" not in vistas_ocultas_viendo:
+        perfil = perfil_financiero.generar_perfil(movimientos, ledger_deuda)
+
     return jsonify(
         movimientos=movimientos,
         ledger_deuda=ledger_deuda,
         perfil=perfil,
         generated_at=datetime.datetime.now().isoformat(timespec="seconds"),
+        vistas_ocultas=sorted(vistas_ocultas_viendo),
     )
 
 

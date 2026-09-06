@@ -59,14 +59,21 @@ reemplazables/opcionales por diseño.
   aislados por cuenta. Ver `src/crear_usuario.py` para dar de alta cuentas.
 - ✅ **Vistas por usuario** (`src/routes/admin_vistas.py`, menú "Vistas
   por usuario", solo admin): un admin puede ocultarle a cualquier
-  usuario (incluido sí mismo) secciones del menú/dashboard -- hoy solo
-  "Correo automático" es configurable, pensado para sumar más
-  (Insights, Tu perfil financiero) sin cambiar el diseño. Ocultar una
-  vista bloquea también la ruta en sí, no solo el ítem del menú -- ver
-  `auth.py::requiere_vista_visible()`. La restricción es siempre sobre
-  la cuenta que inició sesión, nunca sobre la que un admin esté
-  "viendo", y los admins nunca quedan bloqueados por su propia
-  restricción (para no perder acceso al panel que la revierte).
+  usuario (incluido sí mismo) secciones del menú/dashboard --
+  `Dashboard` (completo), `Tu perfil financiero` e `Insights
+  automáticos` (sub-secciones dentro del Dashboard) y `Correo
+  automático`, catálogo pensado para seguir creciendo
+  (`db_finanzas.VISTAS_DISPONIBLES`) sin cambiar el diseño. Ocultar una
+  vista bloquea la RUTA en sí, no solo el ítem del menú, **sin
+  excepción de rol** -- si algo queda oculto, nadie accede hasta
+  reactivarlo (el panel `/admin/vistas` nunca está gateado por esta
+  misma regla, así que jamás hay un bloqueo total sin salida). Dos
+  criterios según la vista (ver `auth.py::requiere_vista_visible()`):
+  `Dashboard`/`Tu perfil financiero`/`Insights` se chequean contra la
+  cuenta que se esté VIENDO (`viendo_id()` -- de qué cuenta son los
+  datos que se muestran); `Correo automático` se chequea contra quien
+  inició sesión (autoservicio ligado a la identidad, no a la cuenta que
+  un admin esté administrando en ese momento).
 - ✅ **Despliegue automático**: cada push a `master` reconstruye y
   levanta el contenedor Docker solo, vía un runner de GitHub Actions
   instalado en esta misma PC (ver `.github/workflows/deploy.yml` y

@@ -5,13 +5,20 @@ Panel de administración (solo admin) para decidir qué secciones del
 dashboard/menú puede ver cada usuario -- ej. Mathewcito puede ocultarle
 "Correo automático" a Emanuel, o a sí mismo, y volver a mostrarlo
 cuando quiera. Ver db_finanzas.py::VISTAS_DISPONIBLES para el catálogo
-de vistas configurables (hoy solo una; se suman ahí a futuro).
+completo de vistas configurables (Dashboard, Tu perfil financiero,
+Insights automáticos, Correo automático) -- se suman ahí a futuro.
 
-La restricción se aplica SIEMPRE sobre la cuenta que inicia sesión
-(nunca sobre viendo_id()) -- ver auth.py::inyectar_globales() y el
-chequeo en cada ruta de routes/correo.py. Esta página en sí, y sus
-endpoints, están exentos de cualquier restricción: son el panel de
-control, un admin nunca debe poder bloquearse a sí mismo el acceso acá.
+El bloqueo es real y sin excepción de rol (ver
+auth.py::requiere_vista_visible()): si una vista queda oculta, NADIE
+accede -- ni siquiera un admin -- hasta que se reactive. Según la
+vista, se chequea contra la cuenta que se esté VIENDO (Dashboard/Tu
+perfil financiero/Insights -- de qué cuenta son los datos que se
+muestran) o contra quien inició sesión (Correo automático --
+autoservicio ligado a la identidad, no a la cuenta que un admin esté
+administrando). Esta página en sí, y sus endpoints, están exentos de
+cualquier restricción: son el panel de control, nunca puede quedar
+bloqueado -- es la única puerta de salida garantizada de cualquier
+restricción que alguien se haya puesto a sí mismo por error.
 """
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
 

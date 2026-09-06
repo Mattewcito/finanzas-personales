@@ -45,23 +45,36 @@ def viendo_id() -> int:
     return session.get("viendo_id", session.get("usuario_id"))
 
 
-def requiere_vista_visible(vista: str):
-    """Decorador: bloquea una ruta que un admin ocultó para ESTA cuenta
-    (session["usuario_id"], ver routes/admin_vistas.py) -- no solo el
+def requiere_vista_visible(vista: str, *, por_viendo: bool = False):
+    """Decorador: bloquea una ruta que un admin ocultó -- no solo el
     ítem del menú, la ruta en sí, para que ocultar algo sea una
-    restricción real y no solo estética. Los admins nunca quedan
-    bloqueados por esto: si lo estuvieran, un admin podría accidentalmente
-    quitarse a sí mismo el acceso al panel que revierte la restricción."""
+    restricción real (nadie accede hasta que se reactive), sin
+    excepción de rol: un admin queda bloqueado igual que cualquiera si
+    la vista está oculta para la cuenta que corresponda. Esto es seguro
+    porque /admin/vistas (el panel que revierte cualquier restricción)
+    NUNCA lleva este decorador -- siempre hay una puerta de salida.
+
+    `por_viendo=False` (default): chequea la vista oculta de
+    session["usuario_id"] (quien inició sesión) -- para funciones de
+    autoservicio como Correo automático, ligadas a la identidad de
+    sesión, no a la cuenta que se esté viendo (así un admin puede seguir
+    configurando el correo de otro usuario vía viendo_id() aunque ese
+    usuario tenga esa sección oculta para sí mismo).
+    `por_viendo=True`: chequea la de viendo_id() -- para contenido del
+    dashboard, donde lo que importa es DE QUÉ CUENTA se muestran datos,
+    sin importar quién inició sesión."""
     def decorador(f):
         @wraps(f)
         def decorado(*args, **kwargs):
-            if session.get("rol") != "admin":
-                with db.conexion() as conn:
-                    ocultas = db.vistas_ocultas_de(conn, session.get("usuario_id"))
-                if vista in ocultas:
-                    if request.method == "GET":
-                        return redirect(url_for("dashboard.home"))
-                    return jsonify(ok=False, error="No tenés acceso a esta función."), 403
+            id_a_chequear = viendo_id() if por_viendo else session.get("usuario_id")
+            with db.conexion() as conn:
+                ocultas = db.vistas_ocultas_de(conn, id_a_chequear)
+            if vista in ocultas:
+                # /api/... son llamadas fetch (esperan JSON, nunca una
+                # redirección) -- el resto son páginas de verdad.
+                if request.path.startswith("/api/"):
+                    return jsonify(ok=False, error="Esta función está desactivada para esta cuenta."), 403
+                return redirect(url_for("usuarios.mi_perfil"))
             return f(*args, **kwargs)
         return decorado
     return decorador
@@ -77,14 +90,12 @@ def inyectar_globales():
     # mandarlos, después de que una carga terminó en la cuenta
     # equivocada por tener seleccionado otro perfil sin darse cuenta).
     usuario_viendo_nombre = session.get("nombre")
-    vistas_ocultas = set()
+    vistas_ocultas = set()          # de session["usuario_id"] -- ítems de autoservicio (Correo automático)
+    vistas_ocultas_viendo = set()   # de viendo_id() -- contenido del dashboard (de qué cuenta son los datos)
     if session.get("usuario_id"):
         with db.conexion() as conn:
-            # SIEMPRE sobre la cuenta que inició sesión, nunca viendo_id():
-            # es "qué ve ESTA PERSONA en su propio menú", no un dato de la
-            # cuenta que un admin esté mirando en ese momento (ver
-            # routes/admin_vistas.py).
             vistas_ocultas = db.vistas_ocultas_de(conn, session["usuario_id"])
+            vistas_ocultas_viendo = db.vistas_ocultas_de(conn, viendo_id())
     if session.get("rol") == "admin":
         with db.conexion() as conn:
             usuarios_disponibles = db.listar_usuarios(conn)
@@ -106,6 +117,7 @@ def inyectar_globales():
         "usuario_viendo_nombre": usuario_viendo_nombre,
         "usuarios_disponibles": usuarios_disponibles,
         "vistas_ocultas": vistas_ocultas,
+        "vistas_ocultas_viendo": vistas_ocultas_viendo,
     }
 
 

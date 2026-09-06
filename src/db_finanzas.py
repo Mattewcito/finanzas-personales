@@ -128,8 +128,25 @@ CREATE TABLE IF NOT EXISTS vistas_ocultas (
 # Catálogo de vistas que un admin puede ocultar/mostrar por usuario
 # (routes/admin_vistas.py). Agregar una nueva vista a futuro es tan
 # simple como sumar una entrada acá y envolver esa sección del
-# dashboard/menú con el mismo chequeo que ya usa "correo_automatico".
+# dashboard/menú con el mismo chequeo que ya usan las de abajo.
+#
+# "dashboard"/"perfil_financiero"/"insights" son sobre DE QUÉ CUENTA se
+# muestran datos -- se chequean con viendo_id() (ver
+# auth.py::requiere_vista_visible(por_viendo=True) y
+# routes/dashboard.py): ocultarle "Insights" a Emanuel los oculta tanto
+# si Emanuel mira su propio dashboard como si un admin está "viendo" el
+# perfil de Emanuel. "correo_automatico" es distinto -- una función de
+# autoservicio ligada a la identidad de sesión (para que un admin pueda
+# seguir configurando el correo de Emanuel via viendo_id() aunque
+# Emanuel tenga esa sección oculta para sí mismo) -- se chequea con
+# session["usuario_id"] (por_viendo=False, el default).
 VISTAS_DISPONIBLES = [
+    {"id": "dashboard", "label": "Dashboard",
+     "descripcion": "El ítem \"Dashboard\" del menú y la página completa."},
+    {"id": "perfil_financiero", "label": "Tu perfil financiero",
+     "descripcion": "La sección \"Tu perfil financiero\" dentro del Dashboard."},
+    {"id": "insights", "label": "Insights automáticos",
+     "descripcion": "La sección \"Insights automáticos\" dentro del Dashboard."},
     {"id": "correo_automatico", "label": "Correo automático",
      "descripcion": "El ítem \"Correo automático\" del menú y su página de configuración."},
 ]

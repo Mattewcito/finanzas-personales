@@ -709,6 +709,27 @@ async function iniciarDashboard() {
   const GENERATED_AT = datosApi.generated_at;
   const PERFIL_FINANCIERO = datosApi.perfil;
 
+  // Sub-secciones del dashboard que un admin ocultó para esta cuenta
+  // (ver "Vistas por usuario" -- routes/admin_vistas.py). Se esconden
+  // acá, del lado del cliente, porque dashboard_finanzas.html es un
+  // archivo estático (no hay forma de filtrarlas desde el servidor
+  // antes de mandarlo). Cada sección tiene un título (.section-title)
+  // y un bloque de contenido con id propio, más un link opcional en el
+  // menú lateral (side-nav) que también hay que sacar.
+  (function ocultarSubvistas() {
+    const ocultas = new Set(datosApi.vistas_ocultas || []);
+    const SECCIONES = {
+      perfil_financiero: { titulo: 'perfil', contenido: 'perfilFinancieroCard' },
+      insights: { titulo: 'insights', contenido: 'insightsGrid' },
+    };
+    for (const [vista, ids] of Object.entries(SECCIONES)) {
+      if (!ocultas.has(vista)) continue;
+      document.getElementById(ids.titulo)?.remove();
+      document.getElementById(ids.contenido)?.remove();
+      document.querySelector(`.side-nav a[data-section="${ids.titulo}"]`)?.remove();
+    }
+  })();
+
   // DATA/DEUDA_TARJETAS de arriba son el histórico COMPLETO. El filtro de
   // período (más abajo) llama a renderDashboard() con subconjuntos de
   // estos dos arrays -- nunca se tocan los originales.
@@ -741,6 +762,7 @@ document.getElementById('lastUpdated').textContent = `Última actualización del
 ================================================================= */
 (function renderPerfilFinanciero() {
   const el = document.getElementById('perfilFinancieroCard');
+  if (!el) return; // sección oculta para esta cuenta -- ver ocultarSubvistas() más arriba
   const perfil = PERFIL_FINANCIERO || {};
   const consejos = Array.isArray(perfil.consejos) ? perfil.consejos : [];
   const VISIBLES_DE_ENTRADA = 2; // el resto queda oculto atrás de "ver más" -- para no saturar de texto
@@ -987,7 +1009,8 @@ if (!DATA.length) {
     'No se registraron movimientos de tarjeta de crédito en el período seleccionado.';
   document.getElementById('chartDeudaEvolucionHolder').innerHTML =
     '<div class="empty-state">💳 No se detectaron compras, avances ni pagos de tarjeta de crédito en los movimientos del período seleccionado.</div>';
-  document.getElementById('insightsGrid').innerHTML =
+  const _insightsGridVacio = document.getElementById('insightsGrid'); // null si la sección está oculta -- ver ocultarSubvistas()
+  if (_insightsGridVacio) _insightsGridVacio.innerHTML =
     '<div class="empty-state">🧠 Todavía no hay suficientes movimientos en este período para generar insights automáticos.</div>';
   document.getElementById('leaderboard').innerHTML = '';
   GASTO_POR_CATEGORIA_ACTUAL = []; // que el modal del ranking tampoco muestre datos de un período anterior
@@ -1630,7 +1653,8 @@ if (totalGastoCredito > 0 || totalAvancesCredito > 0) {
 }
 
 INSIGHTS_ACTUAL = insights; // para que el modal (fuera de esta función) los pueda abrir por índice
-document.getElementById('insightsGrid').innerHTML = insights.map((ins, i) => `
+const _insightsGrid = document.getElementById('insightsGrid'); // null si la sección está oculta -- ver ocultarSubvistas()
+if (_insightsGrid) _insightsGrid.innerHTML = insights.map((ins, i) => `
   <div class="insight expandible" onclick="abrirModalInsight(${i})">
     <div class="ic">${ins.icon}</div>
     <div class="body"><h4>${ins.title}</h4></div>
