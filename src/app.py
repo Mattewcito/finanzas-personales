@@ -64,6 +64,15 @@ if not _SECRET_KEY_PATH.exists():
     _SECRET_KEY_PATH.write_text(secrets.token_hex(32), encoding="utf-8")
 app.secret_key = _SECRET_KEY_PATH.read_text(encoding="utf-8").strip()
 
+# Asegura el esquema al arrancar el proceso (no solo al loguearse, como
+# hacía antes solo auth.py): una sesión ya iniciada sobrevive a un
+# reinicio del contenedor, así que si una versión nueva agrega una tabla
+# (ej. correo_config) y nadie vuelve a loguearse, esas rutas reventarían
+# con "no such table" contra una BD real que ya existía de antes. Es
+# no-op si el esquema ya estaba al día.
+with db.conexion() as _conn:
+    db.crear_esquema(_conn)
+
 app.register_blueprint(auth_bp)
 app.register_blueprint(dashboard_bp)
 app.register_blueprint(usuarios_bp)
