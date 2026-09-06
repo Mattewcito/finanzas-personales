@@ -18,8 +18,11 @@ prueba (bug de regresión real, detectado y corregido el 2026-09-05: ver
 tests/test_actualizar_dashboard.py para el detalle del aislamiento).
 """
 import pytest
+from flask import session
+
 import db_finanzas as db
 import actualizar_dashboard as ad
+from auth import inyectar_globales
 
 
 @pytest.fixture
@@ -88,6 +91,31 @@ def test_admin_si_puede_cambiar_de_perfil(client, app_ctx):
     login(client, "admin_test", "clave-admin-123")
     resp = client.post("/cambiar-vista", data={"usuario_id": user_id})
     assert resp.status_code == 302
+
+
+def test_inyectar_globales_deja_al_admin_logueado_primero_aunque_no_sea_el_de_menor_id(client, app_ctx):
+    """usuarios_disponibles debe traer SIEMPRE primero la cuenta del
+    admin logueado (session['usuario_id']), sin importar su orden de
+    creación en la BD -- acá el admin logueado es el tercer usuario
+    creado (el de mayor id), para que un `sort` que ordenara por id (en
+    vez de anclar al propio) haga fallar el test."""
+    flaskapp, admin_id, user_id = app_ctx
+    conn = db.conectar()
+    otro_admin_id = db.crear_usuario(conn, "admin2_test", "clave-admin2-000", "admin", "Admin Dos")
+    conn.close()
+    assert otro_admin_id > user_id > admin_id  # nace en tercer lugar, con el id más alto
+
+    with flaskapp.app.test_request_context():
+        session["usuario_id"] = otro_admin_id
+        session["rol"] = "admin"
+        session["nombre"] = "Admin Dos"
+        session["viendo_id"] = otro_admin_id
+        ctx = inyectar_globales()
+
+    ids_en_orden = [u["id"] for u in ctx["usuarios_disponibles"]]
+    assert ids_en_orden[0] == otro_admin_id
+    # el resto conserva su orden relativo original (por id ascendente)
+    assert ids_en_orden[1:] == [admin_id, user_id]
 
 
 def test_datos_quedan_aislados_entre_usuarios(client, app_ctx):

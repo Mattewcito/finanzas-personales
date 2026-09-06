@@ -58,7 +58,13 @@ def inyectar_globales():
     if session.get("rol") == "admin":
         with db.conexion() as conn:
             usuarios_disponibles = db.listar_usuarios(conn)
-            if viendo_id() != session.get("usuario_id"):
+            # La cuenta del propio admin queda SIEMPRE primera en la
+            # lista (anclada), sin importar el orden de creación --
+            # es la única forma de volver a la cuenta propia rápido
+            # cuando la lista crece o se está filtrando por búsqueda.
+            propio_id = session.get("usuario_id")
+            usuarios_disponibles.sort(key=lambda u: u["id"] != propio_id)
+            if viendo_id() != propio_id:
                 cuenta_vista = db.obtener_usuario(conn, viendo_id())
                 if cuenta_vista:
                     usuario_viendo_nombre = cuenta_vista["nombre_mostrado"]

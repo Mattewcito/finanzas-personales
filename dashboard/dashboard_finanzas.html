@@ -240,6 +240,19 @@
   }
   .chart-card.expandible:hover::after{ opacity: 1; }
 
+  /* Insights: mismo lenguaje visual que las tarjetas de gráfico
+     expandibles -- solo título por defecto (menos texto de entrada),
+     click abre el detalle completo en un modal (ver JS: abrirModalInsight). */
+  .insight.expandible{ cursor: pointer; position:relative; transition: transform .15s ease, box-shadow .15s ease; }
+  .insight.expandible:hover{ transform: translateY(-2px); box-shadow: 0 10px 26px rgba(0,0,0,0.28); }
+  .insight.expandible::after{
+    content: '👁️ Ver detalle'; position: absolute; top: 14px; right: 16px;
+    font-size: 10.5px; color: var(--text-dim); background: var(--card-hover);
+    padding: 3px 9px; border-radius: 999px; border: 1px solid var(--card-border);
+    opacity: 0; transition: opacity .15s ease; pointer-events: none;
+  }
+  .insight.expandible:hover::after{ opacity: 1; }
+
   /* Modal de gráfico expandido */
   .modal-grafico-overlay{
     position: fixed; inset: 0; background: rgba(0,0,0,0.62);
@@ -796,6 +809,13 @@ const GRAFICOS_REGISTRY = {};
 // actualizada en cada render para poder leerla.
 let GASTO_POR_CATEGORIA_ACTUAL = [];
 
+// Insights automáticos (ver más abajo): cada tarjeta muestra solo el
+// título por defecto (menos texto de entrada) y el detalle completo se
+// abre en el modal de insight -- que se llama con un ÍNDICE desde el
+// onclick inline, así que necesita esta copia en el scope global,
+// mismo patrón que GASTO_POR_CATEGORIA_ACTUAL de arriba.
+let INSIGHTS_ACTUAL = [];
+
 // Estado de "Todos los movimientos" (switch en la sección Movimientos):
 // vive afuera de renderDashboard() para sobrevivir entre renders -- si
 // está prendido y cambiás de filtro, tiene que seguir prendido y
@@ -971,6 +991,7 @@ if (!DATA.length) {
     '<div class="empty-state">🧠 Todavía no hay suficientes movimientos en este período para generar insights automáticos.</div>';
   document.getElementById('leaderboard').innerHTML = '';
   GASTO_POR_CATEGORIA_ACTUAL = []; // que el modal del ranking tampoco muestre datos de un período anterior
+  INSIGHTS_ACTUAL = []; // ídem, para el modal de insight
   // Ninguno de los crearGrafico() de más abajo llega a correr en este
   // corte -- sin este reseteo, el modal de "ver en grande" seguiría
   // ofreciendo abrir el gráfico del ÚLTIMO período que sí tuvo datos.
@@ -1608,10 +1629,11 @@ if (totalGastoCredito > 0 || totalAvancesCredito > 0) {
   });
 }
 
-document.getElementById('insightsGrid').innerHTML = insights.map(ins => `
-  <div class="insight">
+INSIGHTS_ACTUAL = insights; // para que el modal (fuera de esta función) los pueda abrir por índice
+document.getElementById('insightsGrid').innerHTML = insights.map((ins, i) => `
+  <div class="insight expandible" onclick="abrirModalInsight(${i})">
     <div class="ic">${ins.icon}</div>
-    <div class="body"><h4>${ins.title}</h4><p>${ins.text}</p></div>
+    <div class="body"><h4>${ins.title}</h4></div>
   </div>
 `).join('');
 
@@ -1818,6 +1840,18 @@ function cerrarModalGrafico() {
   if (modalChartInstance) { modalChartInstance.destroy(); modalChartInstance = null; }
 }
 
+function abrirModalInsight(i) {
+  const ins = INSIGHTS_ACTUAL[i];
+  if (!ins) return; // el período cambió justo entre el render y el click -- no reventar
+  document.getElementById('modalInsightTitulo').textContent = `${ins.icon} ${ins.title}`;
+  document.getElementById('modalInsightTexto').innerHTML = ins.text;
+  document.getElementById('modalInsight').classList.add('open');
+}
+
+function cerrarModalInsight() {
+  document.getElementById('modalInsight').classList.remove('open');
+}
+
 // Sin DOMContentLoaded acá: este código corre recién después del
 // "await fetch(...)" de más arriba, momento en el que el DOM entero
 // (incluido el <div id="modalGrafico">, más abajo en el HTML) ya
@@ -1826,17 +1860,22 @@ function cerrarModalGrafico() {
 document.getElementById('modalGrafico').addEventListener('click', (e) => {
   if (e.target.id === 'modalGrafico') cerrarModalGrafico(); // click en el fondo, no en la tarjeta
 });
+document.getElementById('modalInsight').addEventListener('click', (e) => {
+  if (e.target.id === 'modalInsight') cerrarModalInsight();
+});
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') cerrarModalGrafico();
+  if (e.key === 'Escape') { cerrarModalGrafico(); cerrarModalInsight(); }
 });
 
-// abrirModalGrafico/abrirModalLeaderboard/cerrarModalGrafico se llaman
-// desde atributos onclick="" inline en el HTML -- esos se resuelven en
-// el scope GLOBAL (window), no en el de esta función async, así que
-// hay que exponerlos a mano.
+// abrirModalGrafico/abrirModalLeaderboard/cerrarModalGrafico/abrirModalInsight/
+// cerrarModalInsight se llaman desde atributos onclick="" inline en el
+// HTML -- esos se resuelven en el scope GLOBAL (window), no en el de
+// esta función async, así que hay que exponerlos a mano.
 window.abrirModalGrafico = abrirModalGrafico;
 window.abrirModalLeaderboard = abrirModalLeaderboard;
 window.cerrarModalGrafico = cerrarModalGrafico;
+window.abrirModalInsight = abrirModalInsight;
+window.cerrarModalInsight = cerrarModalInsight;
 
 renderDashboard(DATA_COMPLETA, DEUDA_COMPLETA); // primera carga: histórico completo, sin filtro
 
@@ -1915,6 +1954,23 @@ document.addEventListener('DOMContentLoaded', () => {
         <canvas id="modalGraficoCanvas"></canvas>
       </div>
       <div id="modalGraficoTabla"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MODAL DE DETALLE DE INSIGHT (ver JS: abrirModalInsight) --
+     mismas clases modal-grafico-* que el de arriba, para que se vea
+     igual, pero sin canvas -- el detalle es solo texto.
+     ============================================================ -->
+<div class="modal-grafico-overlay" id="modalInsight">
+  <div class="modal-grafico-card" style="width: min(560px, 100%);">
+    <div class="modal-grafico-header">
+      <h3 id="modalInsightTitulo"></h3>
+      <button type="button" class="modal-grafico-cerrar" onclick="cerrarModalInsight()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-grafico-body">
+      <p id="modalInsightTexto" style="margin:0; font-size:13.5px; line-height:1.6; color:var(--text-dim);"></p>
     </div>
   </div>
 </div>

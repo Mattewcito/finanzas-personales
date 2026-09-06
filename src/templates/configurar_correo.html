@@ -79,17 +79,16 @@
     cursor:pointer; font-family:inherit;
   }
 
-  /* Aclaración -- no advertencia -- de que esta página es siempre de la
-     cuenta con la que iniciaste sesión, nunca de la que estés "viendo"
-     (a diferencia de Registrar/Cargar extractos, acá no hay ambigüedad
-     posible: por diseño nunca usa viendo_id()). Solo se muestra cuando
-     de verdad podría confundir -- admin viendo el perfil de otro. */
-  .aviso-cuenta-propia{
+  /* Mismo aviso que Registrar movimiento/Cargar extractos: esta página
+     opera sobre viendo_id(), así que un admin puede configurar el
+     correo de cualquier usuario cambiando "Viendo perfil de" -- este
+     aviso confirma de qué cuenta se trata antes de tocar nada. */
+  .aviso-cuenta{
     display:flex; align-items:center; gap:8px; margin: 0 0 18px;
     padding: 10px 14px; border-radius: 10px; font-size: 13px;
-    background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.28); color: var(--text);
+    background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.28); color: var(--text);
   }
-  .aviso-cuenta-propia b{ color: var(--accent-2); }
+  .aviso-cuenta b{ color: #fbbf24; }
 </style>
 {% endblock %}
 
@@ -101,11 +100,10 @@
     <p>Conectá tu correo dedicado a notificaciones bancarias para que Bancolombia se registre solo en tu cuenta, sin tener que anotar nada a mano.</p>
   </div>
 
-  {% if usuario_rol == 'admin' and usuario_viendo_nombre != usuario_nombre %}
-  <div class="aviso-cuenta-propia">
-    ℹ️ Esta configuración es siempre de <b>tu propia cuenta</b> ({{ usuario_nombre }}) — a diferencia de otras páginas,
-    NO cambia según "Viendo perfil de" (ahora mismo: {{ usuario_viendo_nombre }}). Para configurar el correo de otra
-    persona, esa persona tiene que entrar con su propia cuenta.
+  {% if usuario_rol == 'admin' %}
+  <div class="aviso-cuenta">
+    ⚠️ Estás por configurar el correo automático de <b>{{ usuario_viendo_nombre }}</b>.
+    Si no es la que querés, cambiala primero en "Viendo perfil de" (menú de la izquierda).
   </div>
   {% endif %}
 
@@ -307,6 +305,16 @@ actualizarFrecuenciaUI();
 // --- Guardar ---
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
+
+  {% if usuario_rol == 'admin' %}
+  // Igual que en Cargar extractos -- acá se escriben credenciales, así
+  // que la confirmación es todavía más importante: un admin puede tener
+  // seleccionado el perfil de OTRA persona en "Viendo perfil de" sin
+  // haberse dado cuenta.
+  const confirmado = confirm('¿Confirmás que vas a guardar esta configuración para la cuenta de "{{ usuario_viendo_nombre }}"?');
+  if (!confirmado) return;
+  {% endif %}
+
   const btn = document.getElementById('btnGuardar');
   mostrarResultado('loading', 'Guardando...');
   btn.disabled = true;

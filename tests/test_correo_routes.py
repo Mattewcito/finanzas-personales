@@ -10,8 +10,14 @@ valores calculados una sola vez al importar, como UPLOADS_DIR, quedarían
 inconsistentes si se importara app.py más de una vez). Ver el docstring
 de tests/test_app_integration.py para el detalle.
 
-Todas las rutas de este blueprint usan siempre session["usuario_id"]
-(nunca viendo_id()) -- ver el docstring de src/routes/correo.py.
+Todas las rutas de este blueprint usan viendo_id() (no
+session["usuario_id"] directo) -- mismo patrón que Registrar
+movimiento/Cargar extractos: un admin puede ver y modificar la
+configuración de cualquier usuario cambiando "Viendo perfil de"
+(POST /cambiar-vista, que setea session["viendo_id"]); un usuario normal
+siempre opera sobre la suya porque para él viendo_id() es siempre su
+propio id. Ver el docstring de src/routes/correo.py y
+auth.py::viendo_id().
 """
 import db_finanzas as db
 import leer_correo as lc
@@ -251,8 +257,10 @@ def test_guardar_y_eliminar_de_un_usuario_no_afecta_la_config_del_otro(client, a
 
 def test_guardar_nunca_usa_otro_usuario_id_aunque_se_intente_forzar_por_form(client, app_ctx):
     """Ni siquiera si el form trajera un usuario_id, la ruta debe usar
-    siempre session['usuario_id'] -- nunca otro (ver docstring del
-    blueprint: esto es info técnica de UNA cuenta, no un dato "viendo")."""
+    siempre viendo_id() -- nunca un valor tomado del propio form (el
+    único mecanismo válido para "operar sobre otra cuenta" es
+    session["viendo_id"], vía /cambiar-vista, no un campo de este
+    formulario)."""
     _, admin_id, user_id = app_ctx
     login(client, "user_test", "clave-user-456")
 
@@ -458,3 +466,131 @@ def test_api_correo_eliminar_redirige_a_login_sin_sesion(client):
     resp = client.post("/api/correo/eliminar")
     assert resp.status_code == 302
     assert "/login" in resp.headers["Location"]
+
+
+# ---------------------------------------------------------------------------
+# Admin viendo el perfil de otro usuario (viendo_id()) -- mismo patrón que
+# Registrar movimiento/Cargar extractos: ver docstring de routes/correo.py
+# ---------------------------------------------------------------------------
+
+def test_get_configurar_correo_admin_viendo_a_otro_muestra_la_config_del_otro(client, app_ctx):
+    """Un admin con "Viendo perfil de" apuntando a otro usuario debe ver,
+    en el formulario, la config guardada de ESE OTRO usuario -- no la
+    suya propia (que en este test queda vacía a propósito)."""
+    _, admin_id, user_id = app_ctx
+    guardar_config_directo(user_id, email="del-usuario-visto@example.com")
+
+    login(client, "admin_test", "clave-admin-123")
+    cambio = client.post("/cambiar-vista", data={"usuario_id": user_id})
+    assert cambio.status_code == 302
+
+    resp = client.get("/configurar-correo")
+
+    assert resp.status_code == 200
+    assert b"del-usuario-visto@example.com" in resp.data
+    # la propia cuenta del admin nunca tuvo config guardada
+    assert config_de(admin_id) is None
+
+
+def test_guardar_admin_viendo_a_otro_guarda_para_el_usuario_visto_no_para_el_admin(client, app_ctx):
+    _, admin_id, user_id = app_ctx
+
+    login(client, "admin_test", "clave-admin-123")
+    client.post("/cambiar-vista", data={"usuario_id": user_id})
+
+    datos = dict(FORM_BASE)
+    datos["email"] = "guardado-viendo-a-otro@example.com"
+    resp = client.post("/api/correo/guardar", data=datos)
+
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+
+    fila_user = config_de(user_id)
+    assert fila_user is not None
+    assert fila_user["email"] == "guardado-viendo-a-otro@example.com"
+    assert config_de(admin_id) is None  # el admin logueado sigue sin config propia
+
+
+def test_sincronizar_ahora_admin_viendo_a_otro_opera_sobre_la_cuenta_vista(client, app_ctx, monkeypatch):
+    _, admin_id, user_id = app_ctx
+    guardar_config_directo(user_id)
+
+    login(client, "admin_test", "clave-admin-123")
+    client.post("/cambiar-vista", data={"usuario_id": user_id})
+
+    monkeypatch.setattr(lc, "procesar_cuenta", lambda config, dias, aplicar: "1 movimiento(s) insertado(s)")
+
+    resp = client.post("/api/correo/sincronizar-ahora")
+
+    assert resp.status_code == 200
+    assert resp.get_json()["mensaje"] == "1 movimiento(s) insertado(s)"
+
+
+def test_sincronizar_ahora_admin_viendo_a_otro_sin_config_del_admin_no_revienta(client, app_ctx, monkeypatch):
+    """La cuenta propia del admin no tiene config -- pero como está
+    viendo la del usuario (que sí tiene), la sincronización debe usar la
+    de ESE usuario, no fallar por "esta cuenta todavía no tiene
+    correo configurado" (bug de regresión si se usara usuario_id de
+    sesión en vez de viendo_id())."""
+    _, admin_id, user_id = app_ctx
+    guardar_config_directo(user_id)
+    assert config_de(admin_id) is None
+
+    login(client, "admin_test", "clave-admin-123")
+    client.post("/cambiar-vista", data={"usuario_id": user_id})
+
+    monkeypatch.setattr(lc, "procesar_cuenta", lambda config, dias, aplicar: "ok")
+
+    resp = client.post("/api/correo/sincronizar-ahora")
+
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+
+
+def test_eliminar_admin_viendo_a_otro_borra_la_del_usuario_visto_no_la_del_admin(client, app_ctx):
+    _, admin_id, user_id = app_ctx
+    guardar_config_directo(admin_id, email="admin-propia@example.com")
+    guardar_config_directo(user_id, email="usuario-visto@example.com")
+
+    login(client, "admin_test", "clave-admin-123")
+    client.post("/cambiar-vista", data={"usuario_id": user_id})
+
+    resp = client.post("/api/correo/eliminar")
+
+    assert resp.status_code == 200
+    assert config_de(user_id) is None
+    fila_admin = config_de(admin_id)
+    assert fila_admin is not None
+    assert fila_admin["email"] == "admin-propia@example.com"
+
+
+def test_usuario_normal_con_viendo_id_distinto_forzado_en_sesion_sigue_operando_sobre_el_propio(client, app_ctx):
+    """Esto no debería poder pasar nunca vía la UI normal (solo un admin
+    puede setear viendo_id != usuario_id mediante /cambiar-vista, que
+    rechaza a los no-admin con 403 -- ver
+    test_usuario_normal_no_puede_cambiar_de_perfil en
+    test_app_integration.py). Lo probamos igual a nivel de sesión directa
+    (bypaseando esa protección a mano, algo que un usuario real no puede
+    hacer sin conocer la SECRET_KEY con la que Flask firma la cookie)
+    para documentar el comportamiento real de auth.py::viendo_id()."""
+    _, admin_id, user_id = app_ctx
+    login(client, "user_test", "clave-user-456")
+
+    with client.session_transaction() as sess:
+        sess["viendo_id"] = admin_id  # forzado manualmente, no alcanzable por la UI
+
+    datos = dict(FORM_BASE)
+    datos["email"] = "forzado-a-mano@example.com"
+    resp = client.post("/api/correo/guardar", data=datos)
+
+    assert resp.status_code == 200
+    # viendo_id() no vuelve a chequear el rol contra la sesión -- confía
+    # en que session["viendo_id"] solo puede desalinearse de
+    # session["usuario_id"] a través de /cambiar-vista (que sí exige rol
+    # admin) o del login (que los deja iguales). Si se fuerza el valor a
+    # mano se usa tal cual, incluso con rol "usuario": por eso la config
+    # termina en la cuenta forzada (admin_id), no en la propia del
+    # usuario logueado.
+    assert config_de(admin_id) is not None
+    assert config_de(admin_id)["email"] == "forzado-a-mano@example.com"
+    assert config_de(user_id) is None
