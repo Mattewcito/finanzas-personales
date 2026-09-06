@@ -38,4 +38,12 @@ ENV PORT=5001
 WORKDIR /app/src
 EXPOSE 5001
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "2", "app:app"]
+# --preload: importa app.py UNA sola vez en el proceso master antes de
+# bifurcar los workers, en vez de una vez por cada uno. Sin esto, el
+# código de arranque de app.py (crear el esquema de la BD) corría 2
+# veces casi en simultáneo -- provocó una carrera real entre workers al
+# agregar una columna nueva (ALTER TABLE, "duplicate column name") que
+# tumbaba el primer boot del contenedor. db_finanzas.py igual quedó
+# protegido contra esa carrera (ver _agregar_columna_si_falta), pero
+# --preload además evita repetir ese trabajo de arranque sin necesidad.
+CMD ["gunicorn", "--preload", "--bind", "0.0.0.0:5001", "--workers", "2", "app:app"]
