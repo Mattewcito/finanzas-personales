@@ -145,6 +145,69 @@ def test_guardar_correo_config_llamado_dos_veces_actualiza_la_misma_fila_no_crea
     assert fila["app_password"] == "clave-2"
 
 
+# ----------------------------- guardar_correo_config: cedula (opcional) -----------------------------
+
+def test_guardar_correo_config_con_cedula_la_guarda(conn):
+    uid = crear_usuario(conn, "maria")
+
+    db.guardar_correo_config(conn, uid, email="maria@example.com", app_password="clave-app", cedula="123456789")
+
+    fila = db.obtener_correo_config(conn, uid)
+    assert fila["cedula"] == "123456789"
+
+
+def test_guardar_correo_config_sin_cedula_nunca_configurada_queda_none(conn):
+    """La cédula es opcional -- a diferencia de app_password, no hace
+    falta nunca para poder guardar la configuración."""
+    uid = crear_usuario(conn, "maria")
+
+    db.guardar_correo_config(conn, uid, email="maria@example.com", app_password="clave-app")
+
+    fila = db.obtener_correo_config(conn, uid)
+    assert fila["cedula"] is None
+
+
+def test_guardar_correo_config_sin_cedula_no_lanza_valueerror_ni_en_el_alta(conn):
+    """A diferencia de app_password, faltar la cédula la primera vez que
+    se configura la cuenta nunca debe lanzar -- solo app_password es
+    obligatoria."""
+    uid = crear_usuario(conn, "maria")
+
+    db.guardar_correo_config(conn, uid, email="maria@example.com", app_password="clave-app", cedula=None)
+
+    assert db.obtener_correo_config(conn, uid) is not None
+
+
+def test_guardar_correo_config_con_cedula_vacia_sobre_fila_existente_mantiene_la_anterior(conn):
+    uid = crear_usuario(conn, "maria")
+    db.guardar_correo_config(conn, uid, email="maria@example.com", app_password="clave-app", cedula="111222333")
+
+    db.guardar_correo_config(conn, uid, email="maria@example.com", app_password=None, cedula="")
+
+    fila = db.obtener_correo_config(conn, uid)
+    assert fila["cedula"] == "111222333"
+
+
+def test_guardar_correo_config_con_cedula_none_sobre_fila_existente_mantiene_la_anterior(conn):
+    uid = crear_usuario(conn, "maria")
+    db.guardar_correo_config(conn, uid, email="maria@example.com", app_password="clave-app", cedula="111222333")
+
+    db.guardar_correo_config(conn, uid, email="maria@example.com", app_password=None, cedula=None)
+
+    fila = db.obtener_correo_config(conn, uid)
+    assert fila["cedula"] == "111222333"
+
+
+def test_guardar_correo_config_con_cedula_nueva_la_actualiza(conn):
+    uid = crear_usuario(conn, "maria")
+    db.guardar_correo_config(conn, uid, email="maria@example.com", app_password="clave-app", cedula="111222333")
+
+    db.guardar_correo_config(conn, uid, email="maria@example.com", app_password=None, cedula="999888777")
+
+    fila = db.obtener_correo_config(conn, uid)
+    assert fila["cedula"] == "999888777"
+
+
 # ----------------------------- obtener_correo_config -----------------------------
 
 def test_obtener_correo_config_de_usuario_sin_config_devuelve_none(conn):

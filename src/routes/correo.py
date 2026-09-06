@@ -26,6 +26,7 @@ guardarla -- ni en esta página ni en ningún endpoint. El formulario la
 trata como "escribir para cambiar, dejar en blanco para mantener".
 """
 import re
+from datetime import datetime
 
 from flask import Blueprint, render_template, request, jsonify, session
 
@@ -44,6 +45,7 @@ def _config_desde_formulario(existente: dict | None) -> tuple[dict | None, str |
     email = request.form.get("email", "").strip()
     app_password = request.form.get("app_password", "").strip()
     imap_host = request.form.get("imap_host", "").strip() or "imap.gmail.com"
+    cedula = request.form.get("cedula", "").strip()
     frecuencia_tipo = request.form.get("frecuencia_tipo", "intervalo").strip()
     frecuencia_hora = request.form.get("frecuencia_hora", "").strip() or None
 
@@ -79,6 +81,7 @@ def _config_desde_formulario(existente: dict | None) -> tuple[dict | None, str |
         "app_password": app_password or None,  # None = no cambiar (ver db.guardar_correo_config)
         "imap_host": imap_host,
         "imap_port": imap_port,
+        "cedula": cedula or None,  # None = no cambiar la que ya había; también válido no tener ninguna nunca
         "frecuencia_tipo": frecuencia_tipo,
         "frecuencia_minutos": frecuencia_minutos,
         "frecuencia_hora": frecuencia_hora,
@@ -107,7 +110,7 @@ def api_correo_guardar():
             db.guardar_correo_config(
                 conn, usuario_id,
                 email=datos["email"], app_password=datos["app_password"],
-                imap_host=datos["imap_host"], imap_port=datos["imap_port"],
+                imap_host=datos["imap_host"], imap_port=datos["imap_port"], cedula=datos["cedula"],
                 frecuencia_tipo=datos["frecuencia_tipo"], frecuencia_minutos=datos["frecuencia_minutos"],
                 frecuencia_hora=datos["frecuencia_hora"], activo=datos["activo"],
             )
@@ -161,8 +164,11 @@ def api_correo_sincronizar_ahora():
     if not config:
         return jsonify(ok=False, error="Todavía no configuraste tu correo."), 400
 
+    # Misma ventana dinámica que usa la tarea programada: al menos 2 días,
+    # ampliada para cubrir el hueco desde la última corrida (si la hubo).
+    dias = lc.calcular_dias_a_revisar(config, datetime.now(), dias_minimo=2)
     try:
-        mensaje = lc.procesar_cuenta(config, dias=2, aplicar=True)
+        mensaje = lc.procesar_cuenta(config, dias=dias, aplicar=True)
     except Exception as e:
         with db.conexion() as conn:
             db.actualizar_estado_correo(conn, usuario_id, ok=False, error=str(e))

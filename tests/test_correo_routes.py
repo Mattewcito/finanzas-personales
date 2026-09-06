@@ -171,6 +171,54 @@ def test_guardar_caso_feliz_diario_da_200_y_guarda_la_hora(client, app_ctx):
 
 
 # ---------------------------------------------------------------------------
+# POST /api/correo/guardar -- cedula (opcional, para PDFs de extracto adjuntos)
+# ---------------------------------------------------------------------------
+
+def test_guardar_con_cedula_la_persiste(client, app_ctx):
+    _, admin_id, _ = app_ctx
+    login(client, "admin_test", "clave-admin-123")
+
+    datos = dict(FORM_BASE)
+    datos["cedula"] = "1020304050"
+    resp = client.post("/api/correo/guardar", data=datos)
+
+    assert resp.status_code == 200
+    fila = config_de(admin_id)
+    assert fila["cedula"] == "1020304050"
+
+
+def test_guardar_sin_cedula_da_200_y_queda_none(client):
+    """La cédula es opcional -- no debe exigirse ni siquiera en el alta,
+    a diferencia de app_password."""
+    login(client, "admin_test", "clave-admin-123")
+
+    resp = client.post("/api/correo/guardar", data=dict(FORM_BASE))
+
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+
+
+def test_guardar_con_cedula_vacia_en_actualizacion_posterior_mantiene_la_anterior(client, app_ctx):
+    """Mismo criterio que app_password: dejar el campo en blanco al editar
+    no debe borrar la cédula ya guardada."""
+    _, admin_id, _ = app_ctx
+    login(client, "admin_test", "clave-admin-123")
+
+    datos = dict(FORM_BASE)
+    datos["cedula"] = "1020304050"
+    client.post("/api/correo/guardar", data=datos)
+
+    datos_edicion = dict(FORM_BASE)
+    datos_edicion["app_password"] = ""  # no cambiar
+    datos_edicion["cedula"] = ""        # no cambiar
+    resp = client.post("/api/correo/guardar", data=datos_edicion)
+
+    assert resp.status_code == 200
+    fila = config_de(admin_id)
+    assert fila["cedula"] == "1020304050"
+
+
+# ---------------------------------------------------------------------------
 # Aislamiento entre usuarios -- el caso más importante
 # ---------------------------------------------------------------------------
 
@@ -332,6 +380,37 @@ def test_sincronizar_ahora_con_excepcion_da_400_y_deja_el_estado_de_error_en_bd(
     fila = config_de(admin_id)
     assert fila["ultima_corrida_ok"] == 0
     assert "fallo simulado de sincronizacion" in fila["ultimo_error"]
+
+
+def test_sincronizar_ahora_usa_calcular_dias_a_revisar_en_vez_de_un_valor_fijo(client, app_ctx, monkeypatch):
+    """La ventana de búsqueda debe calcularse dinámicamente con
+    calcular_dias_a_revisar(dias_minimo=2) -- no un 'dias=2' fijo
+    independiente del hueco desde la última corrida."""
+    _, admin_id, _ = app_ctx
+    guardar_config_directo(admin_id)
+    login(client, "admin_test", "clave-admin-123")
+
+    llamadas_calc = []
+
+    def _fake_calc(config, ahora, dias_minimo):
+        llamadas_calc.append(dias_minimo)
+        return 42
+
+    monkeypatch.setattr(lc, "calcular_dias_a_revisar", _fake_calc)
+
+    dias_recibidos = []
+
+    def _fake_procesar(config, dias, aplicar):
+        dias_recibidos.append(dias)
+        return "ok"
+
+    monkeypatch.setattr(lc, "procesar_cuenta", _fake_procesar)
+
+    resp = client.post("/api/correo/sincronizar-ahora")
+
+    assert resp.status_code == 200
+    assert llamadas_calc == [2]
+    assert dias_recibidos == [42]
 
 
 def test_sincronizar_ahora_redirige_a_login_sin_sesion(client):
