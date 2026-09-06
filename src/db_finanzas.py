@@ -80,6 +80,30 @@ CREATE TABLE IF NOT EXISTS usuarios (
     creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 CREATE INDEX IF NOT EXISTS idx_usuarios_username ON usuarios(username);
+
+-- Configuración de lectura de correo (Fase 1), UNA fila por usuario --
+-- cada quien configura su propio correo dedicado desde "Mi perfil" en la
+-- interfaz (routes/correo.py). app_password se guarda en texto plano a
+-- propósito (no se puede hashear: leer_correo.py necesita el valor real
+-- para autenticarse por IMAP) -- mismo nivel de confianza que ya tenía
+-- data/credenciales_correo.json (archivo local, fuera de git, en una app
+-- que nunca se expone a internet público). La interfaz nunca la vuelve a
+-- mostrar una vez guardada.
+CREATE TABLE IF NOT EXISTS correo_config (
+    usuario_id INTEGER PRIMARY KEY REFERENCES usuarios(id),
+    email TEXT NOT NULL,
+    app_password TEXT NOT NULL,
+    imap_host TEXT NOT NULL DEFAULT 'imap.gmail.com',
+    imap_port INTEGER NOT NULL DEFAULT 993,
+    activo INTEGER NOT NULL DEFAULT 1,
+    frecuencia_tipo TEXT NOT NULL DEFAULT 'intervalo',   -- 'intervalo' | 'diario'
+    frecuencia_minutos INTEGER NOT NULL DEFAULT 30,       -- usado si frecuencia_tipo='intervalo'
+    frecuencia_hora TEXT,                                 -- 'HH:MM', usado si frecuencia_tipo='diario'
+    ultima_corrida TEXT,
+    ultima_corrida_ok INTEGER,
+    ultimo_error TEXT,
+    actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
 """
 
 # username no tiene restricción UNIQUE a nivel de base de datos, para
@@ -376,6 +400,81 @@ def verificar_login(conn: sqlite3.Connection, username: str, password: str) -> d
 
 def listar_usuarios(conn: sqlite3.Connection) -> list[dict]:
     return [dict(r) for r in conn.execute("SELECT id, username, rol, nombre_mostrado FROM usuarios ORDER BY id")]
+
+
+# ----------------------------- Configuración de lectura de correo -----------------------------
+
+def obtener_correo_config(conn: sqlite3.Connection, usuario_id: int) -> dict | None:
+    r = conn.execute("SELECT * FROM correo_config WHERE usuario_id = ?", (usuario_id,)).fetchone()
+    return dict(r) if r else None
+
+
+def listar_correo_configs_activos(conn: sqlite3.Connection) -> list[dict]:
+    """Todas las cuentas con la automatización encendida -- lo que
+    leer_correo.py recorre en cada corrida de la tarea programada."""
+    return [dict(r) for r in conn.execute("SELECT * FROM correo_config WHERE activo = 1")]
+
+
+def guardar_correo_config(
+    conn: sqlite3.Connection,
+    usuario_id: int,
+    email: str,
+    app_password: str | None = None,
+    imap_host: str = "imap.gmail.com",
+    imap_port: int = 993,
+    frecuencia_tipo: str = "intervalo",
+    frecuencia_minutos: int = 30,
+    frecuencia_hora: str | None = None,
+    activo: bool = True,
+) -> None:
+    """Crea o actualiza la configuración de correo de un usuario (una fila
+    por usuario_id). `app_password=None` (o vacío) significa "no cambiar
+    la que ya había guardada" -- así el formulario de edición no obliga a
+    reescribirla cada vez que se toca cualquier otro campo (ej. la
+    frecuencia). Es obligatoria la primera vez que se guarda esta cuenta."""
+    existente = obtener_correo_config(conn, usuario_id)
+    if not app_password:
+        if not existente:
+            raise ValueError("Falta la contraseña de aplicación (obligatoria la primera vez que se configura).")
+        app_password = existente["app_password"]
+
+    conn.execute(
+        """
+        INSERT INTO correo_config
+            (usuario_id, email, app_password, imap_host, imap_port, activo,
+             frecuencia_tipo, frecuencia_minutos, frecuencia_hora, actualizado_en)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+        ON CONFLICT(usuario_id) DO UPDATE SET
+            email = excluded.email,
+            app_password = excluded.app_password,
+            imap_host = excluded.imap_host,
+            imap_port = excluded.imap_port,
+            activo = excluded.activo,
+            frecuencia_tipo = excluded.frecuencia_tipo,
+            frecuencia_minutos = excluded.frecuencia_minutos,
+            frecuencia_hora = excluded.frecuencia_hora,
+            actualizado_en = excluded.actualizado_en
+        """,
+        (usuario_id, email, app_password, imap_host, imap_port, int(bool(activo)),
+         frecuencia_tipo, frecuencia_minutos, frecuencia_hora),
+    )
+    conn.commit()
+
+
+def actualizar_estado_correo(conn: sqlite3.Connection, usuario_id: int, ok: bool, error: str | None = None) -> None:
+    """Deja constancia del resultado de la última corrida -- lo que se
+    muestra en la interfaz ("última sincronización: hace 12 min, OK")."""
+    conn.execute(
+        "UPDATE correo_config SET ultima_corrida = datetime('now', 'localtime'), "
+        "ultima_corrida_ok = ?, ultimo_error = ? WHERE usuario_id = ?",
+        (int(bool(ok)), error, usuario_id),
+    )
+    conn.commit()
+
+
+def eliminar_correo_config(conn: sqlite3.Connection, usuario_id: int) -> None:
+    conn.execute("DELETE FROM correo_config WHERE usuario_id = ?", (usuario_id,))
+    conn.commit()
 
 
 def obtener_usuario(conn: sqlite3.Connection, usuario_id: int) -> dict | None:

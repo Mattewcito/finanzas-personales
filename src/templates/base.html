@@ -192,6 +192,7 @@
     }
     .sidebar-nav a span{ display: block !important; white-space: nowrap; }
     .sidebar-nav a.nav-cargar{ display: none !important; } /* subir archivos desde el celular no es el caso de uso -- solo queda Dashboard */
+    .sidebar-nav a.nav-correo{ display: none !important; } /* configurar IMAP/contraseñas de aplicación desde el celular tampoco */
     .app-main{ padding-bottom: 62px; } /* deja ver el contenido por encima de la barra */
     .app-main iframe{ height: calc(100vh - 62px) !important; }
   }
@@ -232,6 +233,13 @@
           <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path>
         </svg>
         <span>Cargar extractos</span>
+      </a>
+      <a href="/configurar-correo" class="nav-correo {{ 'active' if activo == 'correo' else '' }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+          <path d="M3 7l9 6 9-6"></path>
+        </svg>
+        <span>Correo automático</span>
       </a>
       {% if usuario_rol == 'admin' %}
       <a href="/crear-usuario" class="{{ 'active' if activo == 'crear_usuario' else '' }}">
