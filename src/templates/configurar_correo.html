@@ -1,0 +1,351 @@
+{% extends "base.html" %}
+{% block title %}Correo automático{% endblock %}
+
+{% block head %}
+<style>
+  .estado-card{
+    display:flex; align-items:center; gap:14px; margin-bottom:22px;
+    padding: 14px 18px; border-radius: 14px;
+    background: linear-gradient(180deg, var(--card-solid), #10141f);
+    border: 1px solid var(--card-border);
+  }
+  .estado-dot{ width:11px; height:11px; border-radius:50%; flex-shrink:0; }
+  .estado-dot.ok{ background:#34d399; box-shadow:0 0 8px #34d39980; }
+  .estado-dot.error{ background:#f87171; box-shadow:0 0 8px #f8717180; }
+  .estado-dot.pausado{ background:#5b6379; }
+  .estado-dot.sin-config{ background:#fbbf24; box-shadow:0 0 8px #fbbf2480; }
+  .estado-texto b{ color:var(--text); }
+  .estado-texto .detalle{ display:block; font-size:12px; color:var(--text-dim); margin-top:2px; }
+
+  .ayuda-btn{
+    display:inline-flex; align-items:center; gap:6px; margin: 0 0 18px;
+    padding: 9px 14px; border-radius: 10px; border: 1px solid var(--card-border);
+    background: var(--bg-soft); color: var(--accent-2); font-size:12.5px; font-weight:600;
+    cursor:pointer; font-family:inherit;
+  }
+  .ayuda-btn:hover{ background: var(--card-hover); }
+
+  .frecuencia-opcion{
+    display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-dim);
+    padding: 10px 12px; border-radius:10px; border:1px solid var(--card-border);
+    margin-bottom:8px; cursor:pointer;
+  }
+  .frecuencia-opcion input[type="radio"]{ accent-color: var(--accent); flex-shrink:0; }
+  .frecuencia-opcion.activa{ border-color: var(--accent); color: var(--text); }
+  .frecuencia-opcion .field-input{ width:84px; display:inline-block; padding:6px 8px; }
+  .frecuencia-opcion input[type="time"].field-input{ width:120px; }
+  .frecuencia-opcion input:disabled{ opacity:.4; }
+
+  .check-row{ display:flex; align-items:center; gap:10px; margin: 18px 0 4px; font-size:13px; color:var(--text-dim); }
+  .check-row input{ accent-color: var(--accent); width:16px; height:16px; }
+
+  .btn-secundario{
+    margin-top: 20px; margin-left: 10px; padding: 11px 20px; border-radius: 10px;
+    border:1px solid var(--card-border); background: var(--bg-soft); color: var(--text);
+    font-weight:600; font-size:13.5px; cursor:pointer; font-family: inherit;
+  }
+  .btn-secundario:hover{ background: var(--card-hover); }
+  .btn-secundario:disabled{ opacity:.5; cursor:not-allowed; }
+  .btn-peligro{ color:#f87171; border-color: rgba(248,113,113,0.3); }
+
+  .preview-tabla{ width:100%; border-collapse:collapse; margin-top:12px; font-size:12.5px; }
+  .preview-tabla th, .preview-tabla td{ text-align:left; padding:6px 8px; border-bottom:1px solid var(--card-border); }
+  .preview-tabla th{ color:var(--text-faint); font-weight:600; font-size:11px; text-transform:uppercase; }
+
+  /* Modal de ayuda paso a paso */
+  .modal-overlay{
+    display:none; position:fixed; inset:0; background:rgba(5,7,12,0.72);
+    z-index:500; align-items:center; justify-content:center; padding:24px;
+  }
+  .modal-overlay.abierto{ display:flex; }
+  .modal-box{
+    max-width:560px; width:100%; max-height:85vh; overflow-y:auto;
+    background: linear-gradient(180deg, var(--card-solid), #10141f);
+    border:1px solid var(--card-border); border-radius:16px; padding:26px 28px;
+  }
+  .modal-box h3{ margin:0 0 4px; font-size:17px; }
+  .modal-box > p.sub{ margin:0 0 18px; color:var(--text-dim); font-size:13px; }
+  .paso{ display:flex; gap:12px; margin-bottom:16px; }
+  .paso .num{
+    flex-shrink:0; width:26px; height:26px; border-radius:50%; background:var(--accent);
+    color:#fff; font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center;
+  }
+  .paso .txt{ font-size:13px; color:var(--text-dim); line-height:1.55; padding-top:3px; }
+  .paso .txt b{ color:var(--text); }
+  .paso .txt a{ color:var(--accent-2); }
+  .modal-cerrar{
+    margin-top: 6px; padding: 9px 18px; border-radius:10px; border:none;
+    background: var(--card-hover); color:var(--text); font-weight:600; font-size:13px;
+    cursor:pointer; font-family:inherit;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-wrap" style="max-width: 760px;">
+
+  <div class="page-header">
+    <h1>📬 Correo automático</h1>
+    <p>Conectá tu correo dedicado a notificaciones bancarias para que Bancolombia se registre solo en tu cuenta, sin tener que anotar nada a mano.</p>
+  </div>
+
+  {% if config %}
+  <div class="estado-card" style="margin-top:22px;">
+    {% if not config.activo %}
+      <div class="estado-dot pausado"></div>
+      <div class="estado-texto"><b>Pausado</b> — configurado, pero no se está ejecutando.</div>
+    {% elif config.ultima_corrida_ok is none %}
+      <div class="estado-dot sin-config"></div>
+      <div class="estado-texto"><b>Configurado, todavía sin ninguna corrida.</b>
+        <span class="detalle">La primera corrida ocurre según la frecuencia elegida abajo, o podés forzarla con "Sincronizar ahora".</span>
+      </div>
+    {% elif config.ultima_corrida_ok %}
+      <div class="estado-dot ok"></div>
+      <div class="estado-texto"><b>Funcionando bien</b>
+        <span class="detalle">Última corrida: {{ config.ultima_corrida }}</span>
+      </div>
+    {% else %}
+      <div class="estado-dot error"></div>
+      <div class="estado-texto"><b>Con errores</b>
+        <span class="detalle">{{ config.ultima_corrida }} — {{ config.ultimo_error }}</span>
+      </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <button type="button" class="ayuda-btn" id="btnAyuda">❓ Cómo configurar esto, paso a paso</button>
+
+  <div class="card">
+    <form id="formCorreo">
+      <label class="field-label">Correo dedicado a notificaciones bancarias</label>
+      <input type="email" name="email" class="field-input" placeholder="tu-correo-financiero@gmail.com"
+             value="{{ config.email if config else '' }}" required>
+
+      <label class="field-label">Contraseña de aplicación de Gmail</label>
+      <input type="password" name="app_password" class="field-input" minlength="8"
+             placeholder="{{ 'Dejar en blanco para no cambiarla' if config else 'Requerida la primera vez — ver la ayuda de arriba' }}">
+
+      <details style="margin-top:16px;">
+        <summary style="cursor:pointer; font-size:12.5px; color:var(--text-dim);">Opciones avanzadas (servidor IMAP)</summary>
+        <div class="field-row" style="margin-top:10px;">
+          <div>
+            <label class="field-label">Servidor IMAP</label>
+            <input type="text" name="imap_host" class="field-input" value="{{ config.imap_host if config else 'imap.gmail.com' }}">
+          </div>
+          <div>
+            <label class="field-label">Puerto</label>
+            <input type="number" name="imap_port" class="field-input" value="{{ config.imap_port if config else 993 }}">
+          </div>
+        </div>
+      </details>
+
+      <label class="field-label">¿Cuándo sincronizar?</label>
+      <label class="frecuencia-opcion" id="opcionIntervalo">
+        <input type="radio" name="frecuencia_tipo" value="intervalo" id="radioIntervalo"
+               {{ 'checked' if not config or config.frecuencia_tipo == 'intervalo' else '' }}>
+        Cada
+        <input type="number" name="frecuencia_minutos" id="inputMinutos" class="field-input" min="5" max="1440"
+               value="{{ config.frecuencia_minutos if config else 30 }}">
+        minutos
+      </label>
+      <label class="frecuencia-opcion" id="opcionDiario">
+        <input type="radio" name="frecuencia_tipo" value="diario" id="radioDiario"
+               {{ 'checked' if config and config.frecuencia_tipo == 'diario' else '' }}>
+        Una vez al día, a las
+        <input type="time" name="frecuencia_hora" id="inputHora" class="field-input"
+               value="{{ config.frecuencia_hora if config and config.frecuencia_hora else '08:00' }}">
+      </label>
+
+      <label class="check-row">
+        <input type="checkbox" name="activo" id="checkActivo" value="1" {{ 'checked' if not config or config.activo else '' }}>
+        Automatización activa (desmarcá para pausarla sin borrar la configuración)
+      </label>
+
+      <div style="display:flex; flex-wrap:wrap; align-items:center;">
+        <button type="submit" class="btn-primary" id="btnGuardar">Guardar cambios</button>
+        <button type="button" class="btn-secundario" id="btnProbar">Probar conexión</button>
+        {% if config %}
+        <button type="button" class="btn-secundario" id="btnSincronizar">Sincronizar ahora</button>
+        <button type="button" class="btn-secundario btn-peligro" id="btnEliminar">Eliminar configuración</button>
+        {% endif %}
+      </div>
+    </form>
+
+    <div id="resultado" class="result-box" style="display:none;"></div>
+    <div id="preview" style="display:none;"></div>
+  </div>
+</div>
+
+<!-- Modal de ayuda -->
+<div class="modal-overlay" id="modalAyuda">
+  <div class="modal-box">
+    <h3>Cómo configurar tu correo automático</h3>
+    <p class="sub">5 pasos, una sola vez. Usá una cuenta de Gmail dedicada solo a esto — no tu correo personal.</p>
+
+    <div class="paso"><div class="num">1</div><div class="txt">
+      Si no tenés un correo Gmail dedicado a lo financiero, creá uno nuevo en
+      <a href="https://accounts.google.com/signup" target="_blank" rel="noopener">accounts.google.com/signup</a>.
+      Así las notificaciones bancarias quedan separadas de tu correo personal.
+    </div></div>
+
+    <div class="paso"><div class="num">2</div><div class="txt">
+      En Bancolombia (app o web), cambiá el <b>correo de notificaciones</b> a ese correo dedicado
+      (Configuración → Notificaciones, o similar según la versión de la app).
+    </div></div>
+
+    <div class="paso"><div class="num">3</div><div class="txt">
+      En esa cuenta de Google, activá la <b>verificación en 2 pasos</b> si todavía no la tenés
+      (<a href="https://myaccount.google.com/security" target="_blank" rel="noopener">myaccount.google.com/security</a>) —
+      es requisito para el paso siguiente.
+    </div></div>
+
+    <div class="paso"><div class="num">4</div><div class="txt">
+      Andá a <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>,
+      elegí "Otra (nombre personalizado)", escribí algo como <i>"Finanzas IMAP"</i> y generá la contraseña.
+      Google te muestra 16 caracteres — <b>copialos tal cual</b> (con o sin espacios, da igual).
+    </div></div>
+
+    <div class="paso"><div class="num">5</div><div class="txt">
+      Pegá ese correo y esa contraseña acá en el formulario, elegí cada cuánto querés que se sincronice,
+      y guardá. Usá <b>"Probar conexión"</b> primero para confirmar que todo quedó bien antes de dejarlo corriendo solo.
+    </div></div>
+
+    <button type="button" class="modal-cerrar" id="btnCerrarAyuda">Entendido</button>
+  </div>
+</div>
+
+<script>
+const form = document.getElementById('formCorreo');
+const resultado = document.getElementById('resultado');
+const preview = document.getElementById('preview');
+
+function mostrarResultado(clase, texto) {
+  resultado.style.display = 'block';
+  resultado.className = 'result-box ' + clase;
+  resultado.textContent = texto;
+}
+
+// --- Modal de ayuda ---
+const modal = document.getElementById('modalAyuda');
+document.getElementById('btnAyuda').addEventListener('click', () => modal.classList.add('abierto'));
+document.getElementById('btnCerrarAyuda').addEventListener('click', () => modal.classList.remove('abierto'));
+modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('abierto'); });
+
+// --- Radios de frecuencia: habilitar/deshabilitar sus propios inputs ---
+const radioIntervalo = document.getElementById('radioIntervalo');
+const radioDiario = document.getElementById('radioDiario');
+const inputMinutos = document.getElementById('inputMinutos');
+const inputHora = document.getElementById('inputHora');
+const opcionIntervalo = document.getElementById('opcionIntervalo');
+const opcionDiario = document.getElementById('opcionDiario');
+
+function actualizarFrecuenciaUI() {
+  const esIntervalo = radioIntervalo.checked;
+  inputMinutos.disabled = !esIntervalo;
+  inputHora.disabled = esIntervalo;
+  opcionIntervalo.classList.toggle('activa', esIntervalo);
+  opcionDiario.classList.toggle('activa', !esIntervalo);
+}
+radioIntervalo.addEventListener('change', actualizarFrecuenciaUI);
+radioDiario.addEventListener('change', actualizarFrecuenciaUI);
+actualizarFrecuenciaUI();
+
+// --- Guardar ---
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('btnGuardar');
+  mostrarResultado('loading', 'Guardando...');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/correo/guardar', { method: 'POST', body: new FormData(form) });
+    const json = await res.json();
+    if (!res.ok || !json.ok) {
+      mostrarResultado('error', '❌ ' + (json.error || 'Error desconocido'));
+      return;
+    }
+    mostrarResultado('ok', '✅ Configuración guardada.');
+    form.querySelector('[name="app_password"]').value = '';
+    setTimeout(() => location.reload(), 900);
+  } catch (err) {
+    mostrarResultado('error', '❌ No se pudo conectar con el servidor.');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// --- Probar conexión (no guarda nada) ---
+document.getElementById('btnProbar').addEventListener('click', async () => {
+  const btn = document.getElementById('btnProbar');
+  preview.style.display = 'none';
+  mostrarResultado('loading', 'Conectando por IMAP y buscando notificaciones de los últimos 3 días...');
+  btn.disabled = true;
+  try {
+    const datos = new FormData(form);
+    datos.set('dias', '3');
+    const res = await fetch('/api/correo/probar', { method: 'POST', body: datos });
+    const json = await res.json();
+    if (!res.ok || !json.ok) {
+      mostrarResultado('error', '❌ ' + (json.error || 'Error desconocido'));
+      return;
+    }
+    mostrarResultado('ok', `✅ Conexión exitosa — ${json.total} movimiento(s) encontrados en los últimos 3 días.`);
+    if (json.movimientos.length) {
+      let filas = json.movimientos.map(m =>
+        `<tr><td>${m.fecha}</td><td>${m.tipo}</td><td>${m.moneda} ${Number(m.monto).toLocaleString('es-CO')}</td><td>${m.descripcion}</td></tr>`
+      ).join('');
+      preview.innerHTML = `<table class="preview-tabla"><thead><tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Descripción</th></tr></thead><tbody>${filas}</tbody></table>`;
+      preview.style.display = 'block';
+    }
+  } catch (err) {
+    mostrarResultado('error', '❌ No se pudo conectar con el servidor.');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// --- Sincronizar ahora (si ya hay config guardada) ---
+const btnSincronizar = document.getElementById('btnSincronizar');
+if (btnSincronizar) {
+  btnSincronizar.addEventListener('click', async () => {
+    preview.style.display = 'none';
+    mostrarResultado('loading', 'Sincronizando ahora...');
+    btnSincronizar.disabled = true;
+    try {
+      const res = await fetch('/api/correo/sincronizar-ahora', { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        mostrarResultado('error', '❌ ' + (json.error || 'Error desconocido'));
+        return;
+      }
+      mostrarResultado('ok', '✅ ' + json.mensaje);
+      setTimeout(() => location.reload(), 1200);
+    } catch (err) {
+      mostrarResultado('error', '❌ No se pudo conectar con el servidor.');
+    } finally {
+      btnSincronizar.disabled = false;
+    }
+  });
+}
+
+// --- Eliminar configuración ---
+const btnEliminar = document.getElementById('btnEliminar');
+if (btnEliminar) {
+  btnEliminar.addEventListener('click', async () => {
+    if (!confirm('¿Eliminar la configuración de correo automático? Vas a tener que volver a cargar la contraseña de aplicación si querés reactivarlo.')) return;
+    btnEliminar.disabled = true;
+    try {
+      const res = await fetch('/api/correo/eliminar', { method: 'POST' });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        mostrarResultado('error', '❌ ' + (json.error || 'Error desconocido'));
+        return;
+      }
+      location.reload();
+    } catch (err) {
+      mostrarResultado('error', '❌ No se pudo conectar con el servidor.');
+      btnEliminar.disabled = false;
+    }
+  });
+}
+</script>
+{% endblock %}

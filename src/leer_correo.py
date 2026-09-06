@@ -10,14 +10,47 @@ busca las notificaciones transaccionales de Bancolombia, las parsea con
 expresiones regulares (nada de IA en este paso — determinístico y
 gratis) y las inserta en data/finanzas.db con origen='correo_imap'.
 
-Requiere data/credenciales_correo.json (ver credenciales_correo.example.json
-para el formato) — ese archivo NUNCA se sube a git (vive en data/, que
-está en .gitignore completo).
+MULTIUSUARIO, configurado desde la interfaz web (no archivos a mano):
+cada persona configura su propio correo dedicado a notificaciones
+bancarias desde "Mi perfil" -> "Correo automático" (ver
+routes/correo.py), y sus movimientos quedan SOLO en su propia cuenta del
+sistema -- nunca mezclados con los de otro. La configuración de cada
+usuario (correo, contraseña de aplicación, host/puerto IMAP, si está
+activa, y con qué frecuencia correr) vive en la tabla `correo_config` de
+data/finanzas.db (ver db_finanzas.py) -- una fila por usuario_id, con
+`usuario_id` como clave.
+
+Cada usuario decide, desde la interfaz, CUÁNDO le toca correr a SU
+cuenta: "cada X minutos" o "una vez al día a una hora fija". Este script
+no sabe nada de eso al arrancar -- en cada corrida recorre TODAS las
+cuentas activas y, para cada una, calcula si ya le tocaba (ver
+`esta_pendiente()`) antes de conectarse por IMAP. Por eso alcanza con
+UNA sola tarea programada de Windows corriendo seguido (cada 5 min, ver
+scripts/configurar_tarea_leer_correo.ps1) para que cada cuenta respete
+su propia frecuencia, sin una tarea por persona.
 
 Uso:
-    py leer_correo.py             -> solo reporta lo que encontró (no escribe)
-    py leer_correo.py --aplicar   -> inserta los movimientos nuevos en la BD
-    py leer_correo.py --dias 30   -> busca en los últimos N días (default 7)
+    py leer_correo.py                    -> revisa qué cuentas activas ya
+                                             les toca correr; para esas,
+                                             solo reporta (no escribe)
+    py leer_correo.py --aplicar          -> ídem, e inserta en la BD
+    py leer_correo.py --dias 30          -> busca en los últimos N días (default 7)
+    py leer_correo.py --usuario-id 3 --aplicar
+                                          -> fuerza la corrida de UN
+                                             usuario puntual YA MISMO,
+                                             ignorando si "le tocaba" o
+                                             no (lo usa el botón
+                                             "Sincronizar ahora" de la
+                                             interfaz)
+
+Una cuenta que falla (credenciales vencidas, conexión IMAP caída, etc.)
+queda registrada como ERROR en el log Y en su propia fila de
+correo_config (se ve en la interfaz), pero NO detiene el procesamiento
+de las demás cuentas -- cada una es independiente.
+
+Pensado para correr desatendido vía una tarea programada de Windows (ver
+scripts/configurar_tarea_leer_correo.ps1) -- cada corrida deja renglones
+en data/leer_correo.log, igual que actualizar_dashboard.py.
 
 Alcance actual (v1): SOLO Bancolombia (notificaciones en tiempo real).
 Nu no manda alertas por movimiento, solo extractos mensuales por correo
@@ -32,22 +65,34 @@ ingreso/gasto/deuda, que dependen de tipo/medio_pago/monto, no de categoria.
 
 import re
 import sys
-import json
 import imaplib
 import email
 import argparse
 import datetime
-from email.header import decode_header
-from pathlib import Path
+import traceback
 
+# La consola de Windows (Task Scheduler incluido) suele usar cp1252, que no
+# puede imprimir flechas/tildes especiales. Forzamos UTF-8 en stdout/stderr
+# (con reemplazo silencioso si algo raro se cuela) para que un simple print()
+# nunca tumbe la tarea programada -- mismo patrón que actualizar_dashboard.py.
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
 import db_finanzas as db
 
-CONFIG_PATH = db.DATA_DIR / "credenciales_correo.json"
-ESTADO_PATH = db.DATA_DIR / "leer_correo_estado.json"
+LOG_PATH = db.PROJECT_ROOT / "data" / "leer_correo.log"
+
+
+def log(msg: str) -> None:
+    """Escribe una línea con timestamp en el log y también la imprime (útil
+    si se corre a mano). Igual patrón que actualizar_dashboard.py -- sin
+    esto, una corrida desatendida vía pythonw.exe (sin consola) no deja
+    ningún rastro de qué pasó."""
+    line = f"[{datetime.datetime.now().isoformat(timespec='seconds')}] {msg}"
+    print(line)
+    with open(LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(line + "\n")
 
 REMITENTES_BANCOLOMBIA = (
     "alertasynotificaciones@an.notificacionesbancolombia.com",
@@ -288,14 +333,27 @@ def parsear_alerta_bancolombia(cuerpo: str) -> dict | None:
 
 # ----------------------------- IMAP -----------------------------
 
-def cargar_credenciales() -> dict:
-    if not CONFIG_PATH.exists():
-        raise FileNotFoundError(
-            f"No existe {CONFIG_PATH}. Copia credenciales_correo.example.json a ese nombre "
-            "y completa tu correo y contraseña de aplicación de Gmail "
-            "(myaccount.google.com/apppasswords)."
-        )
-    return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+def esta_pendiente(config: dict, ahora: datetime.datetime) -> bool:
+    """Decide si a esta cuenta ya le toca correr, según la frecuencia que
+    su dueño eligió en la interfaz. No conecta a IMAP -- es una decisión
+    puramente de fechas/horas, para no gastar una conexión de red en
+    cuentas que todavía no les toca."""
+    ultima = config.get("ultima_corrida")
+    ultima_dt = datetime.datetime.fromisoformat(ultima) if ultima else None
+
+    if config.get("frecuencia_tipo") == "diario":
+        hora_objetivo = config.get("frecuencia_hora") or "08:00"
+        h, m = (int(x) for x in hora_objetivo.split(":"))
+        objetivo_hoy = ahora.replace(hour=h, minute=m, second=0, microsecond=0)
+        if ahora < objetivo_hoy:
+            return False  # todavía no llega la hora fijada, hoy
+        return ultima_dt is None or ultima_dt.date() < ahora.date()
+
+    # 'intervalo' (default)
+    minutos = config.get("frecuencia_minutos") or 30
+    if ultima_dt is None:
+        return True
+    return (ahora - ultima_dt) >= datetime.timedelta(minutes=minutos)
 
 
 def _texto_plano_del_mensaje(msg: email.message.Message) -> str:
@@ -309,8 +367,7 @@ def _texto_plano_del_mensaje(msg: email.message.Message) -> str:
     return msg.get_payload(decode=True).decode(charset, errors="replace")
 
 
-def buscar_movimientos_correo(dias: int) -> list[dict]:
-    config = cargar_credenciales()
+def buscar_movimientos_correo(dias: int, config: dict) -> list[dict]:
     host = config.get("imap_host", "imap.gmail.com")
     port = config.get("imap_port", 993)
 
@@ -340,31 +397,90 @@ def buscar_movimientos_correo(dias: int) -> list[dict]:
         conn.logout()
 
 
+def procesar_cuenta(config: dict, dias: int, aplicar: bool) -> str:
+    """Procesa UNA cuenta (una fila de correo_config) de punta a punta:
+    busca sus notificaciones y -- si aplicar=True -- las inserta en
+    config['usuario_id'] (ya resuelto, viene de la propia fila -- no hace
+    falta traducir ningún username acá). Deja que cualquier excepción
+    suba (el llamador decide si eso aborta todo o solo esta cuenta, y
+    registra el error en correo_config). Devuelve el mensaje de resultado
+    para loguearlo/mostrarlo."""
+    usuario_id = config["usuario_id"]
+    etiqueta = f"usuario {usuario_id} ({config.get('email', '?')})"
+
+    log(f"[{etiqueta}] Buscando notificaciones de Bancolombia de los últimos {dias} días...")
+    movimientos = buscar_movimientos_correo(dias, config)
+    print(f"[{etiqueta}] Correos financieros parseados: {len(movimientos)}")
+    for m in movimientos:
+        print(f"  {m['fecha']}  {m['tipo']:6s}  {m['moneda']} {m['monto']:>12,.0f}  {m['descripcion']}")
+
+    if not aplicar:
+        mensaje = f"(solo reporte) {len(movimientos)} movimiento(s) encontrados -- no se insertó nada."
+        log(f"[{etiqueta}] {mensaje}")
+        return mensaje
+
+    if not movimientos:
+        mensaje = "sin movimientos nuevos en el correo, nada que insertar."
+    else:
+        conn = db.conectar()
+        try:
+            db.crear_esquema(conn)
+            stats = db.insertar_movimientos(conn, movimientos, origen="correo_imap", usuario_id=usuario_id)
+            mensaje = f"{stats['nuevos']} movimiento(s) nuevo(s) insertado(s), {stats['duplicados']} ya existían (omitidos)."
+        finally:
+            conn.close()
+
+    with db.conexion() as conn:
+        db.actualizar_estado_correo(conn, usuario_id, ok=True, error=None)
+
+    log(f"[{etiqueta}] OK — {mensaje}")
+    return mensaje
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dias", type=int, default=7, help="Cuántos días hacia atrás buscar (default 7)")
     ap.add_argument("--aplicar", action="store_true", help="Insertar en la base de datos (si no, solo reporta)")
+    ap.add_argument("--usuario-id", type=int, default=None, dest="usuario_id",
+                     help="Forzar la corrida de un solo usuario YA MISMO, "
+                          "ignorando si 'le tocaba' según su frecuencia (botón 'Sincronizar ahora')")
     args = ap.parse_args()
 
-    print(f"Buscando notificaciones de Bancolombia de los últimos {args.dias} días...")
-    movimientos = buscar_movimientos_correo(args.dias)
-    print(f"Correos financieros parseados: {len(movimientos)}")
-    for m in movimientos:
-        print(f"  {m['fecha']}  {m['tipo']:6s}  {m['moneda']} {m['monto']:>12,.0f}  {m['descripcion']}")
+    with db.conexion() as conn:
+        db.crear_esquema(conn)
+        if args.usuario_id is not None:
+            fila = db.obtener_correo_config(conn, args.usuario_id)
+            configs = [fila] if fila else []
+        else:
+            configs = db.listar_correo_configs_activos(conn)
 
-    if not args.aplicar:
-        print("\n(solo reporte -- corré con --aplicar para insertar en la base de datos)")
+    if not configs:
+        if args.usuario_id is not None:
+            log(f"ERROR — el usuario {args.usuario_id} no tiene ninguna cuenta de correo configurada.")
+            return 1
+        log("OK — no hay ninguna cuenta de correo configurada/activa todavía (se configura desde 'Mi perfil' en la interfaz).")
         return 0
 
-    conn = db.conectar()
-    try:
-        db.crear_esquema(conn)
-        stats = db.insertar_movimientos(conn, movimientos, origen="correo_imap")
-    finally:
-        conn.close()
+    forzado = args.usuario_id is not None
+    ahora = datetime.datetime.now()
+    algun_error = False
+    for config in configs:
+        if not forzado and not esta_pendiente(config, ahora):
+            continue  # todavía no le toca a esta cuenta, según su propia frecuencia
+        try:
+            procesar_cuenta(config, args.dias, args.aplicar)
+        except Exception as e:
+            algun_error = True
+            log(f"[usuario {config['usuario_id']}] ERROR — la lectura de correo falló: {e}")
+            log(traceback.format_exc())
+            if args.aplicar:
+                with db.conexion() as conn:
+                    db.actualizar_estado_correo(conn, config["usuario_id"], ok=False, error=str(e))
+            # Sigue con las demás cuentas -- una credencial vencida en UNA
+            # cuenta no debe dejar sin sincronizar a las demás personas.
+            continue
 
-    print(f"\nOK — {stats['nuevos']} movimientos nuevos insertados, {stats['duplicados']} ya existían (omitidos).")
-    return 0
+    return 1 if algun_error else 0
 
 
 if __name__ == "__main__":

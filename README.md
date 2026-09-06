@@ -21,15 +21,27 @@ reemplazables/opcionales por diseño.
   admin, la cuenta que estés viendo). Ya no hay "regenerar" ni archivos
   HTML por usuario en disco -- cualquier cambio en la BD se ve apenas
   se recarga la página.
-- 🚧 **Fase 1 — Ingesta local de correo** (`src/leer_correo.py`): lee las
-  notificaciones de Bancolombia directo de Gmail por IMAP (contraseña de
-  aplicación, no navegador automatizado — Google bloquea logins por
-  navegador controlado), las parsea con expresiones regulares (sin IA) y
-  las inserta en la base de datos con dedup por (fecha, monto). Cubre
+- ✅ **Fase 1 — Ingesta local de correo, configurable desde la interfaz**
+  (`src/leer_correo.py` + `src/routes/correo.py`): lee las notificaciones
+  de Bancolombia directo de Gmail por IMAP (contraseña de aplicación, no
+  navegador automatizado — Google bloquea logins por navegador
+  controlado), las parsea con expresiones regulares (sin IA) y las
+  inserta en la base de datos con dedup por (fecha, monto). Cada persona
+  configura su propio correo dedicado desde el menú **"Correo
+  automático"** (incluye una guía paso a paso en un popup de ayuda) — sin
+  tocar archivos ni la terminal. Ahí mismo cada quien elige cada cuánto
+  se sincroniza (cada X minutos, o una vez al día a una hora fija), puede
+  pausarlo, probarlo (vista previa sin insertar nada) o forzar una
+  sincronización inmediata. Una sola tarea programada procesa todas las
+  cuentas activas en cada corrida, cada una asignada a su usuario y
+  aislada de las demás (si una falla, no detiene a las otras). Cubre
   compras (débito/crédito), QR, transferencias, Bre-B, nómina y avances
-  de tarjeta. **Nu queda pendiente** (solo manda extractos mensuales, no
-  alertas por movimiento — se sigue cubriendo con `reconciliar_extractos.py`).
-  Ver "Configurar la lectura de correo" abajo.
+  de tarjeta. Corre sola cada 5 min vía la tarea programada
+  "FinanzasLeerCorreo" (`scripts/configurar_tarea_leer_correo.ps1`, cada
+  cuenta respeta su propia frecuencia igual — ver "Configurar la lectura
+  de correo" abajo), con su propio log (`data/leer_correo.log`). **Nu
+  queda pendiente** (solo manda extractos mensuales, no alertas por
+  movimiento — se sigue cubriendo con `reconciliar_extractos.py`).
 - ✅ **App con interfaz** (`src/app.py`, blueprints en `src/auth.py` y
   `src/routes/`): servidor Flask con menú lateral colapsable — Dashboard
   (embebido, dinámico) y Cargar extractos (subir Excel/PDF desde el
@@ -151,13 +163,14 @@ Finanzas personales/
 │   ├── auth.py                  # blueprint de autenticación (login/logout/cambiar de perfil)
 │   ├── routes/
 │   │   ├── dashboard.py         # blueprint: ver el dashboard, registrar movimientos, cargar extractos
-│   │   └── usuarios.py          # blueprint: alta/edición de cuentas, editar el propio perfil
+│   │   ├── usuarios.py          # blueprint: alta/edición de cuentas, editar el propio perfil
+│   │   └── correo.py            # blueprint: configurar la lectura automática de correo (propia cuenta)
 │   ├── db_finanzas.py           # esquema, clasificación de movimientos, sincronización, consultas
 │   ├── perfil_financiero.py     # clasifica a cada usuario en un arquetipo de hábitos + consejos
 │   ├── actualizar_dashboard.py  # sincroniza finanzas.db desde el Excel, mientras siga activo
 │   ├── migrar_a_sqlite.py       # migración/reset puntual de la base de datos
 │   ├── crear_usuario.py         # alta de cuentas por línea de comandos
-│   ├── leer_correo.py           # ingesta local de notificaciones bancarias por Gmail/IMAP
+│   ├── leer_correo.py           # ingesta de notificaciones bancarias por Gmail/IMAP (config en la tabla correo_config)
 │   ├── templates/                # plantillas Jinja de la interfaz (login, registrar, cargar extractos, etc.)
 │   └── tools/
 │       └── reconciliar_extractos.py  # parseo de extractos PDF -> movimientos, con dedup por (fecha, monto)
@@ -175,20 +188,31 @@ que solo arma la app y los registra. Ver la cabecera de `src/app.py` y
 ## Cómo funciona el flujo diario
 
 ```
-Gmail (tarea externa, 8:00 AM) -- mientras el Excel siga activo
-   -> escribe data/finanzas_personales.xlsx
-Tarea de Windows "ActualizarDashboardFinanzas" (9:30 AM)
-   -> corre src/actualizar_dashboard.py
-      -> sincroniza el Excel a data/finanzas.db (si el archivo existe)
+Tarea de Windows "FinanzasLeerCorreo" (cada 5 min)
+   -> corre src/leer_correo.py --aplicar
+      -> lee correo_config (tabla en finanzas.db) y descarta las cuentas
+         a las que todavía no les toca según SU frecuencia configurada
+      -> para cada cuenta que sí le toca: lee por IMAP su correo dedicado
+      -> parsea cada alerta de Bancolombia (regex, sin IA)
+      -> inserta directo en data/finanzas.db (dedup por fecha+monto)
 En cualquier momento, al abrir el dashboard:
    -> el navegador pide GET /api/dashboard-data
       -> Flask consulta finanzas.db (ya enriquecida: medio de pago, deuda)
       -> devuelve movimientos + ledger de deuda + perfil financiero, siempre al día
 ```
 
-Una vez que `leer_correo.py` reemplace del todo al bot externo de Gmail
-y se borre el Excel, tanto `actualizar_dashboard.py` como la tarea
-programada dejan de tener trabajo que hacer -- se pueden borrar los dos.
+Ruta vieja, en transición hacia salida (solo mientras el Excel siga
+activo -- ver "Configurar la lectura de correo" arriba):
+
+```
+Gmail (bot externo) -- escribe data/finanzas_personales.xlsx
+Tarea de Windows "ActualizarDashboardFinanzas"
+   -> corre src/actualizar_dashboard.py -> sincroniza el Excel a finanzas.db
+```
+
+Una vez que `leer_correo.py` cubra a todos los usuarios y se borre el
+Excel, tanto `actualizar_dashboard.py` como esa tarea programada y el
+bot externo de Gmail dejan de tener trabajo que hacer -- se pueden borrar.
 
 ## Modelo de datos: caja real vs. deuda de tarjeta
 
@@ -222,22 +246,54 @@ py actualizar_dashboard.py  # sincroniza finanzas.db desde el Excel (si sigue ac
 
 ## Configurar la lectura de correo (Fase 1)
 
-1. Activá verificación en 2 pasos en tu cuenta de Google (si no la tenés).
-2. Generá una contraseña de aplicación en
-   [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
-   (elegí "Otra" y ponele un nombre como "Finanzas IMAP").
-3. Copiá `data/credenciales_correo.example.json` a `data/credenciales_correo.json`
-   y completá tu correo y esa contraseña (16 caracteres, con o sin espacios).
-   Ese archivo **nunca se sube a git** — vive en `data/`.
-4. Probá primero en modo reporte (no escribe nada):
-   ```bash
-   cd src
-   py leer_correo.py --dias 30
-   ```
-5. Si los movimientos que muestra son correctos, aplicá:
-   ```bash
-   py leer_correo.py --dias 30 --aplicar
-   ```
+**Multiusuario, autoservicio desde la interfaz:** cada persona de la
+casa tiene (o puede tener) su propio correo Gmail **dedicado solo a
+notificaciones bancarias** (no su correo personal), y sus movimientos
+quedan SOLO en su propia cuenta de Finanzas Personales — nunca mezclados
+con los de otro. No hace falta editar ningún archivo ni usar la
+terminal: cada quien entra a su cuenta y configura la suya desde el menú
+**"Correo automático"**.
+
+Esa página tiene un botón **"❓ Cómo configurar esto, paso a paso"** con
+la guía completa (crear el correo dedicado, cambiar el correo de
+notificaciones en Bancolombia, activar verificación en 2 pasos y generar
+la contraseña de aplicación en
+[myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)).
+Una vez con esos datos a mano:
+
+1. Completá correo dedicado + contraseña de aplicación (16 caracteres,
+   con o sin espacios) en el formulario.
+2. Elegí cuándo sincronizar: **"cada N minutos"** o **"una vez al día a
+   una hora fija"**.
+3. Usá **"Probar conexión"** — conecta por IMAP y muestra una vista
+   previa de lo que encontraría, sin insertar nada todavía.
+4. Si se ve bien, **"Guardar cambios"**. Desde ahí podés además
+   **"Sincronizar ahora"** (fuerza una corrida inmediata, sin esperar a
+   la frecuencia elegida), pausarlo (checkbox "Automatización activa",
+   sin perder la configuración) o eliminarlo del todo.
+
+Toda esta configuración (correo, contraseña de aplicación, host/puerto
+IMAP, frecuencia, y el resultado de la última corrida) vive en la tabla
+`correo_config` de `data/finanzas.db` — una fila por usuario, nunca
+visible entre cuentas ni siquiera para un admin "viendo" otro perfil (la
+página siempre opera sobre la cuenta con la que se inició sesión). La
+contraseña de aplicación se guarda en texto plano ahí (no se puede
+hashear: `leer_correo.py` necesita el valor real para conectarse por
+IMAP) — mismo nivel de confianza que ya tenía el archivo local que
+existía antes de esta página; la interfaz nunca la vuelve a mostrar una
+vez guardada.
+
+**Automatizarlo** (para que corra solo, sin tener que apretar
+"Sincronizar ahora" cada vez): corré una única vez
+`scripts/configurar_tarea_leer_correo.ps1` — crea la tarea programada de
+Windows "FinanzasLeerCorreo", que revisa cada 5 minutos todas las
+cuentas activas y procesa solo las que ya les toca según SU PROPIA
+frecuencia (el intervalo corto de la tarea es solo para que esa
+frecuencia elegida se respete de verdad; no hace que se sincronice más
+seguido de lo configurado). No hace falta volver a tocar este script
+cuando alguien agrega o cambia su configuración desde la web. Cada
+corrida deja renglones en `data/leer_correo.log`, etiquetados por
+usuario.
 
 La categoría de cada compra se asigna por palabras clave en el nombre del
 comercio (sin IA) — es un mejor esfuerzo. Se puede corregir directamente
@@ -247,6 +303,9 @@ en la base de datos; no afecta los totales de ingreso/gasto/deuda.
 
 `data/` y `docs/` están en `.gitignore` — nunca se suben a GitHub.
 Ninguna credencial (API keys, contraseñas de correo) va escrita en texto
-plano en el código: siempre por variable de entorno o archivo local
-ignorado por git.
+plano en el código: siempre por variable de entorno, archivo local
+ignorado por git, o (la contraseña de aplicación de cada quien, desde
+2026-09-06) en `data/finanzas.db` — mismo archivo local fuera de git que
+ya guarda el resto de los datos, nunca expuesta de vuelta en la interfaz
+una vez guardada.
 
