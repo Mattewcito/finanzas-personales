@@ -108,17 +108,31 @@
     border:1px solid var(--card-border); border-radius:6px;
   }
   /* Buscador de "Viendo perfil de" -- solo aparece con más de 5 cuentas
-     (ver el <select> simple arriba para 5 o menos). */
-  input.switcher-select{ appearance:auto; padding:5px 8px; }
-  .switcher-lista{
-    margin-top:4px; max-height:130px; overflow-y:auto;
-    border:1px solid var(--card-border); border-radius:6px; background: var(--bg-soft);
+     (ver el <select> simple arriba para 5 o menos). Una sola caja
+     (buscador + lista fusionados, mismo fondo/borde) en vez de dos
+     bloques separados -- y la lista recortada a exactamente 2 filas de
+     alto (scrollea para ver el resto) para que el conjunto completo
+     (buscador + 2 filas) ocupe lo mismo que 3 opciones de un <select>. */
+  .switcher-buscador{
+    border:1px solid var(--card-border); border-radius:6px; overflow:hidden;
+    background-color: var(--card-solid);
   }
+  .switcher-buscador input{
+    display:block; box-sizing:border-box; width:100%; padding:6px 8px;
+    font-size:11.5px; font-family:inherit; color: var(--text);
+    background-color: var(--card-solid); border:none; border-bottom:1px solid var(--card-border);
+    outline:none; -webkit-appearance:none; appearance:none;
+  }
+  .switcher-buscador input::placeholder{ color: var(--text-faint); }
+  .switcher-lista{ max-height:56px; overflow-y:auto; } /* 56px = 2 filas de 28px */
   .switcher-opcion{
-    display:block; width:100%; text-align:left; padding:6px 8px; font-size:11.5px;
-    background:none; border:none; color: var(--text-dim); cursor:pointer; font-family:inherit;
+    display:block; box-sizing:border-box; width:100%; height:28px; line-height:28px;
+    padding:0 8px; text-align:left; font-size:11.5px; font-family:inherit;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    background-color: var(--card-solid); background-image:none; border:none;
+    color: var(--text-dim); cursor:pointer; -webkit-appearance:none; appearance:none;
   }
-  .switcher-opcion:hover{ background: var(--card-hover); color:#fff; }
+  .switcher-opcion:hover{ background-color: var(--card-hover); color:#fff; }
   .switcher-opcion.activa{ color: var(--accent-2); font-weight:600; }
   .switcher-opcion[hidden]{ display:none; }
 
@@ -273,17 +287,21 @@
         <label style="display:block; font-size:10.5px; color:var(--text-faint); margin-bottom:3px;">Viendo perfil de</label>
         {% if usuarios_disponibles|length > 5 %}
         <!-- Más de 5 cuentas: un <select> nativo se vuelve incómodo de
-             recorrer -- buscador + lista filtrable en su lugar. La
-             cuenta propia del admin siempre aparece primero (ver
-             auth.py::inyectar_globales), así que sigue siendo fácil
-             volver a la propia aunque la lista crezca mucho. -->
-        <input type="text" id="buscadorViendoPerfil" class="switcher-select" autocomplete="off"
-               placeholder="Buscar usuario..." value="{{ usuario_viendo_nombre }}">
-        <div class="switcher-lista" id="listaViendoPerfil">
-          {% for u in usuarios_disponibles %}
-          <button type="button" class="switcher-opcion {{ 'activa' if u.id == viendo_id else '' }}"
-                  data-id="{{ u.id }}" data-nombre="{{ u.nombre_mostrado|lower }}">{{ u.nombre_mostrado }}</button>
-          {% endfor %}
+             recorrer -- buscador + lista filtrable en su lugar, en una
+             sola caja fusionada. La lista muestra 2 filas (el buscador
+             ocupa el lugar de la 3ra, mismo espacio total que el select
+             de 3 opciones de abajo). La cuenta propia del admin siempre
+             aparece primero (ver auth.py::inyectar_globales), así que
+             sigue siendo fácil volver a la propia aunque la lista
+             crezca mucho. -->
+        <div class="switcher-buscador">
+          <input type="text" id="buscadorViendoPerfil" autocomplete="off" placeholder="Buscar usuario...">
+          <div class="switcher-lista" id="listaViendoPerfil">
+            {% for u in usuarios_disponibles %}
+            <button type="button" class="switcher-opcion {{ 'activa' if u.id == viendo_id else '' }}"
+                    data-id="{{ u.id }}" data-nombre="{{ u.nombre_mostrado|lower }}">{{ u.nombre_mostrado }}</button>
+            {% endfor %}
+          </div>
         </div>
         <form method="post" action="/cambiar-vista" id="formViendoPerfil">
           <input type="hidden" name="usuario_id" id="inputViendoPerfilId">
@@ -348,7 +366,6 @@
       op.hidden = q.length > 0 && !op.dataset.nombre.includes(q);
     });
   });
-  buscador.addEventListener('focus', () => buscador.select());
 
   opciones.forEach(op => {
     op.addEventListener('click', () => {
