@@ -110,7 +110,29 @@ CREATE TABLE IF NOT EXISTS correo_config (
     ultimo_error TEXT,
     actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
+
+-- Vistas del dashboard que un admin decidió ocultar para un usuario
+-- puntual (routes/admin_vistas.py) -- ej. "Mathewcito no quiere que
+-- Emanuel vea Correo automático". La AUSENCIA de una fila significa
+-- "visible" (default): no hace falta una columna booleana, alcanza con
+-- que exista o no la fila -- ocultar = INSERT, volver a mostrar =
+-- DELETE. Se aplica siempre sobre la cuenta que inició sesión
+-- (session["usuario_id"]), nunca sobre viendo_id() -- ver auth.py.
+CREATE TABLE IF NOT EXISTS vistas_ocultas (
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+    vista TEXT NOT NULL,   -- 'correo_automatico' por ahora; futuro: 'insights', 'perfil_financiero'
+    PRIMARY KEY (usuario_id, vista)
+);
 """
+
+# Catálogo de vistas que un admin puede ocultar/mostrar por usuario
+# (routes/admin_vistas.py). Agregar una nueva vista a futuro es tan
+# simple como sumar una entrada acá y envolver esa sección del
+# dashboard/menú con el mismo chequeo que ya usa "correo_automatico".
+VISTAS_DISPONIBLES = [
+    {"id": "correo_automatico", "label": "Correo automático",
+     "descripcion": "El ítem \"Correo automático\" del menú y su página de configuración."},
+]
 
 # username no tiene restricción UNIQUE a nivel de base de datos, para
 # soportar configuraciones de cuentas fuera del caso estándar.
@@ -573,6 +595,35 @@ def actualizar_estado_correo(conn: sqlite3.Connection, usuario_id: int, ok: bool
 
 def eliminar_correo_config(conn: sqlite3.Connection, usuario_id: int) -> None:
     conn.execute("DELETE FROM correo_config WHERE usuario_id = ?", (usuario_id,))
+    conn.commit()
+
+
+# ----------------------------- Vistas ocultas por usuario (admin) -----------------------------
+
+def vistas_ocultas_de(conn: sqlite3.Connection, usuario_id: int) -> set[str]:
+    """Qué vistas tiene ocultas ESTE usuario puntual -- ausencia de fila
+    significa "visible" (default), así que un usuario sin ninguna
+    restricción devuelve un set vacío."""
+    return {r["vista"] for r in conn.execute("SELECT vista FROM vistas_ocultas WHERE usuario_id = ?", (usuario_id,))}
+
+
+def vistas_ocultas_todos(conn: sqlite3.Connection) -> dict[int, set[str]]:
+    """Igual que vistas_ocultas_de() pero para TODOS los usuarios de una
+    sola pasada -- lo usa la página de administración para pintar la
+    grilla completa sin una consulta por usuario."""
+    mapa: dict[int, set[str]] = {}
+    for r in conn.execute("SELECT usuario_id, vista FROM vistas_ocultas"):
+        mapa.setdefault(r["usuario_id"], set()).add(r["vista"])
+    return mapa
+
+
+def ocultar_vista(conn: sqlite3.Connection, usuario_id: int, vista: str) -> None:
+    conn.execute("INSERT OR IGNORE INTO vistas_ocultas (usuario_id, vista) VALUES (?, ?)", (usuario_id, vista))
+    conn.commit()
+
+
+def mostrar_vista(conn: sqlite3.Connection, usuario_id: int, vista: str) -> None:
+    conn.execute("DELETE FROM vistas_ocultas WHERE usuario_id = ? AND vista = ?", (usuario_id, vista))
     conn.commit()
 
 

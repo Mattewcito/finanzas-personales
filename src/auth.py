@@ -45,6 +45,28 @@ def viendo_id() -> int:
     return session.get("viendo_id", session.get("usuario_id"))
 
 
+def requiere_vista_visible(vista: str):
+    """Decorador: bloquea una ruta que un admin ocultó para ESTA cuenta
+    (session["usuario_id"], ver routes/admin_vistas.py) -- no solo el
+    ítem del menú, la ruta en sí, para que ocultar algo sea una
+    restricción real y no solo estética. Los admins nunca quedan
+    bloqueados por esto: si lo estuvieran, un admin podría accidentalmente
+    quitarse a sí mismo el acceso al panel que revierte la restricción."""
+    def decorador(f):
+        @wraps(f)
+        def decorado(*args, **kwargs):
+            if session.get("rol") != "admin":
+                with db.conexion() as conn:
+                    ocultas = db.vistas_ocultas_de(conn, session.get("usuario_id"))
+                if vista in ocultas:
+                    if request.method == "GET":
+                        return redirect(url_for("dashboard.home"))
+                    return jsonify(ok=False, error="No tenés acceso a esta función."), 403
+            return f(*args, **kwargs)
+        return decorado
+    return decorador
+
+
 @auth_bp.app_context_processor
 def inyectar_globales():
     usuarios_disponibles = []
@@ -55,6 +77,14 @@ def inyectar_globales():
     # mandarlos, después de que una carga terminó en la cuenta
     # equivocada por tener seleccionado otro perfil sin darse cuenta).
     usuario_viendo_nombre = session.get("nombre")
+    vistas_ocultas = set()
+    if session.get("usuario_id"):
+        with db.conexion() as conn:
+            # SIEMPRE sobre la cuenta que inició sesión, nunca viendo_id():
+            # es "qué ve ESTA PERSONA en su propio menú", no un dato de la
+            # cuenta que un admin esté mirando en ese momento (ver
+            # routes/admin_vistas.py).
+            vistas_ocultas = db.vistas_ocultas_de(conn, session["usuario_id"])
     if session.get("rol") == "admin":
         with db.conexion() as conn:
             usuarios_disponibles = db.listar_usuarios(conn)
@@ -75,6 +105,7 @@ def inyectar_globales():
         "viendo_id": viendo_id(),
         "usuario_viendo_nombre": usuario_viendo_nombre,
         "usuarios_disponibles": usuarios_disponibles,
+        "vistas_ocultas": vistas_ocultas,
     }
 
 

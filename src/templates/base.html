@@ -282,6 +282,7 @@
         </svg>
         <span>Cargar extractos</span>
       </a>
+      {% if 'correo_automatico' not in vistas_ocultas %}
       <a href="/configurar-correo" class="nav-correo {{ 'active' if activo == 'correo' else '' }}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -289,6 +290,7 @@
         </svg>
         <span>Correo automático</span>
       </a>
+      {% endif %}
       {% if usuario_rol == 'admin' %}
       <a href="/crear-usuario" class="{{ 'active' if activo == 'crear_usuario' else '' }}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -297,6 +299,13 @@
           <path d="M19 8v6M22 11h-6"></path>
         </svg>
         <span>Crear usuario</span>
+      </a>
+      <a href="/admin/vistas" class="{{ 'active' if activo == 'admin_vistas' else '' }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 12l2 2 4-4"></path>
+          <circle cx="12" cy="12" r="9"></circle>
+        </svg>
+        <span>Vistas por usuario</span>
       </a>
       {% endif %}
     </div>

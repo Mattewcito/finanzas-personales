@@ -57,6 +57,16 @@ reemplazables/opcionales por diseño.
 - ✅ **Dashboard responsive**: navegación adaptada a celular/tablet.
 - ✅ **Cuentas de usuario**: acceso con usuario/contraseña, datos
   aislados por cuenta. Ver `src/crear_usuario.py` para dar de alta cuentas.
+- ✅ **Vistas por usuario** (`src/routes/admin_vistas.py`, menú "Vistas
+  por usuario", solo admin): un admin puede ocultarle a cualquier
+  usuario (incluido sí mismo) secciones del menú/dashboard -- hoy solo
+  "Correo automático" es configurable, pensado para sumar más
+  (Insights, Tu perfil financiero) sin cambiar el diseño. Ocultar una
+  vista bloquea también la ruta en sí, no solo el ítem del menú -- ver
+  `auth.py::requiere_vista_visible()`. La restricción es siempre sobre
+  la cuenta que inició sesión, nunca sobre la que un admin esté
+  "viendo", y los admins nunca quedan bloqueados por su propia
+  restricción (para no perder acceso al panel que la revierte).
 - ✅ **Despliegue automático**: cada push a `master` reconstruye y
   levanta el contenedor Docker solo, vía un runner de GitHub Actions
   instalado en esta misma PC (ver `.github/workflows/deploy.yml` y
@@ -164,7 +174,8 @@ Finanzas personales/
 │   ├── routes/
 │   │   ├── dashboard.py         # blueprint: ver el dashboard, registrar movimientos, cargar extractos
 │   │   ├── usuarios.py          # blueprint: alta/edición de cuentas, editar el propio perfil
-│   │   └── correo.py            # blueprint: configurar la lectura automática de correo (propia cuenta)
+│   │   ├── correo.py            # blueprint: configurar la lectura automática de correo (propia cuenta)
+│   │   └── admin_vistas.py      # blueprint: qué secciones del menú puede ver cada usuario (solo admin)
 │   ├── db_finanzas.py           # esquema, clasificación de movimientos, sincronización, consultas
 │   ├── perfil_financiero.py     # clasifica a cada usuario en un arquetipo de hábitos + consejos
 │   ├── actualizar_dashboard.py  # sincroniza finanzas.db desde el Excel, mientras siga activo

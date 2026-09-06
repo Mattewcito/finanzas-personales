@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Vistas por usuario{% endblock %}
+
+{% block head %}
+<style>
+  .vistas-tabla{ width:100%; border-collapse:collapse; }
+  .vistas-tabla th, .vistas-tabla td{ padding:12px 14px; border-bottom:1px solid var(--card-border); text-align:left; font-size:13px; }
+  .vistas-tabla th{ color:var(--text-faint); font-weight:600; font-size:11px; text-transform:uppercase; }
+  .vistas-tabla td.usuario{ font-weight:600; }
+  .vistas-tabla td.usuario span{ display:block; font-weight:400; font-size:11.5px; color:var(--text-faint); }
+  .vistas-tabla td.centro{ text-align:center; }
+
+  /* Toggle simple (checkbox estilizado como switch) */
+  .mini-switch{ position:relative; display:inline-block; width:38px; height:21px; vertical-align:middle; }
+  .mini-switch input{ opacity:0; width:0; height:0; }
+  .mini-switch .slider{
+    position:absolute; inset:0; background: var(--card-hover); border-radius:999px; cursor:pointer;
+    transition: background .15s ease;
+  }
+  .mini-switch .slider::before{
+    content:''; position:absolute; width:15px; height:15px; left:3px; top:3px;
+    background:#fff; border-radius:50%; transition: transform .15s ease;
+  }
+  .mini-switch input:checked + .slider{ background: var(--accent); }
+  .mini-switch input:checked + .slider::before{ transform: translateX(17px); }
+  .mini-switch input:disabled + .slider{ opacity:.5; cursor:not-allowed; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-wrap">
+
+  <div class="page-header">
+    <h1>🧩 Vistas por usuario</h1>
+    <p>Elegí qué secciones puede ver cada usuario en su menú. Apagado = oculto para esa cuenta (ni el ítem del menú ni la página quedan disponibles). Se puede reactivar en cualquier momento.</p>
+  </div>
+
+  <div class="card" style="margin-top:26px; padding:0; overflow-x:auto;">
+    <table class="vistas-tabla">
+      <thead>
+        <tr>
+          <th>Usuario</th>
+          {% for v in vistas %}
+          <th class="centro" title="{{ v.descripcion }}">{{ v.label }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in usuarios %}
+        <tr>
+          <td class="usuario">{{ u.nombre_mostrado }}<span>{{ u.username }} · {{ u.rol }}</span></td>
+          {% for v in vistas %}
+          <td class="centro">
+            <label class="mini-switch">
+              <input type="checkbox" class="toggle-vista" data-usuario-id="{{ u.id }}" data-vista="{{ v.id }}"
+                     {{ 'checked' if v.id not in ocultas_por_usuario.get(u.id, []) else '' }}>
+              <span class="slider"></span>
+            </label>
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div id="resultado" class="result-box" style="display:none; max-width:520px;"></div>
+</div>
+
+<script>
+document.querySelectorAll('.toggle-vista').forEach((chk) => {
+  chk.addEventListener('change', async () => {
+    const resultado = document.getElementById('resultado');
+    chk.disabled = true;
+    const datos = new FormData();
+    datos.set('usuario_id', chk.dataset.usuarioId);
+    datos.set('vista', chk.dataset.vista);
+    datos.set('visible', chk.checked ? '1' : '0');
+    try {
+      const res = await fetch('/api/admin/vistas/toggle', { method: 'POST', body: datos });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        chk.checked = !chk.checked; // revertir en la UI
+        resultado.style.display = 'block';
+        resultado.className = 'result-box error';
+        resultado.textContent = '❌ ' + (json.error || 'Error desconocido');
+      }
+    } catch (err) {
+      chk.checked = !chk.checked;
+      resultado.style.display = 'block';
+      resultado.className = 'result-box error';
+      resultado.textContent = '❌ No se pudo conectar con el servidor.';
+    } finally {
+      chk.disabled = false;
+    }
+  });
+});
+</script>
+{% endblock %}

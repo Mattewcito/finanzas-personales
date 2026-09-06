@@ -10,6 +10,7 @@ archivo gigante):
   - routes/dashboard.py -> ver el dashboard, registrar movimientos, cargar extractos
   - routes/usuarios.py  -> alta/edición de cuentas, editar el propio perfil
   - routes/correo.py    -> configurar la lectura automática de correo (Fase 1) de la propia cuenta
+  - routes/admin_vistas.py -> panel admin: qué secciones del menú puede ver cada usuario
 
 Uso:
     py app.py
@@ -33,6 +34,7 @@ Rutas (por blueprint, ver el archivo de cada uno para el detalle):
   /cargar-extractos, /plantilla-excel      -> routes/dashboard.py
   /crear-usuario, /editar-usuario, /mi-perfil -> routes/usuarios.py
   /configurar-correo                       -> routes/correo.py
+  /admin/vistas                            -> routes/admin_vistas.py
   /health                                  -> este archivo (sin login, la usa el pipeline de despliegue)
 """
 
@@ -53,6 +55,7 @@ from auth import auth_bp
 from routes.dashboard import dashboard_bp
 from routes.usuarios import usuarios_bp
 from routes.correo import correo_bp
+from routes.admin_vistas import admin_vistas_bp
 
 app = Flask(__name__)
 
@@ -77,6 +80,7 @@ app.register_blueprint(auth_bp)
 app.register_blueprint(dashboard_bp)
 app.register_blueprint(usuarios_bp)
 app.register_blueprint(correo_bp)
+app.register_blueprint(admin_vistas_bp)
 
 
 @app.route("/health")
