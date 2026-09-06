@@ -52,10 +52,21 @@ Pensado para correr desatendido vía una tarea programada de Windows (ver
 scripts/configurar_tarea_leer_correo.ps1) -- cada corrida deja renglones
 en data/leer_correo.log, igual que actualizar_dashboard.py.
 
-Alcance actual (v1): SOLO Bancolombia (notificaciones en tiempo real).
-Nu no manda alertas por movimiento, solo extractos mensuales por correo
-con datos adjuntos — eso se sigue cubriendo con reconciliar_extractos.py
-hasta que se sume un parser de esos adjuntos (fase futura).
+Alcance actual: SOLO Bancolombia. Cubre notificaciones en tiempo real
+(cuerpo del correo) Y, si el usuario configuró su cédula en la
+interfaz, PDFs de extracto que lleguen ADJUNTOS a un correo de
+Bancolombia (ahorros o tarjeta -- ver _parsear_pdf_adjunto()), sin subir
+nada a mano. Nu no manda alertas por movimiento, solo extractos
+mensuales -- si Nu llega a mandarlos por correo como adjunto, este mismo
+mecanismo los cubriría; si no, se sigue con reconciliar_extractos.py
+para los que se descargan a mano.
+
+⚠️ Detectar "últimos 4 dígitos" de una tarjeta a partir del PDF adjunto
+(sin que nadie los escriba a mano, a diferencia de "Cargar extractos")
+es best-effort -- si no encuentra el patrón, usa "????" en la
+descripción. Esto NUNCA afecta fecha/monto/categoría, así que en el peor
+caso el movimiento igual queda bien registrado, solo con un texto menos
+preciso.
 
 ⚠️ La categoría de cada compra se asigna con una lista de palabras clave
 (sin IA) — es un mejor esfuerzo, no perfecta. Podés corregir categorías
@@ -64,12 +75,14 @@ ingreso/gasto/deuda, que dependen de tipo/medio_pago/monto, no de categoria.
 """
 
 import re
+import io
 import sys
 import imaplib
 import email
 import argparse
 import datetime
 import traceback
+from pathlib import Path
 
 # La consola de Windows (Task Scheduler incluido) suele usar cp1252, que no
 # puede imprimir flechas/tildes especiales. Forzamos UTF-8 en stdout/stderr
@@ -80,6 +93,12 @@ for _stream in (sys.stdout, sys.stderr):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
 import db_finanzas as db
+
+# Reusa los parsers de PDF de extracto YA construidos y probados contra
+# extractos reales de Bancolombia -- los mismos que usa "Cargar extractos"
+# (ver routes/dashboard.py). Nunca duplicar esa lógica acá.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "tools"))
+import reconciliar_extractos as rex
 
 LOG_PATH = db.PROJECT_ROOT / "data" / "leer_correo.log"
 
@@ -356,6 +375,25 @@ def esta_pendiente(config: dict, ahora: datetime.datetime) -> bool:
     return (ahora - ultima_dt) >= datetime.timedelta(minutes=minutos)
 
 
+DIAS_MAXIMO_SI_HUBO_HUECO = 60  # tope: si la automatización estuvo caída meses, no escanea años de correo
+DIAS_PRIMERA_CORRIDA = 30       # sin ninguna corrida previa, cubre un mes hacia atrás por las dudas
+
+
+def calcular_dias_a_revisar(config: dict, ahora: datetime.datetime, dias_minimo: int) -> int:
+    """Cuántos días hacia atrás buscar para ESTA cuenta puntual: al menos
+    `dias_minimo` (el piso que se le pide por CLI), pero ampliado para
+    cubrir todo el hueco desde su última corrida -- si la automatización
+    estuvo caída o pausada varios días, esta corrida no se pierde ese
+    tramo. Sin ninguna corrida previa, usa DIAS_PRIMERA_CORRIDA en vez de
+    `dias_minimo` a secas, para no arrancar viendo solo lo de hoy."""
+    ultima = config.get("ultima_corrida")
+    if not ultima:
+        return max(dias_minimo, DIAS_PRIMERA_CORRIDA)
+    ultima_dt = datetime.datetime.fromisoformat(ultima)
+    hueco_dias = (ahora - ultima_dt).days + 1  # +1: cubre el día de la última corrida completo, no solo desde su hora exacta
+    return max(dias_minimo, min(hueco_dias, DIAS_MAXIMO_SI_HUBO_HUECO))
+
+
 def _texto_plano_del_mensaje(msg: email.message.Message) -> str:
     if msg.is_multipart():
         for parte in msg.walk():
@@ -365,6 +403,87 @@ def _texto_plano_del_mensaje(msg: email.message.Message) -> str:
         return ""
     charset = msg.get_content_charset() or "utf-8"
     return msg.get_payload(decode=True).decode(charset, errors="replace")
+
+
+# ----------------------------- PDF adjuntos (extractos, opcional) -----------------------------
+# Bancolombia suele cifrar los PDF de extracto que manda por correo con la
+# cédula del titular como contraseña (los que se descargan a mano desde la
+# web, en cambio, no vienen cifrados -- por eso "Cargar extractos" nunca
+# pidió contraseña). Esto es opcional: sin "cedula" configurada, se ignoran
+# los adjuntos y solo se procesa el cuerpo del correo, como siempre.
+
+RE_ULTIMOS4_TARJETA = re.compile(r"(?:tarjeta|t\.?\s*cr[eé]d|t\.?\s*d[eé]b)\D{0,25}(\d{4})\b", re.IGNORECASE)
+
+
+def _adjuntos_pdf(msg: email.message.Message) -> list[bytes]:
+    """Bytes de cada adjunto con content-type PDF (o extensión .pdf) del
+    mensaje. Lista vacía si no es multipart o no trae ninguno."""
+    adjuntos = []
+    if not msg.is_multipart():
+        return adjuntos
+    for parte in msg.walk():
+        nombre = (parte.get_filename() or "").lower()
+        es_pdf = parte.get_content_type() == "application/pdf" or nombre.endswith(".pdf")
+        if not es_pdf:
+            continue
+        datos = parte.get_payload(decode=True)
+        if datos:
+            adjuntos.append(datos)
+    return adjuntos
+
+
+def _parsear_pdf_adjunto(datos: bytes, cedula: str) -> list[dict]:
+    """Intenta leer un PDF adjunto como extracto de Bancolombia (ahorros o
+    tarjeta), cifrado con `cedula`. Devuelve [] si la contraseña no sirve,
+    el archivo no es un PDF válido, o no matchea ningún formato conocido
+    -- nunca lanza, para no tumbar el resto de la corrida por UN adjunto
+    raro. Reusa exactamente los mismos parsers que "Cargar extractos"."""
+    buffer = io.BytesIO(datos)
+    try:
+        texto_completo = "\n".join(rex.pdf_text(buffer, password=cedula))
+    except Exception:
+        return []
+
+    if "DESDE:" in texto_completo and "HASTA:" in texto_completo:
+        buffer.seek(0)
+        try:
+            crudos, intereses, p_desde, p_hasta = rex.parse_savings_statement(buffer, password=cedula)
+        except Exception:
+            return []
+        movimientos = [rex.normalizar_savings(m) for m in crudos]
+        if abs(intereses) > 0.001:
+            movimientos.append({
+                "fecha": p_hasta, "tipo": "ingreso", "categoria": "intereses", "moneda": "COP",
+                "monto": round(intereses, 2), "descripcion": f"Intereses ahorro acumulados {p_desde} a {p_hasta}",
+                "entidad": "Bancolombia",
+            })
+        return movimientos
+
+    if "Detalles del movimiento" in texto_completo or "ESTADO DE CUENTA EN" in texto_completo:
+        # A diferencia de "Cargar extractos" (donde el usuario escribe los
+        # últimos 4 dígitos a mano), acá no hay formulario -- se intenta
+        # extraer del propio texto del PDF. Mejor esfuerzo: si no aparece
+        # ningún patrón reconocible, se usa "????" -- solo afecta el texto
+        # descriptivo de la compra, nunca el monto/fecha/categoría.
+        m4 = RE_ULTIMOS4_TARJETA.search(texto_completo)
+        ultimos4 = m4.group(1) if m4 else "????"
+        buffer.seek(0)
+        try:
+            crudos, intereses_por_moneda, _, _ = rex.parse_card_statement(buffer, ultimos4, password=cedula)
+        except Exception:
+            return []
+        movimientos = [rex.normalizar_card(m, "Credito") for m in crudos]
+        for (fecha_interes, moneda), val in intereses_por_moneda.items():
+            if abs(val) < 0.001:
+                continue
+            movimientos.append({
+                "fecha": fecha_interes, "tipo": "gasto", "categoria": "intereses", "moneda": moneda,
+                "monto": round(val, 2), "descripcion": f"Interes corriente T.Cred *{ultimos4}",
+                "entidad": "Bancolombia",
+            })
+        return movimientos
+
+    return []
 
 
 def buscar_movimientos_correo(dias: int, config: dict) -> list[dict]:
@@ -392,6 +511,14 @@ def buscar_movimientos_correo(dias: int, config: dict) -> list[dict]:
                 mov = parsear_alerta_bancolombia(cuerpo)
                 if mov:
                     movimientos.append(mov)
+
+                cedula = config.get("cedula")
+                if cedula:
+                    for datos in _adjuntos_pdf(msg):
+                        try:
+                            movimientos.extend(_parsear_pdf_adjunto(datos, cedula))
+                        except Exception:
+                            pass  # un adjunto raro/corrupto no debe tumbar toda la corrida
         return movimientos
     finally:
         conn.logout()
@@ -467,8 +594,9 @@ def main() -> int:
     for config in configs:
         if not forzado and not esta_pendiente(config, ahora):
             continue  # todavía no le toca a esta cuenta, según su propia frecuencia
+        dias = args.dias if forzado else calcular_dias_a_revisar(config, ahora, args.dias)
         try:
-            procesar_cuenta(config, args.dias, args.aplicar)
+            procesar_cuenta(config, dias, args.aplicar)
         except Exception as e:
             algun_error = True
             log(f"[usuario {config['usuario_id']}] ERROR — la lectura de correo falló: {e}")

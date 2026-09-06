@@ -74,9 +74,14 @@ CARD_FILES = [
 MESES_ABREV = {"ene":1,"feb":2,"mar":3,"abr":4,"may":5,"jun":6,"jul":7,"ago":8,"sep":9,"oct":10,"nov":11,"dic":12}
 
 
-def pdf_text(path):
+def pdf_text(path, password=None):
+    """`path` puede ser una ruta en disco (uso normal, extractos
+    descargados a mano) o un objeto tipo archivo en memoria -- ej.
+    io.BytesIO con el PDF adjunto de un correo (ver leer_correo.py).
+    `password`: algunos extractos que llegan por correo vienen cifrados
+    (típicamente con la cédula del titular) -- los descargados a mano no."""
     pages = []
-    with pdfplumber.open(path) as pdf:
+    with pdfplumber.open(path, password=password or "") as pdf:
         for page in pdf.pages:
             pages.append(page.extract_text() or "")
     return pages
@@ -140,9 +145,9 @@ def to_float_latam(s):
 LINE_RE_SAVINGS = re.compile(r"^(\d{1,2}/\d{1,2})\s+(.+?)\s+(-?[\d,]+\.\d{2})\s+([\d,]+\.\d{2})$")
 
 
-def parse_savings_statement(path):
+def parse_savings_statement(path, password=None):
     """Devuelve (movimientos, intereses_total, periodo_desde, periodo_hasta)."""
-    pages = pdf_text(path)
+    pages = pdf_text(path, password=password)
     full_text = "\n".join(pages)
 
     m = re.search(r"DESDE:\s*(\d{4})/(\d{2})/(\d{2})\s*HASTA:\s*(\d{4})/(\d{2})/(\d{2})", full_text)
@@ -198,8 +203,8 @@ LINE_RE_CARD = re.compile(
 )
 
 
-def parse_card_statement(path, ultimos4):
-    pages = pdf_text(path)
+def parse_card_statement(path, ultimos4, password=None):
+    pages = pdf_text(path, password=password)
     movimientos = []
     intereses_total_por_moneda = defaultdict(float)
     periodo_desde = periodo_hasta = None

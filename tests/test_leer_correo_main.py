@@ -415,6 +415,418 @@ def test_procesar_cuenta_deja_subir_la_excepcion_sin_atraparla(correo_ctx, monke
     assert fila["ultimo_error"] is None
 
 
+# ----------------------------- main(): usa calcular_dias_a_revisar dinámicamente -----------------------------
+
+def test_main_sin_forzar_usa_calcular_dias_a_revisar_con_dias_minimo_de_cli(correo_ctx, monkeypatch):
+    """Sin --usuario-id (recorrido normal de cuentas pendientes), main()
+    debe calcular la ventana con calcular_dias_a_revisar(dias_minimo=--dias)
+    -- no usar --dias directamente como ventana fija."""
+    id_maria = crear_usuario("maria")
+    crear_config(id_maria)
+
+    llamadas_calc = []
+
+    def _fake_calc(config, ahora, dias_minimo):
+        llamadas_calc.append(dias_minimo)
+        return 99
+
+    monkeypatch.setattr(lc, "calcular_dias_a_revisar", _fake_calc)
+
+    dias_usados = []
+
+    def _buscar(dias, config):
+        dias_usados.append(dias)
+        return []
+
+    monkeypatch.setattr(lc, "buscar_movimientos_correo", _buscar)
+
+    correr_main(monkeypatch, ["--dias", "5", "--aplicar"])
+
+    assert llamadas_calc == [5]
+    assert dias_usados == [99]
+
+
+def test_main_con_usuario_id_forzado_usa_el_valor_de_cli_directo_sin_calcular(correo_ctx, monkeypatch):
+    """--usuario-id (forzado) debe usar --dias tal cual, SIN pasar por
+    calcular_dias_a_revisar -- es una corrida manual explícita ("Sincronizar
+    ahora"), no el recorrido automático."""
+    id_maria = crear_usuario("maria")
+    crear_config(id_maria)
+
+    llamadas_calc = []
+    monkeypatch.setattr(lc, "calcular_dias_a_revisar", lambda *a, **k: llamadas_calc.append(1) or 999)
+
+    dias_usados = []
+    monkeypatch.setattr(lc, "buscar_movimientos_correo", lambda dias, config: dias_usados.append(dias) or [])
+
+    correr_main(monkeypatch, ["--usuario-id", str(id_maria), "--dias", "5", "--aplicar"])
+
+    assert llamadas_calc == []
+    assert dias_usados == [5]
+
+
+# ----------------------------- calcular_dias_a_revisar() -----------------------------
+
+def test_calcular_dias_a_revisar_sin_ultima_corrida_usa_dias_primera_corrida_si_es_mayor(correo_ctx):
+    ahora = datetime.datetime(2026, 9, 5, 12, 0, 0)
+    config = {"ultima_corrida": None}
+
+    resultado = lc.calcular_dias_a_revisar(config, ahora, dias_minimo=7)
+
+    assert resultado == lc.DIAS_PRIMERA_CORRIDA
+
+
+def test_calcular_dias_a_revisar_sin_ultima_corrida_usa_dias_minimo_si_supera_primera_corrida(correo_ctx):
+    ahora = datetime.datetime(2026, 9, 5, 12, 0, 0)
+    config = {"ultima_corrida": None}
+
+    resultado = lc.calcular_dias_a_revisar(config, ahora, dias_minimo=45)
+
+    assert resultado == 45
+
+
+def test_calcular_dias_a_revisar_hueco_chico_devuelve_el_minimo(correo_ctx):
+    """Corrió hace 1 hora -- el hueco redondeado da menos que dias_minimo,
+    así que debe devolver dias_minimo, no el hueco real."""
+    ahora = datetime.datetime(2026, 9, 5, 12, 0, 0)
+    ultima = (ahora - datetime.timedelta(hours=1)).isoformat()
+    config = {"ultima_corrida": ultima}
+
+    resultado = lc.calcular_dias_a_revisar(config, ahora, dias_minimo=2)
+
+    assert resultado == 2
+
+
+def test_calcular_dias_a_revisar_hueco_de_varios_dias_devuelve_el_hueco(correo_ctx):
+    ahora = datetime.datetime(2026, 9, 15, 12, 0, 0)
+    ultima = (ahora - datetime.timedelta(days=10)).isoformat()
+    config = {"ultima_corrida": ultima}
+
+    resultado = lc.calcular_dias_a_revisar(config, ahora, dias_minimo=2)
+
+    assert resultado == 11  # hueco de 10 dias + 1 (cubre el dia completo de la ultima corrida)
+
+
+def test_calcular_dias_a_revisar_hueco_enorme_se_topa_en_el_maximo(correo_ctx):
+    """Automatización caída 200 días -- no debe escanear 200 días de
+    correo, se topa en DIAS_MAXIMO_SI_HUBO_HUECO (60)."""
+    ahora = datetime.datetime(2026, 9, 15, 12, 0, 0)
+    ultima = (ahora - datetime.timedelta(days=200)).isoformat()
+    config = {"ultima_corrida": ultima}
+
+    resultado = lc.calcular_dias_a_revisar(config, ahora, dias_minimo=2)
+
+    assert resultado == lc.DIAS_MAXIMO_SI_HUBO_HUECO
+
+
+# ----------------------------- _adjuntos_pdf() -----------------------------
+
+def _mensaje_multipart_con_adjuntos(adjuntos):
+    """adjuntos: lista de tuplas (nombre_archivo, content_type, bytes)."""
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.application import MIMEApplication
+    from email.mime.text import MIMEText
+
+    msg = MIMEMultipart()
+    msg.attach(MIMEText("cuerpo de prueba", "plain"))
+    for nombre, content_type, datos in adjuntos:
+        _maintype, subtype = content_type.split("/")
+        parte = MIMEApplication(datos, _subtype=subtype)
+        parte.add_header("Content-Disposition", "attachment", filename=nombre)
+        msg.attach(parte)
+    return msg
+
+
+def test_adjuntos_pdf_mensaje_sin_adjuntos_da_lista_vacia():
+    msg = _mensaje_multipart_con_adjuntos([])
+    assert lc._adjuntos_pdf(msg) == []
+
+
+def test_adjuntos_pdf_mensaje_no_multipart_da_lista_vacia():
+    from email.mime.text import MIMEText
+    msg = MIMEText("solo texto plano, sin adjuntos")
+    assert lc._adjuntos_pdf(msg) == []
+
+
+def test_adjuntos_pdf_con_un_adjunto_pdf_lo_extrae():
+    msg = _mensaje_multipart_con_adjuntos([("extracto.pdf", "application/pdf", b"contenido falso de pdf")])
+    adjuntos = lc._adjuntos_pdf(msg)
+    assert adjuntos == [b"contenido falso de pdf"]
+
+
+def test_adjuntos_pdf_ignora_adjuntos_que_no_son_pdf():
+    msg = _mensaje_multipart_con_adjuntos([("foto.png", "image/png", b"contenido de imagen")])
+    assert lc._adjuntos_pdf(msg) == []
+
+
+def test_adjuntos_pdf_con_dos_adjuntos_pdf_extrae_los_dos():
+    msg = _mensaje_multipart_con_adjuntos([
+        ("extracto1.pdf", "application/pdf", b"pdf uno"),
+        ("extracto2.pdf", "application/pdf", b"pdf dos"),
+    ])
+    adjuntos = lc._adjuntos_pdf(msg)
+    assert set(adjuntos) == {b"pdf uno", b"pdf dos"}
+
+
+def test_adjuntos_pdf_detecta_por_extension_aunque_content_type_no_sea_application_pdf():
+    msg = _mensaje_multipart_con_adjuntos([("extracto.pdf", "application/octet-stream", b"contenido")])
+    assert lc._adjuntos_pdf(msg) == [b"contenido"]
+
+
+# ----------------------------- _parsear_pdf_adjunto() -----------------------------
+
+def test_parsear_pdf_adjunto_devuelve_lista_vacia_si_pdf_text_lanza_excepcion(monkeypatch):
+    """Contraseña incorrecta o PDF corrupto -- nunca debe propagar."""
+    def _falla(buffer, password):
+        raise Exception("contraseña incorrecta")
+
+    monkeypatch.setattr(lc.rex, "pdf_text", _falla)
+
+    assert lc._parsear_pdf_adjunto(b"bytes-cualquiera", cedula="123456") == []
+
+
+def test_parsear_pdf_adjunto_devuelve_lista_vacia_si_no_matchea_ningun_formato_conocido(monkeypatch):
+    monkeypatch.setattr(lc.rex, "pdf_text", lambda buffer, password: ["texto sin ningun patron reconocible"])
+
+    assert lc._parsear_pdf_adjunto(b"bytes-cualquiera", cedula="123456") == []
+
+
+def test_parsear_pdf_adjunto_dirige_a_savings_cuando_detecta_desde_hasta(monkeypatch):
+    monkeypatch.setattr(lc.rex, "pdf_text", lambda buffer, password: ["DESDE: 2026/01/01 HASTA: 2026/01/31 resto del texto"])
+    monkeypatch.setattr(lc.rex, "parse_savings_statement",
+                         lambda buffer, password: ([{"fake": "mov"}], 0.0, "2026-01-01", "2026-01-31"))
+    monkeypatch.setattr(lc.rex, "normalizar_savings", lambda m: {
+        "fecha": "2026-01-15", "tipo": "gasto", "categoria": "otros", "moneda": "COP",
+        "monto": 1000, "descripcion": "desde savings", "entidad": "Bancolombia",
+    })
+
+    resultado = lc._parsear_pdf_adjunto(b"bytes", cedula="123456")
+
+    assert len(resultado) == 1
+    assert resultado[0]["descripcion"] == "desde savings"
+
+
+def test_parsear_pdf_adjunto_savings_agrega_fila_de_intereses_si_los_hay(monkeypatch):
+    monkeypatch.setattr(lc.rex, "pdf_text", lambda buffer, password: ["DESDE: 2026/01/01 HASTA: 2026/01/31"])
+    monkeypatch.setattr(lc.rex, "parse_savings_statement",
+                         lambda buffer, password: ([], 5000.0, "2026-01-01", "2026-01-31"))
+
+    resultado = lc._parsear_pdf_adjunto(b"bytes", cedula="123456")
+
+    assert len(resultado) == 1
+    assert resultado[0]["categoria"] == "intereses"
+    assert resultado[0]["monto"] == 5000.0
+
+
+def test_parsear_pdf_adjunto_devuelve_lista_vacia_si_parse_savings_lanza_excepcion(monkeypatch):
+    """Detectó el formato (DESDE/HASTA) pero el parser real falla después
+    -- no debe propagar, debe devolver []."""
+    monkeypatch.setattr(lc.rex, "pdf_text", lambda buffer, password: ["DESDE: 2026/01/01 HASTA: 2026/01/31"])
+
+    def _falla(buffer, password):
+        raise Exception("boom")
+
+    monkeypatch.setattr(lc.rex, "parse_savings_statement", _falla)
+
+    assert lc._parsear_pdf_adjunto(b"bytes", cedula="123456") == []
+
+
+def test_parsear_pdf_adjunto_dirige_a_tarjeta_cuando_detecta_detalles_del_movimiento(monkeypatch):
+    monkeypatch.setattr(lc.rex, "pdf_text", lambda buffer, password: ["Detalles del movimiento de la tarjeta"])
+    monkeypatch.setattr(lc.rex, "parse_card_statement",
+                         lambda buffer, ultimos4, password: ([{"fake": "mov"}], {}, None, None))
+    monkeypatch.setattr(lc.rex, "normalizar_card", lambda m, marca: {
+        "fecha": "2026-01-15", "tipo": "gasto", "categoria": "otros", "moneda": "COP",
+        "monto": 2000, "descripcion": "desde tarjeta", "entidad": "Bancolombia",
+    })
+
+    resultado = lc._parsear_pdf_adjunto(b"bytes", cedula="123456")
+
+    assert len(resultado) == 1
+    assert resultado[0]["descripcion"] == "desde tarjeta"
+
+
+def test_parsear_pdf_adjunto_dirige_a_tarjeta_por_estado_de_cuenta_en(monkeypatch):
+    monkeypatch.setattr(lc.rex, "pdf_text", lambda buffer, password: ["ESTADO DE CUENTA EN: PESOS con mas texto"])
+    monkeypatch.setattr(lc.rex, "parse_card_statement",
+                         lambda buffer, ultimos4, password: ([{"fake": "mov"}], {}, None, None))
+    monkeypatch.setattr(lc.rex, "normalizar_card", lambda m, marca: {
+        "fecha": "2026-01-15", "tipo": "gasto", "categoria": "otros", "moneda": "COP",
+        "monto": 2000, "descripcion": "desde tarjeta 2", "entidad": "Bancolombia",
+    })
+
+    resultado = lc._parsear_pdf_adjunto(b"bytes", cedula="123456")
+
+    assert len(resultado) == 1
+    assert resultado[0]["descripcion"] == "desde tarjeta 2"
+
+
+def test_parsear_pdf_adjunto_tarjeta_agrega_fila_de_intereses_si_los_hay(monkeypatch):
+    monkeypatch.setattr(lc.rex, "pdf_text", lambda buffer, password: ["Detalles del movimiento con T.Cred *2011"])
+    monkeypatch.setattr(lc.rex, "parse_card_statement",
+                         lambda buffer, ultimos4, password: ([], {("2026-01-31", "COP"): 1500.0}, None, None))
+
+    resultado = lc._parsear_pdf_adjunto(b"bytes", cedula="123456")
+
+    assert len(resultado) == 1
+    assert resultado[0]["categoria"] == "intereses"
+    assert "2011" in resultado[0]["descripcion"]
+
+
+def test_parsear_pdf_adjunto_devuelve_lista_vacia_si_parse_card_lanza_excepcion(monkeypatch):
+    monkeypatch.setattr(lc.rex, "pdf_text", lambda buffer, password: ["Detalles del movimiento"])
+
+    def _falla(buffer, ultimos4, password):
+        raise Exception("boom")
+
+    monkeypatch.setattr(lc.rex, "parse_card_statement", _falla)
+
+    assert lc._parsear_pdf_adjunto(b"bytes", cedula="123456") == []
+
+
+def test_parsear_pdf_adjunto_extrae_ultimos4_reales_cuando_hay_patron_reconocible(monkeypatch):
+    recibido = {}
+    monkeypatch.setattr(lc.rex, "pdf_text", lambda buffer, password: ["Detalles del movimiento con tarjeta terminada en 2011 hoy"])
+
+    def _fake_parse_card(buffer, ultimos4, password):
+        recibido["ultimos4"] = ultimos4
+        return ([], {}, None, None)
+
+    monkeypatch.setattr(lc.rex, "parse_card_statement", _fake_parse_card)
+
+    lc._parsear_pdf_adjunto(b"bytes", cedula="123456")
+
+    assert recibido["ultimos4"] == "2011"
+
+
+def test_parsear_pdf_adjunto_usa_signos_de_interrogacion_si_no_hay_patron_reconocible(monkeypatch):
+    """Best-effort: si no encuentra el patrón de últimos 4 dígitos, usa
+    '????' como fallback -- nunca rompe, el movimiento igual se procesa."""
+    recibido = {}
+    monkeypatch.setattr(lc.rex, "pdf_text", lambda buffer, password: ["Detalles del movimiento sin ningun numero de tarjeta"])
+
+    def _fake_parse_card(buffer, ultimos4, password):
+        recibido["ultimos4"] = ultimos4
+        return ([], {}, None, None)
+
+    monkeypatch.setattr(lc.rex, "parse_card_statement", _fake_parse_card)
+
+    resultado = lc._parsear_pdf_adjunto(b"bytes", cedula="123456")
+
+    assert recibido["ultimos4"] == "????"
+    assert resultado == []
+
+
+# ----------------------------- buscar_movimientos_correo(): PDFs adjuntos -----------------------------
+
+def _mensaje_con_cuerpo_y_adjunto_pdf():
+    """Bytes RFC822 de un correo con un cuerpo parseable como movimiento
+    real (pago recibido) Y un adjunto PDF."""
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.application import MIMEApplication
+    from email.mime.text import MIMEText
+
+    msg = MIMEMultipart()
+    msg.attach(MIMEText(
+        "Recibiste un pago de Nomina de EMPRESA por $1000000.00 en tu cuenta de "
+        "Ahorros el 01/09/2026 a las 09:00.",
+        "plain",
+    ))
+    parte = MIMEApplication(b"contenido pdf falso", _subtype="pdf")
+    parte.add_header("Content-Disposition", "attachment", filename="extracto.pdf")
+    msg.attach(parte)
+    return msg.as_bytes()
+
+
+def _fake_imap_class(mensajes_bytes):
+    """Clase IMAP4_SSL de mentira: la primera búsqueda (primer remitente)
+    devuelve todos los mensajes; la segunda (segundo remitente) devuelve
+    vacío, para no procesar el mismo mensaje dos veces."""
+    estado = {"busquedas": 0}
+
+    class _FakeIMAP:
+        def __init__(self, host, port):
+            pass
+
+        def login(self, email, password):
+            pass
+
+        def select(self, mailbox, readonly=True):
+            pass
+
+        def search(self, charset, criterio):
+            estado["busquedas"] += 1
+            if estado["busquedas"] == 1:
+                uids = b" ".join(str(i).encode() for i in range(len(mensajes_bytes)))
+                return ("OK", [uids])
+            return ("OK", [b""])
+
+        def fetch(self, uid, spec):
+            idx = int(uid)
+            return ("OK", [(None, mensajes_bytes[idx])])
+
+        def logout(self):
+            pass
+
+    return _FakeIMAP
+
+
+def test_buscar_movimientos_correo_sin_cedula_no_llama_a_adjuntos_pdf(correo_ctx, monkeypatch):
+    raw = _mensaje_con_cuerpo_y_adjunto_pdf()
+    monkeypatch.setattr(lc.imaplib, "IMAP4_SSL", _fake_imap_class([raw]))
+    llamado = []
+    monkeypatch.setattr(lc, "_adjuntos_pdf", lambda msg: (llamado.append(True), [])[1])
+
+    config = {"email": "x@example.com", "app_password": "y", "imap_host": "imap.gmail.com", "imap_port": 993}
+    movimientos = lc.buscar_movimientos_correo(dias=3, config=config)
+
+    assert llamado == []
+    assert len(movimientos) == 1  # solo el del cuerpo
+
+
+def test_buscar_movimientos_correo_con_cedula_vacia_no_llama_a_adjuntos_pdf(correo_ctx, monkeypatch):
+    raw = _mensaje_con_cuerpo_y_adjunto_pdf()
+    monkeypatch.setattr(lc.imaplib, "IMAP4_SSL", _fake_imap_class([raw]))
+    llamado = []
+    monkeypatch.setattr(lc, "_adjuntos_pdf", lambda msg: (llamado.append(True), [])[1])
+
+    config = {"email": "x@example.com", "app_password": "y", "cedula": ""}
+    lc.buscar_movimientos_correo(dias=3, config=config)
+
+    assert llamado == []
+
+
+def test_buscar_movimientos_correo_con_cedula_llama_a_parsear_pdf_adjunto_y_agrega_resultados(correo_ctx, monkeypatch):
+    raw = _mensaje_con_cuerpo_y_adjunto_pdf()
+    monkeypatch.setattr(lc.imaplib, "IMAP4_SSL", _fake_imap_class([raw]))
+    monkeypatch.setattr(lc, "_parsear_pdf_adjunto", lambda datos, cedula: [{
+        "fecha": "2026-01-01", "tipo": "ingreso", "categoria": "intereses", "moneda": "COP",
+        "monto": 1, "descripcion": "del pdf", "entidad": "Bancolombia",
+    }])
+
+    config = {"email": "x@example.com", "app_password": "y", "cedula": "123456"}
+    movimientos = lc.buscar_movimientos_correo(dias=3, config=config)
+
+    assert len(movimientos) == 2  # cuerpo + pdf
+    descripciones = {m["descripcion"] for m in movimientos}
+    assert "del pdf" in descripciones
+
+
+def test_buscar_movimientos_correo_un_adjunto_que_lanza_excepcion_no_tumba_la_corrida(correo_ctx, monkeypatch):
+    raw = _mensaje_con_cuerpo_y_adjunto_pdf()
+    monkeypatch.setattr(lc.imaplib, "IMAP4_SSL", _fake_imap_class([raw]))
+
+    def _falla(datos, cedula):
+        raise RuntimeError("adjunto corrupto")
+
+    monkeypatch.setattr(lc, "_parsear_pdf_adjunto", _falla)
+
+    config = {"email": "x@example.com", "app_password": "y", "cedula": "123456"}
+    movimientos = lc.buscar_movimientos_correo(dias=3, config=config)
+
+    assert len(movimientos) == 1  # solo el del cuerpo -- el pdf falló pero no tumbó nada
+
+
 def test_procesar_cuenta_sin_aplicar_no_toca_la_bd(correo_ctx, monkeypatch):
     """Con aplicar=False, no debe insertarse nada ni actualizarse el
     estado de correo_config."""

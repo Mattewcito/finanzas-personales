@@ -26,8 +26,10 @@ Vista:
     saldo corriente, calculado con una función de ventana SQL.
 """
 
+import re
 import sqlite3
 import datetime
+from collections import defaultdict
 from contextlib import contextmanager
 from pathlib import Path
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -55,6 +57,7 @@ CREATE TABLE IF NOT EXISTS movimientos (
     medio_pago TEXT NOT NULL DEFAULT 'debito',
     es_deuda INTEGER NOT NULL DEFAULT 0,
     origen TEXT NOT NULL DEFAULT 'gmail_bot_excel',
+    referencia_bancaria TEXT,
     creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
@@ -95,6 +98,7 @@ CREATE TABLE IF NOT EXISTS correo_config (
     app_password TEXT NOT NULL,
     imap_host TEXT NOT NULL DEFAULT 'imap.gmail.com',
     imap_port INTEGER NOT NULL DEFAULT 993,
+    cedula TEXT,          -- opcional: contraseña de los PDF de extracto adjuntos (Bancolombia los cifra con la cédula del titular)
     activo INTEGER NOT NULL DEFAULT 1,
     frecuencia_tipo TEXT NOT NULL DEFAULT 'intervalo',   -- 'intervalo' | 'diario'
     frecuencia_minutos INTEGER NOT NULL DEFAULT 30,       -- usado si frecuencia_tipo='intervalo'
@@ -161,9 +165,33 @@ def _migrar_columna_usuario_id(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
+def _migrar_columna_referencia_bancaria(conn: sqlite3.Connection) -> None:
+    """Guarda la descripción "oficial" (del banco, por correo/PDF) cuando
+    esa misma transacción ya existía como registro manual -- ver
+    insertar_movimientos(). Nula en todo lo insertado antes de esta
+    migración (2026-09-06) y en cualquier movimiento que nunca se haya
+    conciliado contra una fuente automática."""
+    columnas = [r["name"] for r in conn.execute("PRAGMA table_info(movimientos)")]
+    if "referencia_bancaria" not in columnas:
+        conn.execute("ALTER TABLE movimientos ADD COLUMN referencia_bancaria TEXT")
+        conn.commit()
+
+
+def _migrar_columna_cedula_correo_config(conn: sqlite3.Connection) -> None:
+    """correo_config ya existía (2026-09-06) sin esta columna en cualquier
+    BD real donde ya se hubiera guardado alguna configuración -- CREATE
+    TABLE IF NOT EXISTS no la agrega sola a una tabla que ya existe."""
+    columnas = [r["name"] for r in conn.execute("PRAGMA table_info(correo_config)")]
+    if "cedula" not in columnas:
+        conn.execute("ALTER TABLE correo_config ADD COLUMN cedula TEXT")
+        conn.commit()
+
+
 def crear_esquema(conn: sqlite3.Connection) -> None:
     conn.executescript(ESQUEMA_SQL)
     _migrar_columna_usuario_id(conn)
+    _migrar_columna_referencia_bancaria(conn)
+    _migrar_columna_cedula_correo_config(conn)
     # DROP + recrear la vista: si ya existía de antes de agregar usuario_id
     # a su SELECT, "CREATE VIEW IF NOT EXISTS" no la actualiza sola.
     conn.execute("DROP VIEW IF EXISTS v_deuda_ledger")
@@ -338,7 +366,12 @@ def sincronizar_desde_excel(conn: sqlite3.Connection) -> dict:
 def obtener_movimientos(conn: sqlite3.Connection, usuario_id: int | None = None) -> list[dict]:
     """usuario_id=None trae TODO (uso interno/admin explícito) -- las
     rutas de la app siempre deben pasar un usuario_id real."""
-    sql = """SELECT fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, es_deuda
+    # origen/creado_en/referencia_bancaria: para poder distinguir en el
+    # dashboard qué se cargó a mano y qué llegó solo (correo/PDF/Excel),
+    # y cuándo -- ayuda a decidir/confiar en cada movimiento, no solo a
+    # verlo (pedido explícito 2026-09-06).
+    sql = """SELECT id, fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, es_deuda,
+                    origen, referencia_bancaria, creado_en
              FROM movimientos"""
     params = ()
     if usuario_id is not None:
@@ -422,6 +455,7 @@ def guardar_correo_config(
     app_password: str | None = None,
     imap_host: str = "imap.gmail.com",
     imap_port: int = 993,
+    cedula: str | None = None,
     frecuencia_tipo: str = "intervalo",
     frecuencia_minutos: int = 30,
     frecuencia_hora: str | None = None,
@@ -431,31 +465,37 @@ def guardar_correo_config(
     por usuario_id). `app_password=None` (o vacío) significa "no cambiar
     la que ya había guardada" -- así el formulario de edición no obliga a
     reescribirla cada vez que se toca cualquier otro campo (ej. la
-    frecuencia). Es obligatoria la primera vez que se guarda esta cuenta."""
+    frecuencia). Es obligatoria la primera vez que se guarda esta cuenta.
+    `cedula` es opcional (solo hace falta si se quiere que también se
+    abran PDFs de extracto adjuntos, cifrados con ese número) y sigue el
+    mismo criterio: vacío = no tocar la que ya había."""
     existente = obtener_correo_config(conn, usuario_id)
     if not app_password:
         if not existente:
             raise ValueError("Falta la contraseña de aplicación (obligatoria la primera vez que se configura).")
         app_password = existente["app_password"]
+    if not cedula and existente:
+        cedula = existente["cedula"]
 
     conn.execute(
         """
         INSERT INTO correo_config
-            (usuario_id, email, app_password, imap_host, imap_port, activo,
+            (usuario_id, email, app_password, imap_host, imap_port, cedula, activo,
              frecuencia_tipo, frecuencia_minutos, frecuencia_hora, actualizado_en)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))
         ON CONFLICT(usuario_id) DO UPDATE SET
             email = excluded.email,
             app_password = excluded.app_password,
             imap_host = excluded.imap_host,
             imap_port = excluded.imap_port,
+            cedula = excluded.cedula,
             activo = excluded.activo,
             frecuencia_tipo = excluded.frecuencia_tipo,
             frecuencia_minutos = excluded.frecuencia_minutos,
             frecuencia_hora = excluded.frecuencia_hora,
             actualizado_en = excluded.actualizado_en
         """,
-        (usuario_id, email, app_password, imap_host, imap_port, int(bool(activo)),
+        (usuario_id, email, app_password, imap_host, imap_port, cedula, int(bool(activo)),
          frecuencia_tipo, frecuencia_minutos, frecuencia_hora),
     )
     conn.commit()
@@ -529,45 +569,124 @@ def obtener_ledger_deuda(conn: sqlite3.Connection, usuario_id: int | None = None
 
 # ----------------------------- Inserción con dedup (usada por cualquier fuente de ingesta) -----------------------------
 
+def _palabras(*textos: str) -> set[str]:
+    return set(re.findall(r"\w+", " ".join(t or "" for t in textos).lower()))
+
+
+def _mejor_coincidencia(m: dict, candidatos: list[dict]) -> dict | None:
+    """De entre los movimientos ya existentes que calzan en (moneda, monto,
+    tipo), elige el más probable de ser LA MISMA transacción real que `m`:
+    fecha exacta gana sobre ±1 día (el banco y el registro manual pueden
+    quedar a caballo de la medianoche), y entre empates, el que más
+    palabras comparte en descripción/entidad -- pero esto último es solo
+    un DESEMPATE, nunca un requisito: un registro manual ("almuerzo") y
+    uno de correo ("Transferiste $30.000 de tu cuenta...") legítimamente
+    no comparten ninguna palabra siendo la misma transacción."""
+    fecha_m = datetime.date.fromisoformat(m["fecha"])
+    en_ventana = [
+        c for c in candidatos
+        if abs((datetime.date.fromisoformat(c["fecha"]) - fecha_m).days) <= 1
+    ]
+    if not en_ventana:
+        return None
+    palabras_m = _palabras(m.get("descripcion", ""), m.get("entidad", ""))
+
+    def _orden(c: dict):
+        fecha_exacta = 0 if c["fecha"] == m["fecha"] else 1
+        solapadas = len(palabras_m & _palabras(c.get("descripcion", ""), c.get("entidad", "")))
+        return (fecha_exacta, -solapadas, c["id"])
+
+    return min(en_ventana, key=_orden)
+
+
 def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], origen: str, usuario_id: int) -> dict:
-    """Inserta solo los movimientos cuyo (fecha, moneda, monto redondeado) no
-    exista ya entre los movimientos DE ESE USUARIO -- cada usuario tiene sus
-    propias finanzas separadas, así que el mismo día+monto en la cuenta de
-    otro usuario no cuenta como duplicado. Cada movimiento debe traer al
-    menos fecha/tipo/categoria/moneda/monto/descripcion/entidad; se
-    enriquece acá (medio_pago/es_deuda) antes de insertar."""
+    """Inserta los movimientos de `movimientos` que no correspondan a una
+    transacción YA registrada para ese usuario -- cada usuario tiene sus
+    propias finanzas separadas, así que lo de otro usuario nunca cuenta
+    como duplicado. Cada movimiento debe traer al menos
+    fecha/tipo/categoria/moneda/monto/descripcion/entidad; se enriquece
+    acá (medio_pago/es_deuda) antes de insertar.
+
+    CONCILIACIÓN (2026-09-06): el match ya no es "existe alguna fila con
+    esa fecha+monto" (eso confundía dos transacciones reales distintas
+    que coincidieran en fecha+monto -- ej. dos transferencias de $30.000
+    el mismo día -- tratando la segunda como si fuera repetida). Ahora
+    cada fila existente solo puede "absorber" UN incoming (multiset, no
+    set): se consume al usarse, así que una segunda coincidencia real
+    ese mismo día sí se inserta como nueva. Además, cuando lo que
+    absorbe la coincidencia es un registro CARGADO A MANO (origen
+    'app_manual') y lo que llega es de una fuente automática (correo,
+    PDF, Excel), se guarda la descripción "oficial" del banco en
+    referencia_bancaria SIN tocar la descripción/categoría que el
+    usuario ya había escrito (ej. "almuerzo" se queda como está).
+
+    El "consumo" tiene que sobrevivir entre llamadas distintas (cada
+    corrida de leer_correo.py es una llamada separada) -- por eso una
+    fila manual que YA absorbió una coincidencia (referencia_bancaria ya
+    no es NULL) queda EXCLUIDA de volver a ser candidata en el futuro:
+    si no, una segunda transacción real de $30.000 el mismo día,
+    detectada en una corrida posterior, volvería a "encontrar" la misma
+    fila de "almuerzo" y se perdería en vez de insertarse. Una fila
+    automática ya existente sí puede seguir absorbiendo coincidencias
+    indefinidamente entre corridas -- eso es re-detectar el mismo correo
+    dos veces (ventanas que se solapan), que sí debe seguir marcándose
+    como duplicado siempre."""
     cur = conn.cursor()
-    existentes_bd = set()
-    for row in cur.execute("SELECT fecha, moneda, ROUND(monto) AS m FROM movimientos WHERE usuario_id = ?", (usuario_id,)):
-        existentes_bd.add((row["fecha"], row["moneda"], row["m"]))
+    existentes = [
+        dict(r) for r in cur.execute(
+            "SELECT id, fecha, moneda, monto, tipo, descripcion, entidad, origen, referencia_bancaria "
+            "FROM movimientos WHERE usuario_id = ? "
+            "AND NOT (origen = 'app_manual' AND referencia_bancaria IS NOT NULL)",
+            (usuario_id,),
+        )
+    ]
+    disponibles: dict[tuple, list[dict]] = defaultdict(list)
+    for e in existentes:
+        disponibles[(e["moneda"], round(e["monto"]), e["tipo"])].append(e)
 
     # Se distinguen dos tipos de duplicado -- son casos distintos y el
     # mensaje al usuario debe aclarar cuál es cuál:
-    #   - duplicados_bd: esa fecha+monto ya estaba guardada de antes.
+    #   - duplicados_bd: esa transacción ya estaba guardada de antes.
     #   - duplicados_lote: dos filas DEL MISMO archivo/lote son iguales
     #     entre sí (no existían antes, pero no tiene sentido guardar la
     #     misma dos veces en la misma carga).
     vistos_en_lote = set()
     nuevos, duplicados_bd, duplicados_lote = [], 0, 0
-    for m in movimientos:
-        clave = (m["fecha"], m["moneda"], round(m["monto"]))
-        if clave in existentes_bd:
-            duplicados_bd += 1
-            continue
-        if clave in vistos_en_lote:
+    for m_crudo in movimientos:
+        # Enriquecer ANTES de armar la clave de match: enriquecer_movimiento
+        # puede reclasificar 'tipo' (ej. avance de tarjeta: 'gasto' ->
+        # 'ingreso'), y las filas ya existentes en `disponibles` tienen el
+        # tipo YA reclasificado -- si acá se comparara con el tipo crudo,
+        # un avance nunca encontraría su propia fila ya guardada y se
+        # insertaría de nuevo en cada corrida.
+        m = enriquecer_movimiento(m_crudo)
+
+        clave_lote = (m["fecha"], m["moneda"], round(m["monto"]), m["tipo"])
+        if clave_lote in vistos_en_lote:
             duplicados_lote += 1
             continue
-        vistos_en_lote.add(clave)
+
+        candidatos = disponibles.get((m["moneda"], round(m["monto"]), m["tipo"]), [])
+        match = _mejor_coincidencia(m, candidatos) if candidatos else None
+        if match:
+            candidatos.remove(match)  # consumida -- una segunda coincidencia real no la vuelve a encontrar
+            duplicados_bd += 1
+            if match["origen"] == "app_manual" and origen != "app_manual" and not match.get("referencia_bancaria"):
+                referencia = (m.get("descripcion") or "").strip()
+                if referencia:
+                    cur.execute("UPDATE movimientos SET referencia_bancaria = ? WHERE id = ?", (referencia, match["id"]))
+            continue
+
+        vistos_en_lote.add(clave_lote)
         nuevos.append(m)
 
-    enriquecidos = [enriquecer_movimiento(m) for m in nuevos]
-    for e in enriquecidos:
+    for e in nuevos:
         e["origen"] = origen
         e["usuario_id"] = usuario_id
     cur.executemany(
         """INSERT INTO movimientos (fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, es_deuda, origen, usuario_id)
            VALUES (:fecha, :tipo, :categoria, :moneda, :monto, :descripcion, :entidad, :medio_pago, :es_deuda, :origen, :usuario_id)""",
-        enriquecidos,
+        nuevos,
     )
     conn.commit()
     return {

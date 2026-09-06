@@ -125,6 +125,10 @@
       <input type="password" name="app_password" class="field-input" minlength="8"
              placeholder="{{ 'Dejar en blanco para no cambiarla' if config else 'Requerida la primera vez — ver la ayuda de arriba' }}">
 
+      <label class="field-label">Cédula <span style="color:var(--text-faint); font-weight:400;">(opcional — solo si querés que también abra extractos PDF adjuntos)</span></label>
+      <input type="text" name="cedula" class="field-input" inputmode="numeric" autocomplete="off"
+             placeholder="{{ 'Dejar en blanco para no cambiarla' if (config and config.cedula) else 'Bancolombia cifra esos PDF con este número' }}">
+
       <details style="margin-top:16px;">
         <summary style="cursor:pointer; font-size:12.5px; color:var(--text-dim);">Opciones avanzadas (servidor IMAP)</summary>
         <div class="field-row" style="margin-top:10px;">
@@ -180,7 +184,7 @@
 <div class="modal-overlay" id="modalAyuda">
   <div class="modal-box">
     <h3>Cómo configurar tu correo automático</h3>
-    <p class="sub">5 pasos, una sola vez. Usá una cuenta de Gmail dedicada solo a esto — no tu correo personal.</p>
+    <p class="sub">6 pasos, una sola vez. Usá una cuenta de Gmail dedicada solo a esto — no tu correo personal.</p>
 
     <div class="paso"><div class="num">1</div><div class="txt">
       Si no tenés un correo Gmail dedicado a lo financiero, creá uno nuevo en
@@ -206,6 +210,12 @@
     </div></div>
 
     <div class="paso"><div class="num">5</div><div class="txt">
+      <b>Opcional:</b> si además querés que se abran solos los PDF de extracto que Bancolombia
+      adjunta por correo, completá el campo "Cédula" — Bancolombia los cifra con ese número.
+      Los que descargás vos a mano desde la web NO necesitan esto.
+    </div></div>
+
+    <div class="paso"><div class="num">6</div><div class="txt">
       Pegá ese correo y esa contraseña acá en el formulario, elegí cada cuánto querés que se sincronice,
       y guardá. Usá <b>"Probar conexión"</b> primero para confirmar que todo quedó bien antes de dejarlo corriendo solo.
     </div></div>
