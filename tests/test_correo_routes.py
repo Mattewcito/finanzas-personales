@@ -594,3 +594,114 @@ def test_usuario_normal_con_viendo_id_distinto_forzado_en_sesion_sigue_operando_
     assert config_de(admin_id) is not None
     assert config_de(admin_id)["email"] == "forzado-a-mano@example.com"
     assert config_de(user_id) is None
+
+
+# ---------------------------------------------------------------------------
+# requiere_vista_visible("correo_automatico") -- panel de admin_vistas.py
+# que oculta/muestra el ítem de menú y bloquea las rutas del blueprint
+# "correo" en sí (ver auth.py::requiere_vista_visible/inyectar_globales y
+# routes/admin_vistas.py). Casos centrales del bloqueo por rol.
+# ---------------------------------------------------------------------------
+
+def ocultar(usuario_id, vista="correo_automatico"):
+    with db.conexion() as conn:
+        db.ocultar_vista(conn, usuario_id, vista)
+
+
+def mostrar(usuario_id, vista="correo_automatico"):
+    with db.conexion() as conn:
+        db.mostrar_vista(conn, usuario_id, vista)
+
+
+def test_usuario_no_admin_con_correo_oculto_no_ve_el_link_ni_puede_acceder_a_las_rutas(client, app_ctx):
+    """Caso central: admin oculta "correo_automatico" para el usuario B
+    (no admin). B, al iniciar sesión: no ve el link en el menú, GET
+    /configurar-correo lo redirige al dashboard (nunca le muestra la
+    página), y POST /api/correo/guardar le da 403 sin dejarlo guardar
+    nada."""
+    _, admin_id, user_id = app_ctx
+    ocultar(user_id)
+
+    login(client, "user_test", "clave-user-456")
+
+    resp_home = client.get("/")
+    assert resp_home.status_code == 200
+    assert b'href="/configurar-correo"' not in resp_home.data
+    assert "Correo automático".encode() not in resp_home.data
+
+    resp_get = client.get("/configurar-correo")
+    assert resp_get.status_code == 302
+    assert "/login" not in resp_get.headers["Location"]  # no lo manda a loguearse, ya está logueado
+
+    resp_post = client.post("/api/correo/guardar", data=dict(FORM_BASE))
+    assert resp_post.status_code == 403
+    assert resp_post.get_json()["ok"] is False
+    assert config_de(user_id) is None  # nunca llegó a guardar nada
+
+
+def test_usuario_recupera_el_acceso_cuando_el_admin_vuelve_a_mostrar_la_vista(client, app_ctx, monkeypatch):
+    """Después de que el admin revierte la restricción (visible=1), B
+    recupera el link en el menú, GET /configurar-correo vuelve a dar 200
+    y POST /api/correo/guardar vuelve a funcionar."""
+    _, admin_id, user_id = app_ctx
+    ocultar(user_id)
+    mostrar(user_id)
+
+    login(client, "user_test", "clave-user-456")
+
+    resp_home = client.get("/")
+    assert b'href="/configurar-correo"' in resp_home.data
+
+    resp_get = client.get("/configurar-correo")
+    assert resp_get.status_code == 200
+
+    resp_post = client.post("/api/correo/guardar", data=dict(FORM_BASE))
+    assert resp_post.status_code == 200
+    assert resp_post.get_json()["ok"] is True
+    assert config_de(user_id) is not None
+
+
+def test_admin_con_correo_oculto_a_si_mismo_igual_puede_usar_la_ruta_aunque_pierda_el_link_del_menu(client, app_ctx):
+    """Un admin NUNCA es bloqueado por requiere_vista_visible (para que no
+    pueda accidentalmente quitarse a sí mismo el acceso al panel que
+    revierte la restricción) -- si se oculta "correo_automatico" a sí
+    mismo, GET /configurar-correo le sigue dando 200. Pero
+    inyectar_globales() no distingue rol para el chequeo del MENÚ, así
+    que el link SÍ desaparece de su propio sidebar (comportamiento real,
+    confirmado leyendo auth.py::inyectar_globales)."""
+    _, admin_id, user_id = app_ctx
+    ocultar(admin_id)
+
+    login(client, "admin_test", "clave-admin-123")
+
+    resp_home = client.get("/")
+    assert resp_home.status_code == 200
+    assert b'href="/configurar-correo"' not in resp_home.data  # el link sí desaparece
+
+    resp_get = client.get("/configurar-correo")
+    assert resp_get.status_code == 200  # pero la ruta en sí sigue funcionando, por ser admin
+
+    resp_post = client.post("/api/correo/guardar", data=dict(FORM_BASE))
+    assert resp_post.status_code == 200
+    assert resp_post.get_json()["ok"] is True
+
+
+def test_admin_viendo_perfil_de_usuario_restringido_sigue_viendo_el_link_en_su_propio_menu(client, app_ctx):
+    """La restricción de vistas_ocultas es sobre session["usuario_id"]
+    (quien inició sesión), nunca sobre viendo_id() -- un admin que está
+    "viendo" el perfil de un usuario B restringido no hereda la
+    restricción de B: sigue viendo "Correo automático" en SU PROPIO
+    menú, y puede seguir usando la ruta con normalidad."""
+    _, admin_id, user_id = app_ctx
+    ocultar(user_id)  # restricción es de B, no del admin
+
+    login(client, "admin_test", "clave-admin-123")
+    cambio = client.post("/cambiar-vista", data={"usuario_id": user_id})
+    assert cambio.status_code == 302
+
+    resp_home = client.get("/")
+    assert resp_home.status_code == 200
+    assert b'href="/configurar-correo"' in resp_home.data  # el admin sigue viendo el link
+
+    resp_get = client.get("/configurar-correo")
+    assert resp_get.status_code == 200  # y puede seguir usando la ruta (viendo_id() = user_id)

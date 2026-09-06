@@ -34,7 +34,7 @@ from flask import Blueprint, render_template, request, jsonify
 
 import db_finanzas as db
 import leer_correo as lc
-from auth import login_required, viendo_id
+from auth import login_required, viendo_id, requiere_vista_visible
 
 correo_bp = Blueprint("correo", __name__)
 
@@ -93,6 +93,7 @@ def _config_desde_formulario(existente: dict | None) -> tuple[dict | None, str |
 
 @correo_bp.route("/configurar-correo")
 @login_required
+@requiere_vista_visible("correo_automatico")
 def configurar_correo_page():
     with db.conexion() as conn:
         config = db.obtener_correo_config(conn, viendo_id())
@@ -101,6 +102,7 @@ def configurar_correo_page():
 
 @correo_bp.route("/api/correo/guardar", methods=["POST"])
 @login_required
+@requiere_vista_visible("correo_automatico")
 def api_correo_guardar():
     usuario_id = viendo_id()
     with db.conexion() as conn:
@@ -124,6 +126,7 @@ def api_correo_guardar():
 
 @correo_bp.route("/api/correo/probar", methods=["POST"])
 @login_required
+@requiere_vista_visible("correo_automatico")
 def api_correo_probar():
     """Preview de conexión: NUNCA inserta nada en la BD, ni siquiera
     requiere haber guardado la configuración todavía -- prueba lo que
@@ -158,6 +161,7 @@ def api_correo_probar():
 
 @correo_bp.route("/api/correo/sincronizar-ahora", methods=["POST"])
 @login_required
+@requiere_vista_visible("correo_automatico")
 def api_correo_sincronizar_ahora():
     usuario_id = viendo_id()
     with db.conexion() as conn:
@@ -181,6 +185,7 @@ def api_correo_sincronizar_ahora():
 
 @correo_bp.route("/api/correo/eliminar", methods=["POST"])
 @login_required
+@requiere_vista_visible("correo_automatico")
 def api_correo_eliminar():
     with db.conexion() as conn:
         db.eliminar_correo_config(conn, viendo_id())
