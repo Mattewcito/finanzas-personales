@@ -2,6 +2,20 @@
 # no necesita nada más pesado.
 FROM python:3.12-slim
 
+# Zona horaria de Colombia (UTC-5, sin horario de verano) -- sin esto, la
+# imagen base queda en UTC y CUALQUIER timestamp (datetime.now() en Python,
+# datetime('now','localtime') en SQLite, los logs) queda corrido 5 horas
+# respecto a la hora real del usuario. Afecta tanto lo que se MUESTRA
+# ("última corrida") como la lógica de "una vez al día a las X" de
+# leer_correo.py, que compara contra la hora que el usuario configuró
+# pensando en su propia hora local.
+ENV TZ=America/Bogota
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tzdata \
+ && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+ && echo $TZ > /etc/timezone \
+ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY requirements.txt .
