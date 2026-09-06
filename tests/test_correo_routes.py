@@ -661,14 +661,15 @@ def test_usuario_recupera_el_acceso_cuando_el_admin_vuelve_a_mostrar_la_vista(cl
     assert config_de(user_id) is not None
 
 
-def test_admin_con_correo_oculto_a_si_mismo_igual_puede_usar_la_ruta_aunque_pierda_el_link_del_menu(client, app_ctx):
-    """Un admin NUNCA es bloqueado por requiere_vista_visible (para que no
-    pueda accidentalmente quitarse a sí mismo el acceso al panel que
-    revierte la restricción) -- si se oculta "correo_automatico" a sí
-    mismo, GET /configurar-correo le sigue dando 200. Pero
-    inyectar_globales() no distingue rol para el chequeo del MENÚ, así
-    que el link SÍ desaparece de su propio sidebar (comportamiento real,
-    confirmado leyendo auth.py::inyectar_globales)."""
+def test_admin_con_correo_oculto_a_si_mismo_tambien_queda_bloqueado_de_la_ruta(client, app_ctx):
+    """Por pedido explícito ("si se bloquea nadie pueda acceder hasta que
+    se active"), requiere_vista_visible() YA NO exime a ningún rol -- un
+    admin que se oculta "correo_automatico" a sí mismo pierde el link del
+    menú Y queda bloqueado de /configurar-correo (302 a /mi-perfil) y de
+    POST /api/correo/guardar (403 JSON), igual que le pasaría a
+    cualquier usuario no-admin. Esto es seguro porque /admin/vistas (el
+    panel que revierte la restricción) nunca lleva ese decorador -- ver
+    el siguiente test, que confirma que el admin puede recuperarse solo."""
     _, admin_id, user_id = app_ctx
     ocultar(admin_id)
 
@@ -676,14 +677,43 @@ def test_admin_con_correo_oculto_a_si_mismo_igual_puede_usar_la_ruta_aunque_pier
 
     resp_home = client.get("/")
     assert resp_home.status_code == 200
-    assert b'href="/configurar-correo"' not in resp_home.data  # el link sí desaparece
+    assert b'href="/configurar-correo"' not in resp_home.data  # el link desaparece
 
     resp_get = client.get("/configurar-correo")
-    assert resp_get.status_code == 200  # pero la ruta en sí sigue funcionando, por ser admin
+    assert resp_get.status_code == 302
+    assert resp_get.headers["Location"].endswith("/mi-perfil")
 
     resp_post = client.post("/api/correo/guardar", data=dict(FORM_BASE))
-    assert resp_post.status_code == 200
-    assert resp_post.get_json()["ok"] is True
+    assert resp_post.status_code == 403
+    assert resp_post.get_json()["ok"] is False
+    assert config_de(admin_id) is None  # nunca llegó a guardar nada
+
+
+def test_admin_bloqueado_en_correo_automatico_se_recupera_solo_via_admin_vistas(client, app_ctx):
+    """/admin/vistas nunca lleva requiere_vista_visible -- es la puerta de
+    salida garantizada: el admin bloqueado puede entrar ahí (nunca se
+    redirige, a diferencia de /configurar-correo) y reactivarse la vista
+    a sí mismo, recuperando el acceso de inmediato, sin intervención de
+    otra cuenta."""
+    _, admin_id, user_id = app_ctx
+    ocultar(admin_id)
+
+    login(client, "admin_test", "clave-admin-123")
+
+    resp_bloqueado = client.get("/configurar-correo")
+    assert resp_bloqueado.status_code == 302
+
+    resp_panel = client.get("/admin/vistas")
+    assert resp_panel.status_code == 200  # /admin/vistas en sí nunca está bloqueada
+
+    resp_toggle = client.post("/api/admin/vistas/toggle", data={
+        "usuario_id": str(admin_id), "vista": "correo_automatico", "visible": "1",
+    })
+    assert resp_toggle.status_code == 200
+    assert resp_toggle.get_json()["ok"] is True
+
+    resp_recuperado = client.get("/configurar-correo")
+    assert resp_recuperado.status_code == 200
 
 
 def test_admin_viendo_perfil_de_usuario_restringido_sigue_viendo_el_link_en_su_propio_menu(client, app_ctx):
