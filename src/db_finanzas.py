@@ -153,16 +153,36 @@ def conexion():
         conn.close()
 
 
-def _migrar_columna_usuario_id(conn: sqlite3.Connection) -> None:
-    """SQLite no tiene 'ADD COLUMN IF NOT EXISTS' -- se revisa a mano.
-    Cada movimiento pasa a pertenecer a un usuario (multiusuario, 2026-09-05).
-    Nula por defecto en filas viejas; se asigna al admin la primera vez que
-    corre esta migración (ver asignar_movimientos_sin_dueno_a_admin)."""
-    columnas = [r["name"] for r in conn.execute("PRAGMA table_info(movimientos)")]
-    if "usuario_id" not in columnas:
-        conn.execute("ALTER TABLE movimientos ADD COLUMN usuario_id INTEGER")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_movimientos_usuario ON movimientos(usuario_id)")
+def _agregar_columna_si_falta(conn: sqlite3.Connection, tabla: str, columna: str, tipo_sql: str) -> None:
+    """ALTER TABLE ... ADD COLUMN, tolerante a la carrera entre procesos:
+    gunicorn arranca esta app con varios workers (ver Dockerfile), cada
+    uno importa app.py por separado y cada uno corre crear_esquema() al
+    boot -- si dos lo hacen casi al mismo tiempo, el chequeo previo de
+    PRAGMA table_info() puede pasar en los dos ANTES de que cualquiera
+    haya hecho el ALTER, y el segundo revienta con "duplicate column
+    name" (esto pasó de verdad al desplegar referencia_bancaria).
+    SQLite no tiene 'ADD COLUMN IF NOT EXISTS', así que se ataja acá:
+    chequeo previo (evita el ALTER en el caso común) + tolerar el error
+    puntual de "ya existe" si igual se cuela la carrera."""
+    columnas = [r["name"] for r in conn.execute(f"PRAGMA table_info({tabla})")]
+    if columna in columnas:
+        return
+    try:
+        conn.execute(f"ALTER TABLE {tabla} ADD COLUMN {columna} {tipo_sql}")
         conn.commit()
+    except sqlite3.OperationalError as e:
+        if "duplicate column name" not in str(e):
+            raise  # cualquier otro error sí debe reventar, no ocultarlo
+
+
+def _migrar_columna_usuario_id(conn: sqlite3.Connection) -> None:
+    """Cada movimiento pasa a pertenecer a un usuario (multiusuario,
+    2026-09-05). Nula por defecto en filas viejas; se asigna al admin la
+    primera vez que corre esta migración (ver
+    asignar_movimientos_sin_dueno_a_admin)."""
+    _agregar_columna_si_falta(conn, "movimientos", "usuario_id", "INTEGER")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_movimientos_usuario ON movimientos(usuario_id)")
+    conn.commit()
 
 
 def _migrar_columna_referencia_bancaria(conn: sqlite3.Connection) -> None:
@@ -171,20 +191,14 @@ def _migrar_columna_referencia_bancaria(conn: sqlite3.Connection) -> None:
     insertar_movimientos(). Nula en todo lo insertado antes de esta
     migración (2026-09-06) y en cualquier movimiento que nunca se haya
     conciliado contra una fuente automática."""
-    columnas = [r["name"] for r in conn.execute("PRAGMA table_info(movimientos)")]
-    if "referencia_bancaria" not in columnas:
-        conn.execute("ALTER TABLE movimientos ADD COLUMN referencia_bancaria TEXT")
-        conn.commit()
+    _agregar_columna_si_falta(conn, "movimientos", "referencia_bancaria", "TEXT")
 
 
 def _migrar_columna_cedula_correo_config(conn: sqlite3.Connection) -> None:
     """correo_config ya existía (2026-09-06) sin esta columna en cualquier
     BD real donde ya se hubiera guardado alguna configuración -- CREATE
     TABLE IF NOT EXISTS no la agrega sola a una tabla que ya existe."""
-    columnas = [r["name"] for r in conn.execute("PRAGMA table_info(correo_config)")]
-    if "cedula" not in columnas:
-        conn.execute("ALTER TABLE correo_config ADD COLUMN cedula TEXT")
-        conn.commit()
+    _agregar_columna_si_falta(conn, "correo_config", "cedula", "TEXT")
 
 
 def crear_esquema(conn: sqlite3.Connection) -> None:
