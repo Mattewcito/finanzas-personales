@@ -78,6 +78,18 @@
     background: var(--card-hover); color:var(--text); font-weight:600; font-size:13px;
     cursor:pointer; font-family:inherit;
   }
+
+  /* Aclaración -- no advertencia -- de que esta página es siempre de la
+     cuenta con la que iniciaste sesión, nunca de la que estés "viendo"
+     (a diferencia de Registrar/Cargar extractos, acá no hay ambigüedad
+     posible: por diseño nunca usa viendo_id()). Solo se muestra cuando
+     de verdad podría confundir -- admin viendo el perfil de otro. */
+  .aviso-cuenta-propia{
+    display:flex; align-items:center; gap:8px; margin: 0 0 18px;
+    padding: 10px 14px; border-radius: 10px; font-size: 13px;
+    background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.28); color: var(--text);
+  }
+  .aviso-cuenta-propia b{ color: var(--accent-2); }
 </style>
 {% endblock %}
 
@@ -88,6 +100,14 @@
     <h1>📬 Correo automático</h1>
     <p>Conectá tu correo dedicado a notificaciones bancarias para que Bancolombia se registre solo en tu cuenta, sin tener que anotar nada a mano.</p>
   </div>
+
+  {% if usuario_rol == 'admin' and usuario_viendo_nombre != usuario_nombre %}
+  <div class="aviso-cuenta-propia">
+    ℹ️ Esta configuración es siempre de <b>tu propia cuenta</b> ({{ usuario_nombre }}) — a diferencia de otras páginas,
+    NO cambia según "Viendo perfil de" (ahora mismo: {{ usuario_viendo_nombre }}). Para configurar el correo de otra
+    persona, esa persona tiene que entrar con su propia cuenta.
+  </div>
+  {% endif %}
 
   {% if config %}
   <div class="estado-card" style="margin-top:22px;">

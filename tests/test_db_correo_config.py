@@ -18,6 +18,7 @@ Este archivo NO hace "import app" (reservado a tests/test_app_integration.py).
 """
 import pytest
 
+import cifrado
 import db_finanzas as db
 
 
@@ -314,3 +315,133 @@ def test_eliminar_correo_config_no_afecta_la_fila_de_otro_usuario(conn):
     fila_2 = db.obtener_correo_config(conn, id_2)
     assert fila_2 is not None
     assert fila_2["email"] == "dos@example.com"
+
+
+# ----------------------------- cifrado (cifrado.py) -----------------------------
+# Nota: obtener_correo_config/listar_correo_configs_activos ya quedan
+# cubiertas indirectamente por TODOS los tests de arriba, que comparan
+# fila["email"]/fila["app_password"]/fila["cedula"] contra el valor en
+# texto plano original -- si el descifrado automático fallara, esos
+# asserts ya estarían fallando. No se duplica ese caso acá.
+
+def test_guardar_correo_config_deja_los_valores_crudos_en_bd_cifrados_no_en_texto_plano(conn):
+    """Confirma que el cifrado ocurre de verdad EN LA BASE DE DATOS, no
+    solo "en teoría" -- leyendo con SQL directo, sin pasar por
+    obtener_correo_config (que descifra), los valores crudos no deben
+    coincidir con el texto plano original."""
+    uid = crear_usuario(conn, "maria")
+
+    db.guardar_correo_config(
+        conn, uid, email="maria@example.com", app_password="clave-app-123", cedula="123456789",
+    )
+
+    fila_cruda = conn.execute(
+        "SELECT email, app_password, cedula FROM correo_config WHERE usuario_id = ?", (uid,)
+    ).fetchone()
+    assert fila_cruda["email"] != "maria@example.com"
+    assert fila_cruda["app_password"] != "clave-app-123"
+    assert fila_cruda["cedula"] != "123456789"
+    # y siguen siendo recuperables descifrando:
+    assert cifrado.descifrar(fila_cruda["email"]) == "maria@example.com"
+    assert cifrado.descifrar(fila_cruda["app_password"]) == "clave-app-123"
+    assert cifrado.descifrar(fila_cruda["cedula"]) == "123456789"
+
+
+def test_migrar_cifrado_correo_config_cifra_una_fila_vieja_en_texto_plano(conn):
+    """Simula una fila insertada ANTES de que existiera cifrado.py (SQL
+    directo, sin pasar por guardar_correo_config). Al llamar a
+    crear_esquema() (que invoca _migrar_cifrado_correo_config), esa fila
+    debe quedar cifrada en el lugar, y seguir siendo legible en texto
+    plano a través de obtener_correo_config."""
+    uid = crear_usuario(conn, "vieja")
+    conn.execute(
+        """
+        INSERT INTO correo_config (usuario_id, email, app_password, cedula, activo)
+        VALUES (?, ?, ?, ?, 1)
+        """,
+        (uid, "vieja@example.com", "clave-plana", "111222333"),
+    )
+    conn.commit()
+
+    db.crear_esquema(conn)  # dispara _migrar_cifrado_correo_config
+
+    fila_cruda = conn.execute(
+        "SELECT email, app_password, cedula FROM correo_config WHERE usuario_id = ?", (uid,)
+    ).fetchone()
+    assert fila_cruda["email"] != "vieja@example.com"
+    assert fila_cruda["app_password"] != "clave-plana"
+    assert fila_cruda["cedula"] != "111222333"
+
+    fila = db.obtener_correo_config(conn, uid)
+    assert fila["email"] == "vieja@example.com"
+    assert fila["app_password"] == "clave-plana"
+    assert fila["cedula"] == "111222333"
+
+
+def test_migrar_cifrado_correo_config_corrida_dos_veces_no_recifra_ni_rompe_el_valor(conn):
+    """El caso que probaría el bug real de "cifrar dos veces": correr
+    crear_esquema() (y por lo tanto la migración) una segunda vez sobre
+    una fila que ya quedó cifrada en la primera corrida NO debe volver a
+    cifrarla -- si lo hiciera, el valor dejaría de poder descifrarse
+    correctamente (o devolvería basura)."""
+    uid = crear_usuario(conn, "vieja2")
+    conn.execute(
+        "INSERT INTO correo_config (usuario_id, email, app_password, cedula, activo) VALUES (?, ?, ?, ?, 1)",
+        (uid, "vieja2@example.com", "clave-plana-2", "999888777"),
+    )
+    conn.commit()
+
+    db.crear_esquema(conn)  # primera migración: cifra
+    db.crear_esquema(conn)  # segunda corrida: no debe volver a cifrar
+
+    fila = db.obtener_correo_config(conn, uid)
+    assert fila["email"] == "vieja2@example.com"
+    assert fila["app_password"] == "clave-plana-2"
+    assert fila["cedula"] == "999888777"
+
+
+def test_migrar_cifrado_correo_config_con_cedula_nula_no_revienta(conn):
+    """Una fila vieja sin cédula configurada (NULL) no debe hacer
+    fallar la migración -- no hay nada que cifrar en ese campo."""
+    uid = crear_usuario(conn, "sin_cedula_vieja")
+    conn.execute(
+        "INSERT INTO correo_config (usuario_id, email, app_password, cedula, activo) VALUES (?, ?, ?, NULL, 1)",
+        (uid, "sincedula@example.com", "clave-plana-3"),
+    )
+    conn.commit()
+
+    db.crear_esquema(conn)  # no debe lanzar
+
+    fila = db.obtener_correo_config(conn, uid)
+    assert fila["email"] == "sincedula@example.com"
+    assert fila["app_password"] == "clave-plana-3"
+    assert fila["cedula"] is None
+
+
+def test_cifrado_usa_una_clave_global_compartida_entre_usuarios_sin_cruzar_datos(conn):
+    """La clave de cifrado es única para toda la instalación (no una por
+    usuario) -- pero cada fila se descifra a su propio valor correcto,
+    sin cruces entre las cuentas de distintos usuarios (el aislamiento
+    real por usuario_id ya lo prueban los tests de eliminar/listar de
+    arriba; este test documenta explícitamente que compartir la clave no
+    implica compartir o mezclar los datos)."""
+    id_1 = crear_usuario(conn, "u1")
+    id_2 = crear_usuario(conn, "u2")
+    db.guardar_correo_config(conn, id_1, email="u1@example.com", app_password="pass-u1", cedula="111")
+    db.guardar_correo_config(conn, id_2, email="u2@example.com", app_password="pass-u2", cedula="222")
+
+    fila_1 = db.obtener_correo_config(conn, id_1)
+    fila_2 = db.obtener_correo_config(conn, id_2)
+
+    assert fila_1["email"] == "u1@example.com"
+    assert fila_1["app_password"] == "pass-u1"
+    assert fila_1["cedula"] == "111"
+    assert fila_2["email"] == "u2@example.com"
+    assert fila_2["app_password"] == "pass-u2"
+    assert fila_2["cedula"] == "222"
+
+    # los valores crudos cifrados de cada usuario son distintos entre sí
+    # (no es el mismo texto cifrado repetido, cada uno cifra lo suyo):
+    crudo_1 = conn.execute("SELECT email FROM correo_config WHERE usuario_id = ?", (id_1,)).fetchone()
+    crudo_2 = conn.execute("SELECT email FROM correo_config WHERE usuario_id = ?", (id_2,)).fetchone()
+    assert crudo_1["email"] != crudo_2["email"]

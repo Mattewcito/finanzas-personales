@@ -303,9 +303,29 @@ en la base de datos; no afecta los totales de ingreso/gasto/deuda.
 
 `data/` y `docs/` están en `.gitignore` — nunca se suben a GitHub.
 Ninguna credencial (API keys, contraseñas de correo) va escrita en texto
-plano en el código: siempre por variable de entorno, archivo local
-ignorado por git, o (la contraseña de aplicación de cada quien, desde
-2026-09-06) en `data/finanzas.db` — mismo archivo local fuera de git que
-ya guarda el resto de los datos, nunca expuesta de vuelta en la interfaz
-una vez guardada.
+plano en el código: siempre por variable de entorno o archivo local
+ignorado por git.
+
+**Cifrado de datos sensibles (`src/cifrado.py`, desde 2026-09-06):**
+correo, contraseña de aplicación y cédula de `correo_config` se guardan
+**cifrados de verdad** en `data/finanzas.db` (Fernet, de la librería
+`cryptography` — simétrico, estándar, gratuita y de código abierto), no
+solo "fuera de git". La clave vive en `data/cifrado.key`, un archivo
+aparte de la base de datos — así, alguien que consiga una copia de
+`finanzas.db` (ej. un respaldo) no puede leer esos campos sin también
+tener esa clave. El cifrado/descifrado es transparente para el resto
+del código (`routes/correo.py`, `leer_correo.py` siempre ven texto
+plano en memoria) y ninguna ruta vuelve a mostrar estos valores en la
+interfaz una vez guardados.
+
+⚠️ **`data/cifrado.key` hay que respaldarlo igual que `data/finanzas.db`**
+— si se pierde, no se puede volver a descifrar nada de lo que ya estaba
+guardado (habría que volver a cargar correo/contraseña/cédula de cada
+usuario desde cero; los movimientos financieros en sí NO se ven
+afectados, viven sin cifrar en sus propias columnas).
+
+Las contraseñas de LOGIN de usuarios (`usuarios.password_hash`) usan un
+mecanismo distinto y ya existente: hash de un solo sentido (Werkzeug,
+scrypt) — nunca se guardan ni se necesitan en texto reversible, así que
+no aplica cifrado ahí, aplica hashing (más fuerte para ese caso).
 
