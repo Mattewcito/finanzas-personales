@@ -229,20 +229,67 @@
       border-right: none; border-top: 1px solid var(--card-border);
       z-index: 100;
     }
-    .sidebar-brand, .sidebar-footer{ display: none; }
+    .sidebar-brand{ display: none; }
+    /* QA 2026-09-06/07: .sidebar-nav medía scrollWidth=506px contra un
+       viewport de 375px ("Crear usuario" cortado y "Ocultar vistas"
+       directamente fuera de pantalla, SIN scroll para alcanzarlo --
+       overflow-x era "visible", no "auto"). flex-wrap deja que los ítems
+       que no entran en una fila bajen a una segunda en vez de desbordar
+       horizontalmente. La altura de la barra ya no es un número fijo:
+       ver --mobile-nav-h (JS al final del archivo), que la recalcula
+       cada vez que el contenido de la barra cambia de alto (1 fila vs 2,
+       admin vs no-admin) para que el padding del contenido y el alto del
+       iframe siempre coincidan con la barra real. */
     .sidebar-nav{
-      display: flex; flex-direction: row; padding: 6px 8px;
-      justify-content: space-around; overflow: visible;
+      display: flex; flex-direction: row; flex-wrap: wrap; padding: 6px 8px;
+      justify-content: center; column-gap: 4px; row-gap: 2px; overflow: visible;
     }
-    .sidebar-nav a{
+    .sidebar-nav a, .sidebar-nav-account-toggle{
       flex-direction: column; align-items: center; gap: 3px;
-      padding: 6px 14px; font-size: 10.5px; margin-bottom: 0;
+      padding: 6px 10px; font-size: 10.5px; margin-bottom: 0;
     }
-    .sidebar-nav a span{ display: block !important; white-space: nowrap; }
+    .sidebar-nav a span, .sidebar-nav-account-toggle span{ display: block !important; white-space: nowrap; }
     .sidebar-nav a.nav-cargar{ display: none !important; } /* subir archivos desde el celular no es el caso de uso -- solo queda Dashboard */
     .sidebar-nav a.nav-correo{ display: none !important; } /* configurar IMAP/contraseñas de aplicación desde el celular tampoco */
-    .app-main{ padding-bottom: 62px; } /* deja ver el contenido por encima de la barra */
-    .app-main iframe{ height: calc(100vh - 62px) !important; }
+
+    /* Botón "Cuenta" -- solo existe en mobile (en desktop/tablet el
+       footer de abajo ya está siempre visible). Se ve igual que los
+       demás ítems de la barra inferior. */
+    .sidebar-nav-account-toggle{
+      display: flex; background: none; border: none; cursor: pointer;
+      color: var(--text-dim); font-family: inherit; border-radius: 9px;
+    }
+    .sidebar-nav-account-toggle svg{ width: 18px; height: 18px; flex-shrink: 0; }
+    .sidebar-nav-account-toggle:hover,
+    .sidebar-nav-account-toggle[aria-expanded="true"]{ background: var(--card-hover); color: #fff; }
+
+    /* QA 2026-09-06/07: .sidebar-footer se ocultaba ENTERO (display:none)
+       por debajo de 720px, y con él "Cerrar sesión" y "Viendo perfil de"
+       -- un admin en el celular no tenía NINGUNA forma de cerrar sesión
+       ni cambiar de perfil. En vez de ocultarlo, se convierte en un panel
+       flotante que abre/cierra el botón "Cuenta" de la barra inferior
+       (mismo contenido de siempre, sin duplicar el markup del servidor).
+       Arranca fuera de pantalla (translateY) en vez de con display:none
+       para poder animar la entrada/salida. */
+    .sidebar-footer{
+      position: fixed; left: 8px; right: 8px;
+      bottom: calc(var(--mobile-nav-h, 62px) + 8px);
+      background: var(--card-solid); border: 1px solid var(--card-border);
+      border-radius: 14px; box-shadow: 0 -6px 20px rgba(0,0,0,0.4);
+      padding: 14px 16px; white-space: normal; overflow: visible;
+      transform: translateY(calc(100% + 24px)); opacity: 0; pointer-events: none;
+      transition: transform .18s ease, opacity .18s ease;
+      z-index: 150;
+    }
+    .sidebar-footer.abierto{ transform: translateY(0); opacity: 1; pointer-events: auto; }
+    /* El estado "collapsed" del sidebar (desktop) no tiene sentido acá --
+       si alguien colapsó el menú en desktop y después achica la ventana,
+       el panel mobile no puede quedarse mostrando solo el "●". */
+    .sidebar-footer .full-text{ display: block !important; }
+    .sidebar-footer .dot-text{ display: none !important; }
+
+    .app-main{ padding-bottom: calc(var(--mobile-nav-h, 62px) + 4px); } /* deja ver el contenido por encima de la barra */
+    .app-main iframe{ height: calc(100vh - var(--mobile-nav-h, 62px) - 4px) !important; }
   }
 </style>
 {% block head %}{% endblock %}
@@ -310,9 +357,20 @@
         <span>Ocultar vistas</span>
       </a>
       {% endif %}
+      <!-- Solo visible en mobile (ver @media max-width:720px) -- abre el
+           panel de abajo (#appSidebarFooter), que en mobile deja de ser
+           un footer siempre visible y pasa a ser un panel flotante. -->
+      <button type="button" class="sidebar-nav-account-toggle" id="mobileAccountToggle"
+              aria-haspopup="true" aria-expanded="false" aria-controls="appSidebarFooter">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="8" r="4"></circle>
+          <path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6"></path>
+        </svg>
+        <span>Cuenta</span>
+      </button>
     </div>
 
-    <div class="sidebar-footer">
+    <div class="sidebar-footer" id="appSidebarFooter">
       {% if usuario_rol == 'admin' and usuarios_disponibles|length > 1 %}
       <div class="full-text" style="margin-bottom:8px;">
         <label style="display:block; font-size:10.5px; color:var(--text-faint); margin-bottom:3px;">Viendo perfil de</label>
@@ -382,6 +440,26 @@
   });
 })();
 
+// El Dashboard vive adentro de un <iframe> (mismo origen -- ver
+// templates/dashboard.html) que es un documento APARTE: un click ahí
+// adentro NUNCA burbujea al `document` de esta página de afuera. Todo
+// panel flotante de este archivo (buscador de "Viendo perfil de", panel
+// de cuenta en mobile) que necesite cerrarse "al hacer click afuera"
+// tiene que enganchar el mismo handler también en el documento del
+// iframe (accesible por ser mismo origen) o se queda abierto para
+// siempre en cuanto el usuario toca el dashboard. Un solo helper acá
+// para no repetir esa mecánica en cada panel.
+function alHacerClickEnCualquierDocumento(handler) {
+  document.addEventListener('click', handler);
+  function enganchar(frame) {
+    try { frame.contentDocument.addEventListener('click', handler); } catch (e) {} // si algún día deja de ser mismo origen, no romper nada por esto
+  }
+  document.querySelectorAll('.app-main iframe').forEach((frame) => {
+    if (frame.contentDocument && frame.contentDocument.readyState === 'complete') enganchar(frame);
+    frame.addEventListener('load', () => enganchar(frame));
+  });
+}
+
 // Buscador de "Viendo perfil de" (solo existe en el DOM con más de 5
 // cuentas -- ver base.html arriba). Filtra la lista por substring
 // (sin distinguir mayúsculas) y, al elegir una, manda el form.
@@ -410,28 +488,13 @@
 
   trigger.addEventListener('click', (e) => { e.stopPropagation(); abrir(); });
 
-  // Click afuera de la caja (sin elegir nada) -- vuelve al estado cerrado.
-  document.addEventListener('click', (e) => {
+  // Click afuera de la caja (sin elegir nada, ya sea en esta página o
+  // dentro del iframe del dashboard) -- vuelve al estado cerrado.
+  alHacerClickEnCualquierDocumento((e) => {
     if (!panel.hidden && !panel.contains(e.target) && e.target !== trigger) cerrar();
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !panel.hidden) cerrar();
-  });
-
-  // El Dashboard vive adentro de un <iframe> (mismo origen -- ver
-  // templates/dashboard.html) que es un documento aparte: un click ahí
-  // adentro NUNCA burbujea al listener de arriba, así que sin esto la
-  // caja se queda abierta si se hace click en cualquier parte del
-  // dashboard. Se engancha el mismo cierre directamente en el documento
-  // del iframe (accesible por ser mismo origen).
-  function engancharCierreEnIframe(frame) {
-    try {
-      frame.contentDocument.addEventListener('click', () => { if (!panel.hidden) cerrar(); });
-    } catch (e) {} // si algún día deja de ser mismo origen, no romper nada por esto
-  }
-  document.querySelectorAll('.app-main iframe').forEach((frame) => {
-    if (frame.contentDocument && frame.contentDocument.readyState === 'complete') engancharCierreEnIframe(frame);
-    frame.addEventListener('load', () => engancharCierreEnIframe(frame));
   });
 
   buscador.addEventListener('input', () => {
@@ -447,6 +510,64 @@
       form.submit(); // recarga la página igual que el <select> simple -- no hace falta "cerrar" a mano
     });
   });
+})();
+
+// Panel de cuenta en mobile (botón "Cuenta" de la barra inferior --
+// ver @media max-width:720px arriba). Por debajo de 720px
+// .sidebar-footer deja de ser un footer siempre visible (no hay
+// espacio) y pasa a ser este panel flotante -- con el MISMO markup que
+// ya renderiza el servidor (nombre+modo, selector "Viendo perfil de" si
+// aplica, Cerrar sesión), nada se duplica: solo se muestra/oculta.
+// QA 2026-09-06/07: antes .sidebar-footer tenía display:none fijo en
+// mobile y con él desaparecían "Cerrar sesión" y el switcher sin ningún
+// reemplazo -- un admin en el celular no podía cerrar sesión.
+(function(){
+  const toggle = document.getElementById('mobileAccountToggle');
+  const panel = document.getElementById('appSidebarFooter');
+  if (!toggle || !panel) return;
+
+  const estaAbierto = () => panel.classList.contains('abierto');
+  function abrir() {
+    panel.classList.add('abierto');
+    toggle.setAttribute('aria-expanded', 'true');
+  }
+  function cerrar() {
+    panel.classList.remove('abierto');
+    toggle.setAttribute('aria-expanded', 'false');
+  }
+
+  toggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    estaAbierto() ? cerrar() : abrir();
+  });
+
+  alHacerClickEnCualquierDocumento((e) => {
+    if (estaAbierto() && !panel.contains(e.target) && !toggle.contains(e.target)) cerrar();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && estaAbierto()) cerrar();
+  });
+})();
+
+// Alto real de la barra inferior en mobile -- puede variar (1 fila si
+// entran todos los ítems, 2 si flex-wrap los apila por tener más ítems
+// -- admin ve "Crear usuario"/"Ocultar vistas" de más, ver QA
+// 2026-09-06/07 arriba). --mobile-nav-h alimenta el padding-bottom de
+// .app-main, el alto del iframe y en qué "piso" flota el panel de
+// cuenta -- todo eso necesita el número real, no un valor fijo
+// hardcodeado que se desactualiza en cuanto cambia la cantidad de
+// ítems del menú.
+(function(){
+  const sidebar = document.getElementById('appSidebar');
+  const actualizar = () => {
+    document.documentElement.style.setProperty('--mobile-nav-h', sidebar.getBoundingClientRect().height + 'px');
+  };
+  if (window.ResizeObserver) {
+    new ResizeObserver(actualizar).observe(sidebar);
+  } else {
+    window.addEventListener('resize', actualizar); // navegador muy viejo sin ResizeObserver
+  }
+  actualizar();
 })();
 </script>
 </body>

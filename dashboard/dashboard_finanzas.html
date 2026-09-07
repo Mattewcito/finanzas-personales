@@ -392,6 +392,26 @@
   tbody tr:last-child td{ border-bottom:none; }
   tbody tr:hover{ background: var(--card-hover); }
   td.num{ text-align:right; font-variant-numeric: tabular-nums; font-weight:600; }
+  /* MONTO (última columna de estas tablas -- "Saldo deuda" en la pestaña
+     de deuda) es el dato más importante de una tabla de movimientos
+     financieros. En mobile (375px) la tabla excede el viewport
+     (min-width:640px de arriba) y sin esto quedaba fuera de pantalla,
+     alcanzable solo haciendo scroll horizontal DENTRO de la tabla, sin
+     ningún indicador de que había más contenido a la derecha (bug real,
+     QA 2026-09-06/07). position:sticky la clava al borde derecho del
+     contenedor con scroll -- así queda siempre visible sin scrollear --
+     con un fondo sólido propio (si no, las columnas del medio se
+     transparentan por debajo al scrollear) y una sombra a la izquierda
+     que de paso funciona como el indicador explícito de que hay más
+     columnas detrás (Descripción/Entidad) para quien sí quiera verlas. */
+  .table-scroll table th:last-child,
+  .table-scroll table td:last-child{
+    position: sticky; right: 0;
+    box-shadow: -8px 0 8px -8px rgba(0,0,0,0.55);
+  }
+  .table-scroll table th:last-child{ background: var(--bg-soft); }
+  .table-scroll table td:last-child{ background: var(--card-solid); }
+  .table-scroll table tbody tr:hover td:last-child{ background: var(--card-hover); }
   .tag-tipo{ font-size: 10.5px; padding: 3px 8px; border-radius:999px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; }
   .tag-tipo.ingreso{ background: rgba(39,217,168,0.15); color: var(--green); }
   .tag-tipo.gasto{ background: rgba(251,113,133,0.15); color: var(--red); }
@@ -1125,8 +1145,18 @@ const totalPagosTarjeta   = pagosTarjeta.reduce((s,r)=>s+r.monto,0);
 // Balance de caja real: lo único que de verdad entró y salió de tus cuentas.
 const balanceCajaReal = totalIngresosReales + totalAvancesCredito - totalGastoReal;
 
-// Saldo actual estimado de deuda en tarjetas de crédito (último punto del ledger cronológico).
-const deudaActual = DEUDA_TARJETAS.length ? DEUDA_TARJETAS[DEUDA_TARJETAS.length - 1].saldo_acumulado : 0;
+// Saldo ACTUAL (hoy) estimado de deuda en tarjetas de crédito -- último punto
+// del ledger cronológico COMPLETO (DEUDA_COMPLETA), no del recorte por período
+// (DEUDA_TARJETAS, parámetro de esta función). "Actual" es una foto del
+// presente: filtrar por año/mes sirve para mirar la ACTIVIDAD de un período
+// (compras/avances/pagos, ver más abajo), pero no puede hacer que la deuda
+// vigente "desaparezca" o cambie según qué período estés mirando -- antes sí
+// pasaba (bug real, QA 2026-09-06/07): con un período filtrado sin ledger de
+// deuda, esta variable daba 0 y la tarjeta de arriba ("Balance de caja real")
+// decía "sin deuda de tarjeta" mientras la sección de deuda, más abajo,
+// mostraba un saldo real -- contradicción entre dos textos de la misma
+// pantalla, en vez de dos números que en verdad no se contradecían.
+const deudaActual = DEUDA_COMPLETA.length ? DEUDA_COMPLETA[DEUDA_COMPLETA.length - 1].saldo_acumulado : 0;
 
 // Resumen de la sección: números reales del período seleccionado en vez de
 // un texto genérico fijo -- solo se agrega la explicación metodológica
@@ -1199,7 +1229,14 @@ kpiGrid.innerHTML = `
     <div class="icon">${balanceCajaReal >= 0 ? '✅' : '⚠️'}</div>
     <div class="label">Balance de caja real</div>
     <div class="value">${fmtCOP(balanceCajaReal)}</div>
-    <div class="sub">${balanceCajaReal >= 0 ? 'Saldo positivo en el período' : 'El gasto real supera tus ingresos reales'} · sin deuda de tarjeta</div>
+    <!-- "no incluye deuda de tarjeta" describe la METODOLOGÍA del cálculo
+         (de dónde sale este número), no si tenés o no deuda -- la frase
+         anterior ("sin deuda de tarjeta") se leía como una afirmación de
+         que la deuda era cero, contradiciendo a simple vista la sección
+         de "Tarjetas de crédito y deuda" más abajo cuando sí había saldo
+         (bug real, QA 2026-09-06/07). Si hay deuda vigente, se nombra acá
+         mismo con su valor para que no quede como un dato oculto/opuesto. -->
+    <div class="sub">${balanceCajaReal >= 0 ? 'Saldo positivo en el período' : 'El gasto real supera tus ingresos reales'} · no incluye deuda de tarjeta de crédito${deudaActual > 0 ? ` (deuda actual estimada: ${fmtCOP(deudaActual)})` : ''}</div>
   </div>
 
   <div class="kpi accent-purple">
