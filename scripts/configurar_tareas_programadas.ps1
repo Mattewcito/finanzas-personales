@@ -28,24 +28,68 @@
        -- si eso no funciona (pide permisos), abrí PowerShell como
        Administrador (buscá "PowerShell" en el menú de inicio, clic
        derecho -> "Ejecutar como administrador") y corré:
-           cd "C:\Finanzas personales\scripts"
+           cd "<esta carpeta>\scripts"
            .\configurar_tareas_programadas.ps1
     2. Windows puede pedir confirmación (UAC) -- aceptá.
+
+  No hace falta editar rutas: se detectan solas (repo, pythonw.exe,
+  docker.exe). Si docker.exe/pythonw.exe no se encuentran automáticamente:
+        .\configurar_tareas_programadas.ps1 -PythonwPath '...' -DockerPath '...'
 
   Después de correrlo, ambas tareas quedan activas para siempre (se
   disparan cada vez que iniciás sesión en Windows). No hace falta
   volver a correr este script salvo que quieras recrearlas.
 #>
 
+param(
+    [string]$PythonwPath,
+    [string]$DockerPath
+)
+
 $ErrorActionPreference = "Stop"
 
-$pythonw = "C:\Users\User\AppData\Local\Programs\Python\Python314\pythonw.exe"
-$srcDir  = "C:\Finanzas personales\src"
-$rootDir = "C:\Finanzas personales"
-$docker  = "C:\Program Files\Docker\Docker\resources\bin\docker.exe"
+$rootDir = Split-Path -Parent $PSScriptRoot
+$srcDir  = Join-Path $rootDir "src"
+
+if (-not $PythonwPath) {
+    $cmd = Get-Command pythonw.exe -ErrorAction SilentlyContinue
+    if ($cmd) {
+        $PythonwPath = $cmd.Source
+    } else {
+        $pythonCmd = Get-Command python.exe -ErrorAction SilentlyContinue
+        if ($pythonCmd) {
+            $candidato = Join-Path (Split-Path -Parent $pythonCmd.Source) "pythonw.exe"
+            if (Test-Path $candidato) { $PythonwPath = $candidato }
+        }
+    }
+}
+if (-not $PythonwPath -or -not (Test-Path $PythonwPath)) {
+    Write-Host "No encontre pythonw.exe automaticamente. Corre indicando la ruta:" -ForegroundColor Red
+    Write-Host "  .\configurar_tareas_programadas.ps1 -PythonwPath 'C:\ruta\a\pythonw.exe'" -ForegroundColor Yellow
+    exit 1
+}
+
+if (-not $DockerPath) {
+    $cmd = Get-Command docker.exe -ErrorAction SilentlyContinue
+    if ($cmd) {
+        $DockerPath = $cmd.Source
+    } else {
+        $fallback = "C:\Program Files\Docker\Docker\resources\bin\docker.exe"
+        if (Test-Path $fallback) { $DockerPath = $fallback }
+    }
+}
+if (-not $DockerPath -or -not (Test-Path $DockerPath)) {
+    Write-Host "No encontre docker.exe automaticamente. Corre indicando la ruta:" -ForegroundColor Red
+    Write-Host "  .\configurar_tareas_programadas.ps1 -DockerPath 'C:\ruta\a\docker.exe'" -ForegroundColor Yellow
+    exit 1
+}
+$docker = $DockerPath
+Write-Host "pythonw: $PythonwPath" -ForegroundColor Cyan
+Write-Host "docker:  $docker" -ForegroundColor Cyan
+Write-Host "repo:    $rootDir" -ForegroundColor Cyan
 
 # --- Tarea 1: servidor de desarrollo ---------------------------------------
-$action1   = New-ScheduledTaskAction -Execute $pythonw -Argument "app.py" -WorkingDirectory $srcDir
+$action1   = New-ScheduledTaskAction -Execute $PythonwPath -Argument "app.py" -WorkingDirectory $srcDir
 $trigger1  = New-ScheduledTaskTrigger -AtLogOn
 $settings1 = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
               -ExecutionTimeLimit (New-TimeSpan -Days 0) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)

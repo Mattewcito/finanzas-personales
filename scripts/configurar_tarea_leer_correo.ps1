@@ -22,8 +22,13 @@
   CÓMO CORRERLO (una sola vez):
     Botón derecho sobre este archivo -> "Ejecutar con PowerShell". Si
     pide permisos, abrí PowerShell como Administrador y corré:
-        cd "C:\Finanzas personales\scripts"
+        cd "<esta carpeta>\scripts"
         .\configurar_tarea_leer_correo.ps1
+
+  No hace falta editar nada: la ruta del repo y la de pythonw.exe se
+  detectan solas (ver más abajo). Si en tu máquina pythonw.exe no se
+  encuentra automáticamente, corré:
+        .\configurar_tarea_leer_correo.ps1 -PythonwPath 'C:\ruta\a\pythonw.exe'
 
   Después de correrlo, la tarea "FinanzasLeerCorreo" queda activa para
   siempre (arranca sola al iniciar sesión y se repite cada 5 min). Cada
@@ -32,12 +37,43 @@
   este script salvo que quieras recrear la tarea.
 #>
 
+param(
+    [string]$PythonwPath,
+    [string]$SrcDir
+)
+
 $ErrorActionPreference = "Stop"
 
-$pythonw = "C:\Users\User\AppData\Local\Programs\Python\Python314\pythonw.exe"
-$srcDir  = "C:\Finanzas personales\src"
+# Repo root derivado de dónde vive ESTE script (scripts/../) -- nunca
+# una ruta fija, así el script sirve igual sin importar en qué carpeta
+# ni con qué usuario de Windows se haya clonado el repo.
+$rootDir = Split-Path -Parent $PSScriptRoot
+if (-not $SrcDir) { $SrcDir = Join-Path $rootDir "src" }
 
-$action   = New-ScheduledTaskAction -Execute $pythonw -Argument "leer_correo.py --dias 2 --aplicar" -WorkingDirectory $srcDir
+# pythonw.exe: se busca en PATH primero (cualquier instalación de
+# Python moderna lo agrega); si no está, se deriva de python.exe (vive
+# en la misma carpeta). Nunca se hardcodea una versión ni un usuario.
+if (-not $PythonwPath) {
+    $cmd = Get-Command pythonw.exe -ErrorAction SilentlyContinue
+    if ($cmd) {
+        $PythonwPath = $cmd.Source
+    } else {
+        $pythonCmd = Get-Command python.exe -ErrorAction SilentlyContinue
+        if ($pythonCmd) {
+            $candidato = Join-Path (Split-Path -Parent $pythonCmd.Source) "pythonw.exe"
+            if (Test-Path $candidato) { $PythonwPath = $candidato }
+        }
+    }
+}
+if (-not $PythonwPath -or -not (Test-Path $PythonwPath)) {
+    Write-Host "No encontre pythonw.exe automaticamente. Corre este script indicando la ruta:" -ForegroundColor Red
+    Write-Host "  .\configurar_tarea_leer_correo.ps1 -PythonwPath 'C:\ruta\a\pythonw.exe'" -ForegroundColor Yellow
+    exit 1
+}
+Write-Host "pythonw: $PythonwPath" -ForegroundColor Cyan
+Write-Host "src:     $SrcDir" -ForegroundColor Cyan
+
+$action   = New-ScheduledTaskAction -Execute $PythonwPath -Argument "leer_correo.py --dias 2 --aplicar" -WorkingDirectory $SrcDir
 
 # Se repite cada 5 min, para siempre, empezando al iniciar sesión. El
 # intervalo corto es barato (esta_pendiente() descarta sin conectarse a
@@ -65,4 +101,4 @@ Write-Host ""
 Write-Host "Para forzar una corrida ya mismo (util para probar):" -ForegroundColor Yellow
 Write-Host "  Start-ScheduledTask -TaskName FinanzasLeerCorreo"
 Write-Host "Para ver el resultado de esa corrida:" -ForegroundColor Yellow
-Write-Host "  Get-Content 'C:\Finanzas personales\data\leer_correo.log' -Tail 10"
+Write-Host "  Get-Content '$(Join-Path $rootDir 'data\leer_correo.log')' -Tail 10"
