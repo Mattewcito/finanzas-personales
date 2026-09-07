@@ -69,7 +69,19 @@
     line-height: 1.45;
   }
 
-  .wrap{ max-width: 1360px; margin: 0 auto; padding: 28px 24px 80px; }
+  /* min-width:0 es el fix real del overflow horizontal en mobile/tablet
+     (QA 2026-09-06, ver qa_reports/2026-09-06_review_dashboard/ux_review.md):
+     .wrap es flex item de .page-layout, y por default un flex item tiene
+     min-width:auto (= el min-content de TODO lo que tiene adentro). Como
+     adentro hay grids con columnas 1fr (.kpi-grid, .charts-grid), el
+     min-content que el navegador calcula para esos grids en un contexto
+     de ancho indefinido termina siendo el ancho SIN WRAPPEAR del texto
+     más largo (ej. el "sub" de una KPI), no el de la palabra más larga
+     como debería -- eso mantenía a .wrap fijo en ~690px sin importar que
+     el viewport real fuera 375 o 542px. min-width:0 fuerza el ancho
+     automático mínimo a 0, dejando que .wrap se achique al espacio
+     disponible de verdad. */
+  .wrap{ max-width: 1360px; margin: 0 auto; padding: 28px 24px 80px; min-width: 0; }
 
   /* ===========================================================
      2) HEADER
@@ -87,7 +99,12 @@
     margin:0; color: var(--text-dim); font-size: 13.5px;
   }
   .badge-row{ display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
-  .last-updated{ font-size: 11px; color: var(--text-faint); white-space:nowrap; }
+  /* Sin nowrap: en pantallas angostas este texto ("Última actualización
+     del dashboard: ...") es más largo que el viewport y, al no poder
+     wrappear, forzaba a toda la columna derecha del header (y por lo
+     tanto a .wrap) a excederse (QA 2026-09-06). En desktop no cambia
+     nada visualmente porque de sobra entra en una sola línea. */
+  .last-updated{ font-size: 11px; color: var(--text-faint); white-space:normal; text-align:right; }
   /* Texto de "movimientos cargados": informativo (sin fondo de botón/pill),
      pero más marcado que .last-updated -- es el dato dinámico que reacciona
      al filtro de período, y debe notarse más que la fecha de actualización. */
@@ -117,7 +134,7 @@
   /* Botones de vista (trimestral/semestral/anual) -- por ahora es solo
      el mockup visual, mismo lenguaje visual que .pill-select pero como
      botones en vez de desplegables. Sin lógica todavía. */
-  .view-toggle{ display:flex; gap:8px; margin-top:14px; }
+  .view-toggle{ display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
   .view-toggle button{
     background: var(--card-solid); border:1px solid var(--card-border);
     padding: 8px 16px; border-radius: 999px; font-size: 12.5px; color: var(--text-dim);
@@ -127,10 +144,15 @@
   .view-toggle button.active{
     background: rgba(124,108,251,0.14); border-color: var(--accent); color: var(--text); font-weight:600;
   }
+  /* flex-wrap + sin nowrap: el badge de rango de fechas ("Desde ... hasta
+     ...") es el único uso de .pill y en mobile es más largo que el
+     viewport -- sin esto, quedaba fijo en una sola línea y forzaba el
+     overflow horizontal de toda la página (QA 2026-09-06). En pantallas
+     anchas sigue viéndose en una sola línea porque entra de sobra. */
   .pill{
     background: var(--card-solid); border:1px solid var(--card-border);
     padding: 8px 14px; border-radius: 999px; font-size: 12.5px; color: var(--text-dim);
-    display:flex; align-items:center; gap:6px; white-space:nowrap;
+    display:flex; align-items:center; flex-wrap:wrap; gap:6px; white-space:normal;
   }
   .pill b{ color: var(--text); font-weight:600; }
   .pill .dot{ width:7px; height:7px; border-radius:50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
@@ -217,6 +239,16 @@
     border-radius: var(--radius);
     padding: 18px 18px 10px;
     box-shadow: var(--shadow);
+    /* Mismo fix que .wrap (ver comentario ahí): .chart-card es grid item
+       de .charts-grid (columnas 1fr), y sin min-width:0 su ancho mínimo
+       automático queda atado al <canvas> de Chart.js -- que Chart.js
+       dimensiona con un ancho en px fijo por inline style según el
+       ancho del contenedor EN EL MOMENTO de crear el gráfico. Si el
+       contenedor nace angosto (porque .wrap ya viene arreglado), el
+       canvas nace angosto también y no hay overflow; pero si algo
+       vuelve a agrandar el grid item por dentro, esto evita que ese
+       ancho fijo del canvas fuerce el layout hacia afuera. */
+    min-width: 0;
   }
   .chart-card.full{ grid-column: 1 / -1; }
   .chart-card h3{
