@@ -18,6 +18,27 @@ def test_compra_con_tarjeta_credito_formato_latino():
     assert "T.Cred" in r["descripcion"]
 
 
+def test_compra_con_tarjeta_credito_propaga_ultimos4_para_auto_asociacion_de_tarjeta():
+    """2026-09-07 (ver requisitos/2026-09-07_tarjetas-credito-cupo.md):
+    el último-4 ya extraído por la propia regex (variable `tarjeta`) debe
+    viajar en la clave 'ultimos4', sin que db_finanzas tenga que volver a
+    parsear la descripción."""
+    texto = ('¡Listo! Todo salió bien con tus movimientos Bancolombia: '
+             'Compraste COP758.976,00 en TEMU COM con tu T.Cred *2011, '
+             'el 03/09/2026 a las 11:26.')
+    r = lc.parsear_alerta_bancolombia(texto)
+    assert r["ultimos4"] == "2011"
+
+
+def test_compra_asociada_a_tarjeta_propaga_ultimos4():
+    texto = ('¡Listo! Todo salió bien con tus movimientos Bancolombia: '
+             'Compraste COP14.284,44 en UBER BV USD-USD COLO, el 29/08/2026 a las 14:54. '
+             'Esta compra esta asociada a T.Cred *4112.')
+    r = lc.parsear_alerta_bancolombia(texto)
+    assert r is not None
+    assert r["ultimos4"] == "4112"
+
+
 def test_compra_en_dolares():
     texto = ('¡Listo! Todo salió bien con tus movimientos Bancolombia: '
               'Compraste USD20,00 en ANTHROPIC* CLAUDE SU con tu T.Cred *2011, '
@@ -36,6 +57,14 @@ def test_avance_de_credito():
     assert r["categoria"] == "avance_credito"
 
 
+def test_avance_de_credito_propaga_ultimos4():
+    texto = ('¡Listo! Todo salió bien con tus movimientos Bancolombia: '
+              'Hiciste un avance de $200000 en tu SUC VIRTUAL el 11:28 '
+              '21/08/2026 desde tu T.Credito *2011 a la cuenta *5360.')
+    r = lc.parsear_alerta_bancolombia(texto)
+    assert r["ultimos4"] == "2011"
+
+
 def test_pago_qr():
     texto = ('¡Listo! Todo salió bien con tus movimientos Bancolombia: '
               'EMANUEL LOPEZ PASOS pagaste $19000.00 por codigo QR desde tu '
@@ -43,6 +72,17 @@ def test_pago_qr():
     r = lc.parsear_alerta_bancolombia(texto)
     assert r["monto"] == 19000.0
     assert r["tipo"] == "gasto"
+
+
+def test_pago_qr_no_trae_ultimos4_no_es_movimiento_de_tarjeta():
+    """Un movimiento que no es de tarjeta (QR desde cuenta de débito) no
+    debe traer la clave 'ultimos4' -- insertar_movimientos() la trata
+    igual que ausente/None (nunca se adivina una tarjeta para esto)."""
+    texto = ('¡Listo! Todo salió bien con tus movimientos Bancolombia: '
+              'EMANUEL LOPEZ PASOS pagaste $19000.00 por codigo QR desde tu '
+              'cuenta *5360 a la llave 0046104279 el 01/09/2026 a las 13:30.')
+    r = lc.parsear_alerta_bancolombia(texto)
+    assert r.get("ultimos4") is None
 
 
 def test_pago_recibido_nomina_se_categoriza_como_salario():

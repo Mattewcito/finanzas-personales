@@ -123,6 +123,30 @@ CREATE TABLE IF NOT EXISTS vistas_ocultas (
     vista TEXT NOT NULL,   -- 'correo_automatico' por ahora; futuro: 'insights', 'perfil_financiero'
     PRIMARY KEY (usuario_id, vista)
 );
+
+-- Tarjetas de crédito propias del usuario (2026-09-07, ver
+-- requisitos/2026-09-07_tarjetas-credito-cupo.md) -- entidad con cupo
+-- propio, separada del ledger agregado de deuda que ya existía
+-- (v_deuda_ledger). Sin cifrado a propósito: nombre/entidad/cupo_total/
+-- ultimos4 son datos financieros equivalentes a "monto"/"saldo", no
+-- credenciales -- ver la sección "Cifrado" del documento de requisitos.
+-- cupo_total se valida > 0 en la capa de Python (crear_tarjeta/
+-- actualizar_tarjeta), no solo en la UI. "activa" es el soft-delete
+-- (archivar_tarjeta): una tarjeta archivada conserva su historial de
+-- movimientos asociados, solo deja de ofrecerse en selectores/desgloses
+-- de "activas".
+CREATE TABLE IF NOT EXISTS tarjetas_credito (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+    nombre TEXT NOT NULL,
+    entidad TEXT,
+    cupo_total REAL NOT NULL,
+    ultimos4 TEXT,
+    activa INTEGER NOT NULL DEFAULT 1,
+    creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_tarjetas_credito_usuario ON tarjetas_credito(usuario_id);
 """
 
 # Catálogo de vistas que un admin puede ocultar/mostrar por usuario
@@ -248,6 +272,23 @@ def _migrar_columna_referencia_bancaria(conn: sqlite3.Connection) -> None:
     _agregar_columna_si_falta(conn, "movimientos", "referencia_bancaria", "TEXT")
 
 
+def _migrar_columna_tarjeta_id(conn: sqlite3.Connection) -> None:
+    """Asocia un movimiento con la tarjeta de crédito propia que lo generó
+    (2026-09-07, ver requisitos/2026-09-07_tarjetas-credito-cupo.md) --
+    nullable, y NUNCA se completa retroactivamente para movimientos ya
+    cargados antes de esta migración ni para ningún histórico en general:
+    solo se resuelve para movimientos NUEVOS, dentro de
+    insertar_movimientos(), por coincidencia EXACTA (y no ambigua) de
+    últimos4 dígitos contra una tarjeta activa de ese usuario. FK "normal"
+    (sin ON DELETE CASCADE/SET NULL) a propósito: con
+    `PRAGMA foreign_keys = ON` (ver conectar()), SQLite mismo rechaza con
+    IntegrityError el borrado de una tarjeta que todavía tenga movimientos
+    asociados -- ver borrar_tarjeta()."""
+    _agregar_columna_si_falta(conn, "movimientos", "tarjeta_id", "INTEGER REFERENCES tarjetas_credito(id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_movimientos_tarjeta ON movimientos(tarjeta_id)")
+    conn.commit()
+
+
 def _migrar_columna_cedula_correo_config(conn: sqlite3.Connection) -> None:
     """correo_config ya existía (2026-09-06) sin esta columna en cualquier
     BD real donde ya se hubiera guardado alguna configuración -- CREATE
@@ -281,6 +322,7 @@ def crear_esquema(conn: sqlite3.Connection) -> None:
     conn.executescript(ESQUEMA_SQL)
     _migrar_columna_usuario_id(conn)
     _migrar_columna_referencia_bancaria(conn)
+    _migrar_columna_tarjeta_id(conn)  # después de ESQUEMA_SQL: necesita que tarjetas_credito ya exista (FK)
     _migrar_columna_cedula_correo_config(conn)
     _migrar_cifrado_correo_config(conn)
     # DROP + recrear la vista: si ya existía de antes de agregar usuario_id
@@ -707,6 +749,213 @@ def obtener_ledger_deuda(conn: sqlite3.Connection, usuario_id: int | None = None
     return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
 
+# ----------------------------- Tarjetas de crédito (cupo, 2026-09-07) -----------------------------
+# Ver requisitos/2026-09-07_tarjetas-credito-cupo.md para el diseño
+# completo. Sin cifrado a propósito (nombre/entidad/cupo_total/ultimos4
+# son datos financieros, no credenciales -- ver sección "Cifrado" del
+# documento). Todo filtrado por usuario_id EXPLÍCITO, análogo a
+# obtener_categorias()/obtener_entidades() -- las rutas (routes/tarjetas.py)
+# siempre pasan viendo_id(), nunca session["usuario_id"] a secas: son
+# datos/contenido de la cuenta que se esté viendo, mismo criterio que el
+# resto del dashboard (ver auth.py::viendo_id()).
+
+def crear_tarjeta(conn: sqlite3.Connection, usuario_id: int, nombre: str, cupo_total: float,
+                   entidad: str | None = None, ultimos4: str | None = None) -> int:
+    """cupo_total es obligatorio y > 0 (validado acá, no solo en la UI --
+    ver requisitos, "Cupo total es obligatorio")."""
+    nombre = (nombre or "").strip()
+    if not nombre:
+        raise ValueError("Falta el nombre de la tarjeta.")
+    if cupo_total is None or cupo_total <= 0:
+        raise ValueError("El cupo total tiene que ser mayor a 0.")
+    entidad = (entidad or "").strip() or None
+    ultimos4 = (ultimos4 or "").strip() or None
+    cur = conn.execute(
+        "INSERT INTO tarjetas_credito (usuario_id, nombre, entidad, cupo_total, ultimos4) VALUES (?, ?, ?, ?, ?)",
+        (usuario_id, nombre, entidad, cupo_total, ultimos4),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def obtener_tarjetas(conn: sqlite3.Connection, usuario_id: int, solo_activas: bool = False) -> list[dict]:
+    """Todas las tarjetas (o solo las activas) de usuario_id -- nunca de
+    otro usuario, `usuario_id` siempre explícito en el WHERE."""
+    sql = "SELECT * FROM tarjetas_credito WHERE usuario_id = ?"
+    params = [usuario_id]
+    if solo_activas:
+        sql += " AND activa = 1"
+    sql += " ORDER BY activa DESC, nombre"
+    out = []
+    for r in conn.execute(sql, params).fetchall():
+        d = dict(r)
+        d["activa"] = bool(d["activa"])
+        out.append(d)
+    return out
+
+
+def obtener_tarjeta(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: int) -> dict | None:
+    """None si no existe O si existe pero es de otro usuario -- el
+    aislamiento se hace acá mismo con el AND en el WHERE, nunca
+    filtrando después en Python (nunca se le devuelve al llamador una
+    fila de otra cuenta para que decida qué hacer con ella)."""
+    r = conn.execute(
+        "SELECT * FROM tarjetas_credito WHERE id = ? AND usuario_id = ?", (tarjeta_id, usuario_id)
+    ).fetchone()
+    if not r:
+        return None
+    d = dict(r)
+    d["activa"] = bool(d["activa"])
+    return d
+
+
+def actualizar_tarjeta(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: int, nombre: str | None = None,
+                        entidad: str | None = None, cupo_total: float | None = None,
+                        ultimos4: str | None = None) -> bool:
+    """Actualiza solo los campos presentes (None = no tocar), mismo
+    criterio que actualizar_usuario(). Un string vacío SÍ es una
+    actualización explícita: "" en entidad/ultimos4 los limpia (quedan
+    NULL, son opcionales); nombre es obligatorio y no puede quedar vacío
+    -- lanza ValueError en ese caso, igual que cupo_total <= 0. Devuelve
+    False si la tarjeta no existe o no es de usuario_id (aislamiento:
+    nunca edita la de otro usuario aunque el id exista)."""
+    if obtener_tarjeta(conn, usuario_id, tarjeta_id) is None:
+        return False
+
+    campos, valores = [], []
+    if nombre is not None:
+        nombre = nombre.strip()
+        if not nombre:
+            raise ValueError("El nombre no puede quedar vacío.")
+        campos.append("nombre = ?"); valores.append(nombre)
+    if entidad is not None:
+        campos.append("entidad = ?"); valores.append(entidad.strip() or None)
+    if cupo_total is not None:
+        if cupo_total <= 0:
+            raise ValueError("El cupo total tiene que ser mayor a 0.")
+        campos.append("cupo_total = ?"); valores.append(cupo_total)
+    if ultimos4 is not None:
+        campos.append("ultimos4 = ?"); valores.append(ultimos4.strip() or None)
+
+    if campos:
+        campos.append("actualizado_en = datetime('now', 'localtime')")
+        valores.extend([tarjeta_id, usuario_id])
+        conn.execute(f"UPDATE tarjetas_credito SET {', '.join(campos)} WHERE id = ? AND usuario_id = ?", valores)
+        conn.commit()
+    return True
+
+
+def archivar_tarjeta(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: int) -> bool:
+    """Soft delete: deja de listarse entre las 'activas' (selectores de
+    Registrar movimiento, desglose del Dashboard, matching automático por
+    últimos4) pero conserva intacto el historial de movimientos que ya
+    tenía asociados. False si no existe o no es de usuario_id."""
+    cur = conn.execute(
+        "UPDATE tarjetas_credito SET activa = 0, actualizado_en = datetime('now', 'localtime') "
+        "WHERE id = ? AND usuario_id = ?",
+        (tarjeta_id, usuario_id),
+    )
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def borrar_tarjeta(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: int) -> tuple[bool, str | None]:
+    """Borrado DEFINITIVO -- solo permitido si la tarjeta nunca tuvo
+    ningún movimiento asociado. `tarjeta_id` en movimientos es una FK
+    "normal" (sin ON DELETE CASCADE/SET NULL, ver
+    _migrar_columna_tarjeta_id()): con `PRAGMA foreign_keys = ON` (ver
+    conectar()), SQLite mismo rechaza el DELETE con IntegrityError si hay
+    movimientos que la referencian -- alcanza con capturarlo acá, sin un
+    chequeo manual previo (menos margen para una condición de carrera
+    entre el chequeo y el borrado). Devuelve (ok, mensaje_de_error);
+    mensaje_de_error es None si ok=True."""
+    if obtener_tarjeta(conn, usuario_id, tarjeta_id) is None:
+        return False, "Esa tarjeta no existe."
+    try:
+        conn.execute("DELETE FROM tarjetas_credito WHERE id = ? AND usuario_id = ?", (tarjeta_id, usuario_id))
+        conn.commit()
+        return True, None
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return False, "Esa tarjeta tiene movimientos asociados -- archivala en vez de borrarla."
+
+
+def _resolver_tarjeta_por_ultimos4(conn: sqlite3.Connection, usuario_id: int, ultimos4: str | None) -> int | None:
+    """Auto-asociación al insertar un movimiento nuevo (ver
+    insertar_movimientos()): solo asocia si hay EXACTAMENTE una tarjeta
+    ACTIVA de usuario_id con esos últimos4 -- 0 coincidencias (no
+    detectado / tarjeta no registrada) o 2+ (ambigüedad, ej. tarjeta
+    reemplazada con el mismo último-4) nunca se adivinan, el movimiento
+    queda sin tarjeta (NULL)."""
+    if not ultimos4:
+        return None
+    filas = conn.execute(
+        "SELECT id FROM tarjetas_credito WHERE usuario_id = ? AND activa = 1 AND ultimos4 = ?",
+        (usuario_id, ultimos4),
+    ).fetchall()
+    return filas[0]["id"] if len(filas) == 1 else None
+
+
+def obtener_tarjetas_con_deuda(conn: sqlite3.Connection, usuario_id: int) -> dict:
+    """Cupo/deuda/disponible POR TARJETA activa, con la MISMA lógica de
+    signo que v_deuda_ledger (créditos/avances suman, pago_tarjeta_credito
+    resta) y el mismo filtro moneda='COP' -- así "deuda por tarjeta"
+    (todas) + "sin_asignar" siempre cuadra con el agregado global que ya
+    muestra el KPI "Deuda actual estimada" (mismo total, agrupado
+    distinto: acá por tarjeta_id, allá acumulado cronológicamente).
+
+    Sin redondear acá a propósito -- igual que saldo_acumulado de
+    v_deuda_ledger, que tampoco se redondea server-side (ver
+    dashboard_finanzas.html::fmtNum, que aplica Math.round() recién al
+    formatear en pantalla): redondear en dos capas con criterios
+    distintos es justo lo que rompería que la suma cuadre centavo a
+    centavo.
+
+    Devuelve {"activas": [...], "sin_asignar": <float>}. "sin_asignar" NO
+    se calcula filtrando literalmente `tarjeta_id IS NULL` -- se calcula
+    como `deuda_total - suma(deuda de las tarjetas activas)`, es decir
+    "todo lo que no está desglosado en 'activas'". Con el filtro literal,
+    archivar una tarjeta que ya tenía movimientos asociados hacía
+    desaparecer esa deuda del desglose por completo: dejaba de contar en
+    "activas" (correcto) pero tampoco caía en "sin_asignar" porque su
+    `tarjeta_id` seguía apuntando a la tarjeta archivada (no es NULL), así
+    que "activas + sin_asignar" quedaba por debajo del agregado real de
+    v_deuda_ledger -- rompiendo la invariante que pide el documento de
+    requisitos. Con esta definición la invariante se cumple POR
+    CONSTRUCCIÓN, sin caso especial: "sin_asignar" pasa a significar "no
+    visible en el desglose de tarjetas activas" (incluye tanto los
+    movimientos realmente sin tarjeta como los de cualquier tarjeta ya
+    archivada), no literalmente "sin tarjeta_id"."""
+    filas = conn.execute(
+        """SELECT tarjeta_id,
+                  SUM(CASE WHEN medio_pago = 'pago_tarjeta_credito' THEN -monto ELSE monto END) AS deuda
+           FROM movimientos
+           WHERE usuario_id = ?
+             AND medio_pago IN ('credito', 'avance_credito', 'pago_tarjeta_credito')
+             AND moneda = 'COP'
+           GROUP BY tarjeta_id""",
+        (usuario_id,),
+    ).fetchall()
+    deuda_por_tarjeta = {f["tarjeta_id"]: (f["deuda"] or 0.0) for f in filas}
+    deuda_total = sum(deuda_por_tarjeta.values())
+
+    activas = []
+    deuda_activas_total = 0.0
+    for t in obtener_tarjetas(conn, usuario_id, solo_activas=True):
+        deuda_actual = deuda_por_tarjeta.get(t["id"], 0.0)
+        deuda_activas_total += deuda_actual
+        activas.append({
+            **t,
+            "deuda_actual": deuda_actual,
+            "cupo_disponible": t["cupo_total"] - deuda_actual,  # puede dar negativo -- nunca se trunca a 0
+            "porcentaje_uso": (deuda_actual / t["cupo_total"] * 100) if t["cupo_total"] else 0.0,
+        })
+
+    sin_asignar = deuda_total - deuda_activas_total
+
+    return {"activas": activas, "sin_asignar": sin_asignar}
+
+
 # ----------------------------- Inserción con dedup (usada por cualquier fuente de ingesta) -----------------------------
 
 def _palabras(*textos: str) -> set[str]:
@@ -770,7 +1019,21 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
     automática ya existente sí puede seguir absorbiendo coincidencias
     indefinidamente entre corridas -- eso es re-detectar el mismo correo
     dos veces (ventanas que se solapan), que sí debe seguir marcándose
-    como duplicado siempre."""
+    como duplicado siempre.
+
+    TARJETA_ID (2026-09-07): cada movimiento nuevo puede traer ya un
+    'tarjeta_id' explícito (registro manual con tarjeta elegida en el
+    formulario -- ver routes/dashboard.py::api_registrar_movimiento, que
+    ya validó que pertenece a una tarjeta ACTIVA de ese usuario_id antes
+    de llegar acá) -- ese valor nunca se pisa. Si no trae uno, y sí trae
+    'ultimos4' (propagado por los parsers de leer_correo.py/
+    tools/reconciliar_extractos.py), se intenta resolver automáticamente
+    contra las tarjetas de usuario_id (ver _resolver_tarjeta_por_ultimos4);
+    sin ultimos4, o con 0/2+ tarjetas activas coincidentes, queda NULL --
+    nunca se adivina. Los movimientos que resultan duplicados (match
+    contra uno ya existente) NUNCA reasignan tarjeta_id a la fila vieja
+    -- ver la nota de "Migración de datos existentes" del documento de
+    requisitos: nada se reasigna retroactivamente, ni siquiera implícitamente."""
     cur = conn.cursor()
     existentes = [
         dict(r) for r in cur.execute(
@@ -823,9 +1086,11 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
     for e in nuevos:
         e["origen"] = origen
         e["usuario_id"] = usuario_id
+        if not e.get("tarjeta_id"):
+            e["tarjeta_id"] = _resolver_tarjeta_por_ultimos4(conn, usuario_id, e.get("ultimos4"))
     cur.executemany(
-        """INSERT INTO movimientos (fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, es_deuda, origen, usuario_id)
-           VALUES (:fecha, :tipo, :categoria, :moneda, :monto, :descripcion, :entidad, :medio_pago, :es_deuda, :origen, :usuario_id)""",
+        """INSERT INTO movimientos (fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, es_deuda, origen, usuario_id, tarjeta_id)
+           VALUES (:fecha, :tipo, :categoria, :moneda, :monto, :descripcion, :entidad, :medio_pago, :es_deuda, :origen, :usuario_id, :tarjeta_id)""",
         nuevos,
     )
     conn.commit()

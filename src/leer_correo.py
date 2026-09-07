@@ -187,6 +187,11 @@ def _p_compra_tarjeta(t: str) -> dict | None:
         "monto": monto,
         "descripcion": f"Compra en {comercio} con {medio} *{tarjeta}",
         "entidad": "Bancolombia",
+        # Propaga el último-4 ya extraído por la propia regex (variable
+        # `tarjeta`) para la auto-asociación de tarjeta_id en
+        # db.insertar_movimientos() -- sin volver a parsear `descripcion`
+        # (ver requisitos/2026-09-07_tarjetas-credito-cupo.md).
+        "ultimos4": tarjeta,
     }
 
 
@@ -213,6 +218,7 @@ def _p_compra_tarjeta_asociada(t: str) -> dict | None:
         "monto": monto,
         "descripcion": f"Compra en {comercio} con {medio} *{tarjeta}",
         "entidad": "Bancolombia",
+        "ultimos4": tarjeta,
     }
 
 
@@ -324,6 +330,7 @@ def _p_avance(t: str) -> dict | None:
         "monto": _parsear_monto_plano(monto_str),
         "descripcion": f"Avance T.Credito *{tarjeta} a cuenta *{cuenta}",
         "entidad": "Bancolombia",
+        "ultimos4": tarjeta,
     }
 
 
@@ -480,6 +487,10 @@ def _parsear_pdf_adjunto(datos: bytes, cedula: str) -> list[dict]:
                 "fecha": fecha_interes, "tipo": "gasto", "categoria": "intereses", "moneda": moneda,
                 "monto": round(val, 2), "descripcion": f"Interes corriente T.Cred *{ultimos4}",
                 "entidad": "Bancolombia",
+                # Solo si el último-4 se detectó de verdad (no el "????" de
+                # mejor-esfuerzo) -- un valor inventado nunca debe intentar
+                # matchear una tarjeta real.
+                "ultimos4": ultimos4 if m4 else None,
             })
         return movimientos
 

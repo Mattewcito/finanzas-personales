@@ -182,3 +182,55 @@ def test_parse_card_statement_pagina_de_caratula_sin_detalle_no_aporta_movimient
     movimientos, intereses, p_desde, p_hasta = rex.parse_card_statement("archivo.pdf", "2011")
 
     assert movimientos == []
+
+
+# ----------------------------- normalizar_card(): propagación de "ultimos4" -----------------------------
+# (2026-09-07, ver requisitos/2026-09-07_tarjetas-credito-cupo.md) -- el
+# último-4 ya conocido como parámetro de parse_card_statement() debe viajar
+# hasta el dict final bajo la clave "ultimos4", SIN volver a parsear la
+# descripción -- lo consume db.insertar_movimientos() para la
+# auto-asociación de tarjeta_id.
+
+def test_normalizar_card_propaga_ultimos4_en_una_compra_comun():
+    mov = {"fecha": "2026-09-01", "valor": 50000.0, "descripcion_original": "COMPRA EN ALGUN LADO",
+           "ultimos4": "2011", "moneda": "COP"}
+
+    resultado = rex.normalizar_card(mov, "Mastercard")
+
+    assert resultado["ultimos4"] == "2011"
+    assert "*2011" in resultado["descripcion"]
+
+
+def test_normalizar_card_propaga_ultimos4_en_avance_pago_y_comision():
+    """Los tres ramales especiales (avance/pago/comisión) de
+    normalizar_card también deben propagar 'ultimos4' -- no solo el
+    ramal de compra genérica."""
+    casos = [
+        ("AVANCE SUCURSAL VIRTUAL", "credito"),
+        ("ABONO SUCURSAL VIRTUAL", "pago_tarjeta_credito"),
+        ("APLICACION SALDO A CAPITAL", "pago_tarjeta_credito"),
+        ("COMISION AVANCE TARJETA", "credito"),
+    ]
+    for descripcion, categoria_esperada in casos:
+        mov = {"fecha": "2026-09-01", "valor": 10000.0, "descripcion_original": descripcion,
+               "ultimos4": "4444", "moneda": "COP"}
+
+        resultado = rex.normalizar_card(mov, "Visa")
+
+        assert resultado["categoria"] == categoria_esperada
+        assert resultado["ultimos4"] == "4444"
+
+
+def test_normalizar_card_no_pisa_el_ultimos4_de_una_tarjeta_con_el_de_otra():
+    """Dos extractos de tarjetas distintas (marca/últimos4 distintos) no
+    deben mezclar su último-4 -- cada normalización es independiente."""
+    mov_a = {"fecha": "2026-09-01", "valor": 20000.0, "descripcion_original": "COMPRA A",
+             "ultimos4": "1111", "moneda": "COP"}
+    mov_b = {"fecha": "2026-09-02", "valor": 30000.0, "descripcion_original": "COMPRA B",
+             "ultimos4": "9999", "moneda": "COP"}
+
+    resultado_a = rex.normalizar_card(mov_a, "Mastercard")
+    resultado_b = rex.normalizar_card(mov_b, "Amex")
+
+    assert resultado_a["ultimos4"] == "1111"
+    assert resultado_b["ultimos4"] == "9999"
