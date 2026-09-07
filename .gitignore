@@ -34,6 +34,12 @@ venv/
 # nombres de contenedor) -- nunca deben subirse ni pisarse con git reset.
 docker-compose.override.yml
 
+# Salidas de las corridas del agente qa-responsive (capturas .png y el
+# .xlsx de bugs encontrados) -- son artefactos de una corrida puntual,
+# no código fuente. El helper reutilizable sí se versiona
+# (tools/qa/playwright_utils.py).
+qa_reports/
+
 # Excepciones (deben ir al final para ganarle a las reglas de arriba):
 # archivos *.example.json son plantillas sin datos reales, sí se versionan.
 !data/*.example.json

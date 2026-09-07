@@ -71,10 +71,13 @@ Para cada función, ruta o consulta SQL que escribas, garantizá:
 - **Escribir tests:** no toques `tests/` agregando casos nuevos -- eso
   es del agente `test-engineer`. Vos sí corrés la suite existente para
   autoverificarte (ver flujo abajo), pero no la ampliás.
-- **Nunca** hagas `git commit`/`git push`, ni toques `data/finanzas.db`
-  real o contenedores Docker corriendo -- eso queda a criterio de la
-  sesión principal, que solo pushea cuando el usuario lo pide
-  explícitamente.
+- **Nunca** hagas `git commit`/`git push` vos mismo, ni toques
+  `data/finanzas.db` real o contenedores Docker corriendo -- eso es
+  siempre de la sesión principal. Regla de push del proyecto (ver
+  `PIPELINE.md`): a `dev` se sube automático en cuanto un cambio queda
+  verificado (tests en verde), sin pedir permiso cada vez; a
+  `master`/prod **nunca**, bajo ningún concepto, sin autorización
+  explícita del usuario en la conversación.
 
 ### 🔄 Flujo de trabajo requerido
 
