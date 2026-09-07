@@ -106,16 +106,31 @@ señalo en vez de dar por bueno:
   es el mecanismo real en uso.
 
 Ninguno contiene secretos (el token del runner se genera en tiempo de
-ejecución vía `gh api`, no está hardcodeado). El hallazgo no es de
-seguridad, es de **portabilidad/reproducibilidad**: si mañana este
-proyecto corre en otra PC o con otro usuario de Windows, estos scripts
-fallan o crean tareas apuntando a rutas inexistentes hasta que alguien
-los edite a mano. Vale la pena documentarlo en el header de cada script
-("editá estas 2 líneas si tu instalación de Python u usuario difieren")
-o parametrizarlos, pero **no bloquea que sigan versionados**: siguen
-siendo la referencia real y ejecutable de cómo se configuró el entorno,
-más útil versionados-pero-editables que no versionados. **Conclusión: sí
-se versionan, con el hallazgo de portabilidad marcado como 🟡.**
+ejecución vía `gh api`, no está hardcodeado). El hallazgo no era de
+seguridad, era de **portabilidad/reproducibilidad**.
+
+**Actualización 2026-09-07: resuelto, ya no es solo una nota, se
+parametrizaron los 3 scripts.** Los tres ahora auto-detectan sus rutas
+en vez de tenerlas hardcodeadas:
+- La ruta del repo se deriva de `$PSScriptRoot` (dónde vive el script),
+  nunca una ruta fija -- funciona igual sin importar en qué carpeta se
+  haya clonado el repo.
+- `pythonw.exe`/`docker.exe`/`gh.exe` se buscan primero con
+  `Get-Command` (PATH), con un fallback a la ubicación de instalación
+  típica de Windows si no están en PATH.
+- Si ninguna de las dos formas los encuentra, el script frena con un
+  mensaje claro y un parámetro explícito para indicar la ruta a mano
+  (`-PythonwPath`, `-DockerPath`, `-GhPath`, `-RunnerDir`) -- nunca
+  falla en silencio ni con un error críptico de PowerShell.
+- Verificado (sin ejecutar los scripts -- no correspondía registrar
+  tareas reales de Windows solo para probar esto): parseo estático sin
+  errores de sintaxis en los 3, y la auto-detección resuelve
+  correctamente los 4 binarios en esta máquina (misma ruta que antes
+  estaba hardcodeada, ahora descubierta en vez de fija).
+
+**Conclusión: sí se versionan, y ya no tienen el problema de
+portabilidad -- funcionan tal cual en cualquier máquina Windows con
+Python/Docker/gh instalados, sin editar nada.**
 
 ## 5. `tools/qa/playwright_utils.py`
 
