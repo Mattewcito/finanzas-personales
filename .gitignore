@@ -8,6 +8,7 @@ data/*
 !data/*.example.json
 docs/*
 !docs/.gitkeep
+!docs/versionado.md
 
 # Credenciales / secretos locales
 .env
