@@ -1,19 +1,22 @@
 """
 routes/admin_vistas.py
 ========================
-Panel de administración (solo admin) para decidir qué secciones del
-dashboard/menú puede ver cada usuario -- ej. Mathewcito puede ocultarle
-"Correo automático" a Emanuel, o a sí mismo, y volver a mostrarlo
-cuando quiera. Ver db_finanzas.py::VISTAS_DISPONIBLES para el catálogo
-completo de vistas configurables (Dashboard, Tu perfil financiero,
-Insights automáticos, Correo automático) -- se suman ahí a futuro.
+Panel de administración (solo admin), en el menú como "Ocultar vistas",
+para decidir qué secciones del dashboard/menú puede ver cada usuario --
+ej. Mathewcito puede ocultarle "Correo automático" a Emanuel, o a sí
+mismo, y volver a mostrarlo cuando quiera. Ver
+db_finanzas.py::VISTAS_DISPONIBLES para el catálogo completo de vistas
+configurables (Dashboard, Tu perfil financiero, Insights automáticos,
+Tarjetas y deudas, Análisis visual, Movimientos, Correo automático) --
+se suman ahí a futuro.
 
 El bloqueo es real y sin excepción de rol (ver
 auth.py::requiere_vista_visible()): si una vista queda oculta, NADIE
 accede -- ni siquiera un admin -- hasta que se reactive. Según la
 vista, se chequea contra la cuenta que se esté VIENDO (Dashboard/Tu
-perfil financiero/Insights -- de qué cuenta son los datos que se
-muestran) o contra quien inició sesión (Correo automático --
+perfil financiero/Insights/Tarjetas y deudas/Análisis visual/
+Movimientos -- de qué cuenta son los datos que se muestran) o contra
+quien inició sesión (Correo automático --
 autoservicio ligado a la identidad, no a la cuenta que un admin esté
 administrando). Esta página en sí, y sus endpoints, están exentos de
 cualquier restricción: son el panel de control, nunca puede quedar

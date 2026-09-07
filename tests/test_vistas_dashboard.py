@@ -1,11 +1,12 @@
 """
 Pruebas de la extensión de "vistas ocultas por usuario" a las sub-vistas
-del dashboard: "dashboard", "perfil_financiero" e "insights" (ver
-db_finanzas.py::VISTAS_DISPONIBLES, auth.py::requiere_vista_visible /
-inyectar_globales, routes/dashboard.py::api_dashboard_data).
+del dashboard: "dashboard", "perfil_financiero", "insights", "deuda",
+"analisis" y "movimientos" (ver db_finanzas.py::VISTAS_DISPONIBLES,
+auth.py::requiere_vista_visible / inyectar_globales,
+routes/dashboard.py::api_dashboard_data).
 
 Diferencia central respecto de "correo_automatico" (ver
-tests/test_correo_routes.py): estas tres se chequean por viendo_id()
+tests/test_correo_routes.py): estas seis se chequean por viendo_id()
 (`requiere_vista_visible(..., por_viendo=True)`), no por
 session["usuario_id"] -- lo que importa es DE QUÉ CUENTA se muestran
 datos, no quién inició sesión. Un admin "viendo" el perfil de un usuario
@@ -13,11 +14,22 @@ restringido queda tan bloqueado como ese usuario; y si el admin se
 restringe a sí mismo pero está viendo a otro sin restricciones, no queda
 bloqueado.
 
+De estas seis, solo "dashboard" tiene ruta propia que bloquear; las
+otras cinco ("perfil_financiero", "insights", "deuda", "analisis",
+"movimientos") viven dentro de /api/dashboard-data y se ocultan
+client-side vía el campo "vistas_ocultas" de esa respuesta -- y de esas
+cinco, únicamente "perfil_financiero" cambia algo del payload en sí
+(pone "perfil" en None); las otras cuatro no afectan "perfil",
+"movimientos" ni "ledger_deuda" en absoluto (ver
+test_api_dashboard_data_con_deuda_analisis_o_movimientos_oculto_no_afecta_el_resto_del_payload).
+
 IMPORTANTE -- reutiliza las fixtures app_ctx/client/login definidas en
 tests/test_app_integration.py en vez de volver a hacer "import app": ese
 import solo puede pasar en un único archivo de toda la corrida. Ver el
 docstring de tests/test_app_integration.py para el detalle.
 """
+import pytest
+
 import db_finanzas as db
 
 from test_app_integration import app_ctx, client, login  # noqa: F401 (fixtures reutilizadas)
@@ -193,6 +205,35 @@ def test_api_dashboard_data_con_insights_oculto_da_200_sin_afectar_perfil(client
     assert "insights" in body["vistas_ocultas"]
 
 
+@pytest.mark.parametrize("vista_id", ["deuda", "analisis", "movimientos"])
+def test_api_dashboard_data_con_deuda_analisis_o_movimientos_oculto_no_afecta_el_resto_del_payload(
+    client, app_ctx, vista_id,
+):
+    """A diferencia de "perfil_financiero", estas tres sub-vistas nuevas
+    NO tienen relación con el campo "perfil" -- ocultarlas solo debe
+    agregar su id a "vistas_ocultas", sin poner "perfil" en None ni
+    vaciar "movimientos"/"ledger_deuda" (esos siguen viajando completos;
+    el ocultamiento es 100% client-side, ver dashboard_finanzas.html)."""
+    _, admin_id, user_id = app_ctx
+    ocultar(admin_id, vista_id)
+
+    login(client, "admin_test", "clave-admin-123")
+    resp = client.post("/api/registrar-movimiento", data={
+        "fecha": "2026-01-15", "tipo": "gasto", "monto": "10000",
+        "descripcion": f"Con {vista_id} oculto", "categoria": "otros",
+        "moneda": "COP", "entidad": "Test",
+    })
+    assert resp.get_json()["nuevos"] == 1
+
+    resp = client.get("/api/dashboard-data")
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert vista_id in body["vistas_ocultas"]
+    assert body["perfil"] is not None
+    assert len(body["movimientos"]) == 1
+
+
 def test_api_dashboard_data_sin_ninguna_restriccion_devuelve_vistas_ocultas_vacia(client, app_ctx):
     _, admin_id, user_id = app_ctx
     login(client, "admin_test", "clave-admin-123")
@@ -228,17 +269,38 @@ def test_ocultar_vistas_de_dashboard_para_un_usuario_no_afecta_a_otro(client, ap
 
 
 # ---------------------------------------------------------------------------
-# i/j. Panel /admin/vistas con el catálogo ampliado (4 vistas)
+# i/j. Panel /admin/vistas con el catálogo completo de VISTAS_DISPONIBLES
 # ---------------------------------------------------------------------------
 
-def test_admin_vistas_muestra_las_cuatro_vistas_en_la_tabla(client, app_ctx):
+def test_admin_vistas_muestra_todas_las_vistas_del_catalogo_en_la_tabla(client, app_ctx):
+    """Itera sobre db.VISTAS_DISPONIBLES en vez de hardcodear la lista de
+    labels -- así el test no vuelve a quedar desactualizado (como pasó
+    cuando el catálogo pasó de 4 a 7 vistas) si se agrega/renombra una
+    vista más a futuro."""
     login(client, "admin_test", "clave-admin-123")
 
     resp = client.get("/admin/vistas")
 
     assert resp.status_code == 200
-    for label in ("Dashboard", "Tu perfil financiero", "Insights automáticos", "Correo automático"):
-        assert label.encode() in resp.data
+    assert len(db.VISTAS_DISPONIBLES) == 7  # documenta el tamaño esperado hoy; no es lo que se recorre
+    for vista in db.VISTAS_DISPONIBLES:
+        assert vista["label"].encode() in resp.data
+
+
+def test_admin_vistas_incluye_un_checkbox_por_cada_vista_y_cada_usuario_listado(client, app_ctx):
+    """Las 3 vistas nuevas ("deuda", "analisis", "movimientos") deben
+    aparecer como columna toggleable para CADA usuario de la tabla, no
+    solo una vez en el encabezado -- ver admin_vistas.html, que arma un
+    <input data-vista="..."> por combinación (usuario, vista)."""
+    _, admin_id, user_id = app_ctx
+    login(client, "admin_test", "clave-admin-123")
+
+    resp = client.get("/admin/vistas")
+    html = resp.data.decode()
+
+    total_usuarios = 2  # admin_test + user_test, ver app_ctx
+    for vista_id in ("deuda", "analisis", "movimientos"):
+        assert html.count(f'data-vista="{vista_id}"') == total_usuarios
 
 
 def test_toggle_funciona_igual_para_una_vista_nueva_como_perfil_financiero(client, app_ctx):

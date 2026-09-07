@@ -58,11 +58,15 @@ def api_dashboard_data():
     hábitos -- calculado al vuelo, no desde un archivo pre-generado.
 
     "perfil" viene en None si la cuenta vista tiene oculta la sub-vista
-    "perfil_financiero" (ver db_finanzas.VISTAS_DISPONIBLES) -- el
-    dashboard (dashboard_finanzas.html) también recibe la lista completa
-    de sub-vistas ocultas para poder esconder esas secciones del lado
-    del cliente (perfil financiero, insights), ya que ese HTML es un
-    archivo estático, no una plantilla que se pueda filtrar acá."""
+    "perfil_financiero" (ver db_finanzas.VISTAS_DISPONIBLES) -- es la
+    única sub-vista cuyo cálculo nos ahorramos server-side. El resto de
+    las sub-vistas ocultables ("insights", "deuda", "analisis",
+    "movimientos") no cambian nada de lo que arma esta ruta: viajan
+    igual en "movimientos"/"ledger_deuda" y se esconden del lado del
+    cliente. El dashboard (dashboard_finanzas.html) recibe la lista
+    completa de sub-vistas ocultas en "vistas_ocultas" para poder
+    esconder esas secciones ahí, ya que ese HTML es un archivo
+    estático, no una plantilla que se pueda filtrar acá."""
     with db.conexion() as conn:
         movimientos = db.obtener_movimientos(conn, usuario_id=viendo_id())
         ledger_deuda = db.obtener_ledger_deuda(conn, usuario_id=viendo_id())

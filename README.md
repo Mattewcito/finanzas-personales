@@ -57,23 +57,26 @@ reemplazables/opcionales por diseño.
 - ✅ **Dashboard responsive**: navegación adaptada a celular/tablet.
 - ✅ **Cuentas de usuario**: acceso con usuario/contraseña, datos
   aislados por cuenta. Ver `src/crear_usuario.py` para dar de alta cuentas.
-- ✅ **Vistas por usuario** (`src/routes/admin_vistas.py`, menú "Vistas
-  por usuario", solo admin): un admin puede ocultarle a cualquier
-  usuario (incluido sí mismo) secciones del menú/dashboard --
-  `Dashboard` (completo), `Tu perfil financiero` e `Insights
-  automáticos` (sub-secciones dentro del Dashboard) y `Correo
-  automático`, catálogo pensado para seguir creciendo
-  (`db_finanzas.VISTAS_DISPONIBLES`) sin cambiar el diseño. Ocultar una
-  vista bloquea la RUTA en sí, no solo el ítem del menú, **sin
-  excepción de rol** -- si algo queda oculto, nadie accede hasta
-  reactivarlo (el panel `/admin/vistas` nunca está gateado por esta
-  misma regla, así que jamás hay un bloqueo total sin salida). Dos
-  criterios según la vista (ver `auth.py::requiere_vista_visible()`):
-  `Dashboard`/`Tu perfil financiero`/`Insights` se chequean contra la
-  cuenta que se esté VIENDO (`viendo_id()` -- de qué cuenta son los
-  datos que se muestran); `Correo automático` se chequea contra quien
-  inició sesión (autoservicio ligado a la identidad, no a la cuenta que
-  un admin esté administrando en ese momento).
+- ✅ **Ocultar vistas** (`src/routes/admin_vistas.py`, menú "Ocultar
+  vistas", solo admin): un admin puede ocultarle a cualquier usuario
+  (incluido sí mismo) secciones del menú/dashboard -- `Dashboard`
+  (completo), y dentro del Dashboard sus sub-secciones `Tu perfil
+  financiero`, `Insights automáticos`, `Tarjetas y deudas`, `Análisis
+  visual` y `Movimientos`, más `Correo automático` -- catálogo pensado
+  para seguir creciendo (`db_finanzas.VISTAS_DISPONIBLES`) sin cambiar
+  el diseño. Ocultar una vista bloquea la RUTA en sí, no solo el ítem
+  del menú, **sin excepción de rol** -- si algo queda oculto, nadie
+  accede hasta reactivarlo (el panel `/admin/vistas` nunca está gateado
+  por esta misma regla, así que jamás hay un bloqueo total sin salida).
+  Dos criterios según la vista (ver `auth.py::requiere_vista_visible()`):
+  `Dashboard` y sus 5 sub-secciones se chequean contra la cuenta que se
+  esté VIENDO (`viendo_id()` -- de qué cuenta son los datos que se
+  muestran; las sub-secciones no tienen ruta propia, se esconden del
+  lado del cliente en `dashboard_finanzas.html` vía el campo
+  `vistas_ocultas` de `/api/dashboard-data`); `Correo automático` se
+  chequea contra quien inició sesión (autoservicio ligado a la
+  identidad, no a la cuenta que un admin esté administrando en ese
+  momento).
 - ✅ **Despliegue automático**: cada push a `master` reconstruye y
   levanta el contenedor Docker solo, vía un runner de GitHub Actions
   instalado en esta misma PC (ver `.github/workflows/deploy.yml` y

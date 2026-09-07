@@ -130,12 +130,19 @@ CREATE TABLE IF NOT EXISTS vistas_ocultas (
 # simple como sumar una entrada acá y envolver esa sección del
 # dashboard/menú con el mismo chequeo que ya usan las de abajo.
 #
-# "dashboard"/"perfil_financiero"/"insights" son sobre DE QUÉ CUENTA se
-# muestran datos -- se chequean con viendo_id() (ver
-# auth.py::requiere_vista_visible(por_viendo=True) y
-# routes/dashboard.py): ocultarle "Insights" a Emanuel los oculta tanto
-# si Emanuel mira su propio dashboard como si un admin está "viendo" el
-# perfil de Emanuel. "correo_automatico" es distinto -- una función de
+# "dashboard"/"perfil_financiero"/"insights"/"deuda"/"analisis"/
+# "movimientos" son sobre DE QUÉ CUENTA se muestran datos -- se
+# chequean con viendo_id() (ver auth.py::requiere_vista_visible
+# (por_viendo=True) y routes/dashboard.py): ocultarle "Insights" a
+# Emanuel los oculta tanto si Emanuel mira su propio dashboard como si
+# un admin está "viendo" el perfil de Emanuel. Solo "dashboard" (la
+# página completa) tiene su propio bloqueo de ruta con el decorador;
+# las demás sub-secciones ("perfil_financiero", "insights", "deuda",
+# "analisis", "movimientos") viven dentro de esa misma página y se
+# esconden del lado del cliente vía el campo "vistas_ocultas" de
+# /api/dashboard-data (ver dashboard/dashboard_finanzas.html::
+# ocultarSubvistas()) -- no tienen ruta propia que bloquear.
+# "correo_automatico" es distinto -- una función de
 # autoservicio ligada a la identidad de sesión (para que un admin pueda
 # seguir configurando el correo de Emanuel via viendo_id() aunque
 # Emanuel tenga esa sección oculta para sí mismo) -- se chequea con
@@ -147,6 +154,12 @@ VISTAS_DISPONIBLES = [
      "descripcion": "La sección \"Tu perfil financiero\" dentro del Dashboard."},
     {"id": "insights", "label": "Insights automáticos",
      "descripcion": "La sección \"Insights automáticos\" dentro del Dashboard."},
+    {"id": "deuda", "label": "Tarjetas y deudas",
+     "descripcion": "La sección \"Tarjetas de crédito y deuda\" dentro del Dashboard."},
+    {"id": "analisis", "label": "Análisis visual",
+     "descripcion": "La sección \"Análisis visual\" (los 8 gráficos) dentro del Dashboard."},
+    {"id": "movimientos", "label": "Movimientos",
+     "descripcion": "La sección \"Últimos movimientos\" (las 5 vistas y la tabla completa paginada) dentro del Dashboard."},
     {"id": "correo_automatico", "label": "Correo automático",
      "descripcion": "El ítem \"Correo automático\" del menú y su página de configuración."},
 ]
