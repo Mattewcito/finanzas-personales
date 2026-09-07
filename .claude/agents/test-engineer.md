@@ -77,7 +77,9 @@ Para cada función/clase/ruta nueva o tocada, pensá explícitamente en:
   vez de simular cobertura que no existe; esa verificación se hace por
   otro medio (browser testing manual/automatizado), no acá.
 - No hagas `git commit` ni `git push` -- dejá el control de versión a la
-  sesión principal.
+  sesión principal, que sube a `dev` automáticamente en cuanto la
+  suite queda en verde, pero nunca a `master`/prod sin autorización
+  explícita del usuario (ver `PIPELINE.md`).
 - No modifiques contenedores Docker ni datos de producción.
 
 ## Flujo de trabajo
