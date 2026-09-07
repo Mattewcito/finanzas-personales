@@ -513,7 +513,7 @@
   <div class="section-title" id="deuda"><h2>💳 Tarjetas de crédito y deuda</h2><div class="line"></div><span class="tag">clasificación automática por texto</span></div>
   <p id="resumenDeuda" style="margin:-6px 0 14px; font-size:12.5px; color:var(--text-dim); max-width:820px;"></p>
   <div class="kpi-grid" id="kpiGridDeuda"></div>
-  <div class="charts-grid" style="margin-top:16px;">
+  <div class="charts-grid" id="deudaChartsGrid" style="margin-top:16px;">
     <div class="chart-card full expandible" onclick="abrirModalGrafico('chartDeudaEvolucion','📈 Evolución de la deuda en tarjetas de crédito')">
       <h3>📈 Evolución de la deuda en tarjetas de crédito</h3>
       <p class="desc">Saldo acumulado estimado (compras a crédito + avances − pagos a la tarjeta), movimiento a movimiento.</p>
@@ -526,7 +526,7 @@
        ============================================================ -->
   <div class="section-title" id="analisis"><h2>📊 Análisis visual</h2><div class="line"></div><span class="tag">8 gráficos</span></div>
 
-  <div class="charts-grid">
+  <div class="charts-grid" id="analisisChartsGrid">
 
     <div class="chart-card full expandible" onclick="abrirModalGrafico('chartCategorias','🏷️ Gastos por categoría')">
       <h3>🏷️ Gastos por categoría</h3>
@@ -710,7 +710,7 @@ async function iniciarDashboard() {
   const PERFIL_FINANCIERO = datosApi.perfil;
 
   // Sub-secciones del dashboard que un admin ocultó para esta cuenta
-  // (ver "Vistas por usuario" -- routes/admin_vistas.py). Se esconden
+  // (ver "Ocultar vistas" -- routes/admin_vistas.py). Se esconden
   // acá, del lado del cliente, porque dashboard_finanzas.html es un
   // archivo estático (no hay forma de filtrarlas desde el servidor
   // antes de mandarlo). Cada sección tiene un título (.section-title)
@@ -718,14 +718,20 @@ async function iniciarDashboard() {
   // menú lateral (side-nav) que también hay que sacar.
   (function ocultarSubvistas() {
     const ocultas = new Set(datosApi.vistas_ocultas || []);
+    // "contenido" es siempre una LISTA de ids -- la mayoría de las
+    // secciones tienen un solo bloque, pero deuda/analisis/movimientos
+    // tienen varios (KPIs, charts-grid, tablas) que hay que remover todos.
     const SECCIONES = {
-      perfil_financiero: { titulo: 'perfil', contenido: 'perfilFinancieroCard' },
-      insights: { titulo: 'insights', contenido: 'insightsGrid' },
+      perfil_financiero: { titulo: 'perfil', contenido: ['perfilFinancieroCard'] },
+      deuda: { titulo: 'deuda', contenido: ['resumenDeuda', 'kpiGridDeuda', 'deudaChartsGrid'] },
+      analisis: { titulo: 'analisis', contenido: ['analisisChartsGrid'] },
+      insights: { titulo: 'insights', contenido: ['insightsGrid'] },
+      movimientos: { titulo: 'movimientos', contenido: ['todosMovimientosCard', 'cincoVistasCard'] },
     };
     for (const [vista, ids] of Object.entries(SECCIONES)) {
       if (!ocultas.has(vista)) continue;
       document.getElementById(ids.titulo)?.remove();
-      document.getElementById(ids.contenido)?.remove();
+      ids.contenido.forEach(id => document.getElementById(id)?.remove());
       document.querySelector(`.side-nav a[data-section="${ids.titulo}"]`)?.remove();
     }
   })();
@@ -848,8 +854,10 @@ let todosMovPagina = 1;
 let DATA_ACTUAL = []; // el DATA (ya filtrado) del último renderDashboard() -- lo usa el switch al prenderse
 
 function crearGrafico(canvasId, config) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return null; // sección "Análisis visual" / "Tarjetas y deuda" oculta para esta cuenta -- ver ocultarSubvistas()
   GRAFICOS_REGISTRY[canvasId] = config;
-  return new Chart(document.getElementById(canvasId), config);
+  return new Chart(canvas, config);
 }
 
 // Antes vivía adentro de renderDashboard() -- se movió acá (mismo
@@ -877,6 +885,17 @@ function rowHTML(r, withTipo){
    renderDashboard() -- nunca el histórico completo.
 ================================================================= */
 function renderTodosMovimientos(DATA) {
+  // Toda la tarjeta "Todos los movimientos" vive dentro de la sección
+  // "movimientos" -- si un admin la ocultó para esta cuenta, ninguno de
+  // estos elementos existe (ver ocultarSubvistas()). En la práctica esta
+  // función solo se llama si todosMovActivo === true, y eso requiere el
+  // switch #toggleTodosMovimientos (también removido junto a la sección),
+  // pero el guard queda igual por las dudas.
+  const elCount = document.getElementById('todosMovimientosCount');
+  const elTbody = document.getElementById('tbodyTodosMovimientos');
+  const elPaginacion = document.getElementById('paginacionTodosMovimientos');
+  if (!elCount || !elTbody || !elPaginacion) return;
+
   const ordenados = [...DATA].map((r,i)=>({...r,_i:i})).sort((a,b)=> b.fecha.localeCompare(a.fecha) || b._i - a._i);
   const total = ordenados.length;
   const totalPaginas = Math.max(1, Math.ceil(total / TODOS_MOV_POR_PAGINA));
@@ -886,14 +905,13 @@ function renderTodosMovimientos(DATA) {
   const desde = (todosMovPagina - 1) * TODOS_MOV_POR_PAGINA;
   const pagina = ordenados.slice(desde, desde + TODOS_MOV_POR_PAGINA);
 
-  document.getElementById('todosMovimientosCount').textContent =
-    `${total} movimiento${total === 1 ? '' : 's'}`;
+  elCount.textContent = `${total} movimiento${total === 1 ? '' : 's'}`;
 
-  document.getElementById('tbodyTodosMovimientos').innerHTML = total
+  elTbody.innerHTML = total
     ? pagina.map(r => rowHTML(r, true)).join('')
     : '<tr><td colspan="6" style="padding:14px;"><div class="empty-state" style="justify-content:center;">Sin movimientos en este período.</div></td></tr>';
 
-  document.getElementById('paginacionTodosMovimientos').innerHTML = `
+  elPaginacion.innerHTML = `
     <button type="button" onclick="cambiarPaginaTodosMovimientos(-1)" ${todosMovPagina <= 1 ? 'disabled' : ''}>‹ Anterior</button>
     <span class="pagina-actual">Página ${todosMovPagina} de ${totalPaginas}</span>
     <button type="button" onclick="cambiarPaginaTodosMovimientos(1)" ${todosMovPagina >= totalPaginas ? 'disabled' : ''}>Siguiente ›</button>
@@ -1004,15 +1022,21 @@ if (todosMovActivo) renderTodosMovimientos(DATA);
 if (!DATA.length) {
   document.getElementById('kpiGrid').innerHTML =
     '<div class="empty-state">📭 No hay movimientos registrados en el período seleccionado.</div>';
-  document.getElementById('kpiGridDeuda').innerHTML = '';
-  document.getElementById('resumenDeuda').textContent =
+  // Todo lo que sigue puede no existir si un admin ocultó "deuda",
+  // "analisis" o "movimientos" para esta cuenta -- ver ocultarSubvistas().
+  const _kpiGridDeudaVacio = document.getElementById('kpiGridDeuda');
+  if (_kpiGridDeudaVacio) _kpiGridDeudaVacio.innerHTML = '';
+  const _resumenDeudaVacio = document.getElementById('resumenDeuda');
+  if (_resumenDeudaVacio) _resumenDeudaVacio.textContent =
     'No se registraron movimientos de tarjeta de crédito en el período seleccionado.';
-  document.getElementById('chartDeudaEvolucionHolder').innerHTML =
+  const _chartDeudaHolderVacio = document.getElementById('chartDeudaEvolucionHolder');
+  if (_chartDeudaHolderVacio) _chartDeudaHolderVacio.innerHTML =
     '<div class="empty-state">💳 No se detectaron compras, avances ni pagos de tarjeta de crédito en los movimientos del período seleccionado.</div>';
   const _insightsGridVacio = document.getElementById('insightsGrid'); // null si la sección está oculta -- ver ocultarSubvistas()
   if (_insightsGridVacio) _insightsGridVacio.innerHTML =
     '<div class="empty-state">🧠 Todavía no hay suficientes movimientos en este período para generar insights automáticos.</div>';
-  document.getElementById('leaderboard').innerHTML = '';
+  const _leaderboardVacio = document.getElementById('leaderboard');
+  if (_leaderboardVacio) _leaderboardVacio.innerHTML = '';
   GASTO_POR_CATEGORIA_ACTUAL = []; // que el modal del ranking tampoco muestre datos de un período anterior
   INSIGHTS_ACTUAL = []; // ídem, para el modal de insight
   // Ninguno de los crearGrafico() de más abajo llega a correr en este
@@ -1020,7 +1044,9 @@ if (!DATA.length) {
   // ofreciendo abrir el gráfico del ÚLTIMO período que sí tuvo datos.
   Object.keys(GRAFICOS_REGISTRY).forEach(id => delete GRAFICOS_REGISTRY[id]);
   ['tbodyUltimos','tbodyMayoresGastos','tbodyMayoresIngresos','tbodyMoneda','tbodyDeuda'].forEach(id => {
-    document.getElementById(id).innerHTML =
+    const el = document.getElementById(id); // no existe si "movimientos" está oculta -- ver ocultarSubvistas()
+    if (!el) return;
+    el.innerHTML =
       '<tr><td colspan="10" style="padding:14px;"><div class="empty-state" style="justify-content:center;">Sin movimientos en este período.</div></td></tr>';
   });
   return;
@@ -1073,7 +1099,8 @@ const deudaActual = DEUDA_TARJETAS.length ? DEUDA_TARJETAS[DEUDA_TARJETAS.length
 // Resumen de la sección: números reales del período seleccionado en vez de
 // un texto genérico fijo -- solo se agrega la explicación metodológica
 // cuando sí hay algo que explicar.
-document.getElementById('resumenDeuda').innerHTML = DEUDA_TARJETAS.length
+const _resumenDeuda = document.getElementById('resumenDeuda'); // null si "deuda" está oculta -- ver ocultarSubvistas()
+if (_resumenDeuda) _resumenDeuda.innerHTML = DEUDA_TARJETAS.length
   ? `Saldo estimado actual: <b style="color:var(--text)">${fmtCOP(deudaActual)}</b> — ${gastosCredito.length} compra${gastosCredito.length===1?'':'s'} a crédito, ${avancesCredito.length} avance${avancesCredito.length===1?'':'s'} y ${pagosTarjeta.length} pago${pagosTarjeta.length===1?'':'s'} registrados en el período seleccionado. Clasificación automática por texto (ej. "T.Cred", "T.Deb", "Avance") — no es asesoría tributaria, verificá estos números con tu contador antes de usarlos para declarar renta.`
   : `No se registraron movimientos de tarjeta de crédito en el período seleccionado. La clasificación es automática por texto (ej. "T.Cred", "T.Deb", "Avance") — no es asesoría tributaria.`;
 
@@ -1183,7 +1210,8 @@ kpiGrid.innerHTML = `
 /* =================================================================
    KPIs — TARJETAS DE CRÉDITO Y DEUDA
 ================================================================= */
-document.getElementById('kpiGridDeuda').innerHTML = `
+const _kpiGridDeuda = document.getElementById('kpiGridDeuda'); // null si "deuda" está oculta -- ver ocultarSubvistas()
+if (_kpiGridDeuda) _kpiGridDeuda.innerHTML = `
   <div class="kpi ${deudaActual > 0 ? 'accent-red' : 'accent-green'}">
     <div class="icon">💳</div>
     <div class="label">Deuda actual estimada</div>
@@ -1219,7 +1247,8 @@ document.getElementById('kpiGridDeuda').innerHTML = `
 // El contenedor se repone desde cero en cada render (con un <canvas> fresco)
 // antes de decidir qué mostrar — así funciona sin importar qué haya quedado
 // dibujado ahí en la llamada anterior (gráfico o mensaje de "sin datos").
-document.getElementById('chartDeudaEvolucionHolder').innerHTML = '<canvas id="chartDeudaEvolucion"></canvas>';
+const _chartDeudaHolder = document.getElementById('chartDeudaEvolucionHolder'); // null si "deuda" está oculta -- ver ocultarSubvistas()
+if (_chartDeudaHolder) _chartDeudaHolder.innerHTML = '<canvas id="chartDeudaEvolucion"></canvas>';
 if (DEUDA_TARJETAS.length) {
   // Mismo criterio que chartEvolucion (más abajo): con más de 2 meses
   // distintos en el período, un punto por movimiento puede volverse una
@@ -1288,7 +1317,7 @@ if (DEUDA_TARJETAS.length) {
   });
 } else {
   delete GRAFICOS_REGISTRY['chartDeudaEvolucion']; // sin canvas en este período -- que el modal no reabra el de un período anterior
-  document.getElementById('chartDeudaEvolucionHolder').innerHTML =
+  if (_chartDeudaHolder) _chartDeudaHolder.innerHTML =
     '<div class="empty-state">💳 No se detectaron compras, avances ni pagos de tarjeta de crédito en los movimientos del período seleccionado.</div>';
 }
 
@@ -1422,7 +1451,8 @@ crearGrafico('chartEvolucion', {
 ================================================================= */
 const top5 = gastoPorCategoria.slice(0,5);
 const maxTop5 = top5[0]?.[1] || 0;
-document.getElementById('leaderboard').innerHTML = top5.map(([cat,monto],i)=>{
+const _leaderboard = document.getElementById('leaderboard'); // null si "analisis" está oculta -- ver ocultarSubvistas()
+if (_leaderboard) _leaderboard.innerHTML = top5.map(([cat,monto],i)=>{
   const pct = (monto/maxTop5*100).toFixed(0);
   const rankClass = i===0?'top1':i===1?'top2':i===2?'top3':'';
   return `
@@ -1664,13 +1694,18 @@ if (_insightsGrid) _insightsGrid.innerHTML = insights.map((ins, i) => `
 /* =================================================================
    TABLAS
 ================================================================= */
+// Las 5 tablas de abajo viven dentro de "cincoVistasCard" -- si "movimientos"
+// está oculta para esta cuenta, ninguna existe (ver ocultarSubvistas()).
+
 // Últimos movimientos (por fecha desc; a igualdad de fecha, se respeta el orden inverso de carga)
 const ultimos = [...DATA].map((r,i)=>({...r,_i:i})).sort((a,b)=> b.fecha.localeCompare(a.fecha) || b._i - a._i).slice(0,12);
-document.getElementById('tbodyUltimos').innerHTML = ultimos.map(r=>rowHTML(r, true)).join('');
+const _tbodyUltimos = document.getElementById('tbodyUltimos');
+if (_tbodyUltimos) _tbodyUltimos.innerHTML = ultimos.map(r=>rowHTML(r, true)).join('');
 
 // Mayores gastos (top 10, COP)
 const mayoresGastos = [...gastosCOP].sort((a,b)=>b.monto-a.monto).slice(0,10);
-document.getElementById('tbodyMayoresGastos').innerHTML = mayoresGastos.map(r=>`
+const _tbodyMayoresGastos = document.getElementById('tbodyMayoresGastos');
+if (_tbodyMayoresGastos) _tbodyMayoresGastos.innerHTML = mayoresGastos.map(r=>`
   <tr>
     <td>${fmtDate(r.fecha)}</td>
     <td><span class="cat-chip">${catIcon(r.categoria)} ${r.categoria}</span></td>
@@ -1681,7 +1716,8 @@ document.getElementById('tbodyMayoresGastos').innerHTML = mayoresGastos.map(r=>`
 
 // Mayores ingresos (todos, ordenados desc)
 const mayoresIngresos = [...ingresosCOP].sort((a,b)=>b.monto-a.monto);
-document.getElementById('tbodyMayoresIngresos').innerHTML = mayoresIngresos.map(r=>`
+const _tbodyMayoresIngresos = document.getElementById('tbodyMayoresIngresos');
+if (_tbodyMayoresIngresos) _tbodyMayoresIngresos.innerHTML = mayoresIngresos.map(r=>`
   <tr>
     <td>${fmtDate(r.fecha)}</td>
     <td><span class="cat-chip">${catIcon(r.categoria)} ${r.categoria}</span></td>
@@ -1692,7 +1728,8 @@ document.getElementById('tbodyMayoresIngresos').innerHTML = mayoresIngresos.map(
 
 // Movimientos por moneda (resumen)
 const monedas = [...new Set(DATA.map(r=>r.moneda))];
-document.getElementById('tbodyMoneda').innerHTML = monedas.map(m=>{
+const _tbodyMoneda = document.getElementById('tbodyMoneda');
+if (_tbodyMoneda) _tbodyMoneda.innerHTML = monedas.map(m=>{
   const rows = DATA.filter(r=>r.moneda===m);
   const ing = rows.filter(r=>r.tipo==='ingreso').reduce((s,r)=>s+r.monto,0);
   const gas = rows.filter(r=>r.tipo==='gasto').reduce((s,r)=>s+r.monto,0);
@@ -1710,7 +1747,8 @@ document.getElementById('tbodyMoneda').innerHTML = monedas.map(m=>{
 
 // Deuda en tarjetas de crédito (ledger cronológico, más reciente primero)
 const ETIQUETA_MOVIMIENTO_DEUDA = { credito:'Compra a crédito', avance_credito:'Avance de crédito', pago_tarjeta_credito:'Pago a tarjeta' };
-document.getElementById('tbodyDeuda').innerHTML = [...DEUDA_TARJETAS].reverse().map(d => {
+const _tbodyDeuda = document.getElementById('tbodyDeuda');
+if (_tbodyDeuda) _tbodyDeuda.innerHTML = [...DEUDA_TARJETAS].reverse().map(d => {
   const esPago = d.tipo_movimiento === 'pago_tarjeta_credito';
   return `
     <tr>
@@ -1773,21 +1811,30 @@ selMes.addEventListener('change', aplicarFiltroPeriodo);
 // apaga (oculta) el otro, nunca los dos a la vez. La lógica interna de
 // cada uno (tabs, filtros, paginado) sigue exactamente igual, esto solo
 // decide cuál de las dos tarjetas se ve.
-document.getElementById('toggleTodosMovimientos').addEventListener('change', (e) => {
-  todosMovActivo = e.target.checked;
-  document.getElementById('todosMovimientosCard').hidden = !todosMovActivo;
-  document.getElementById('cincoVistasCard').hidden = todosMovActivo;
-  if (todosMovActivo) {
-    todosMovPagina = 1;
-    renderTodosMovimientos(DATA_ACTUAL);
-    document.getElementById('tituloSeccionMovimientos').textContent = '📋 Movimientos';
-  } else {
-    // Vuelve a nombrar la pestaña que sigue activa (no se resetea al
-    // apagar el switch, solo queda oculta mientras tanto).
-    const tabActiva = document.querySelector('.tab-btn.active');
-    document.getElementById('tituloSeccionMovimientos').textContent = `📋 ${tabActiva ? tabActiva.textContent : 'Últimos movimientos'}`;
-  }
-});
+// El checkbox, y todo lo que este listener toca (todosMovimientosCard,
+// cincoVistasCard, tituloSeccionMovimientos), vive dentro de la sección
+// "movimientos" -- si un admin la ocultó para esta cuenta, el checkbox
+// no existe. Sin este guard, el addEventListener sobre undefined tira un
+// TypeError que corta iniciarDashboard() entera (nada de lo que sigue en
+// el script, como los tabs de más abajo, llegaría a ejecutarse).
+const toggleTodosMovimientos = document.getElementById('toggleTodosMovimientos');
+if (toggleTodosMovimientos) {
+  toggleTodosMovimientos.addEventListener('change', (e) => {
+    todosMovActivo = e.target.checked;
+    document.getElementById('todosMovimientosCard').hidden = !todosMovActivo;
+    document.getElementById('cincoVistasCard').hidden = todosMovActivo;
+    if (todosMovActivo) {
+      todosMovPagina = 1;
+      renderTodosMovimientos(DATA_ACTUAL);
+      document.getElementById('tituloSeccionMovimientos').textContent = '📋 Movimientos';
+    } else {
+      // Vuelve a nombrar la pestaña que sigue activa (no se resetea al
+      // apagar el switch, solo queda oculta mientras tanto).
+      const tabActiva = document.querySelector('.tab-btn.active');
+      document.getElementById('tituloSeccionMovimientos').textContent = `📋 ${tabActiva ? tabActiva.textContent : 'Últimos movimientos'}`;
+    }
+  });
+}
 
 /* =================================================================
    MODAL DE GRÁFICOS EXPANDIBLES

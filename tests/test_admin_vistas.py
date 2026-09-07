@@ -1,14 +1,21 @@
 """
 Pruebas de routes/admin_vistas.py (blueprint "admin_vistas"): panel de
 administración para ocultar/mostrar secciones del menú/dashboard por
-usuario (hoy solo "Correo automático" es configurable, ver
-db_finanzas.py::VISTAS_DISPONIBLES).
+usuario (ver db_finanzas.py::VISTAS_DISPONIBLES para el catálogo
+completo -- hoy "dashboard", "perfil_financiero", "insights", "deuda",
+"analisis", "movimientos" y "correo_automatico"). La mayoría de estos
+tests usan "correo_automatico" como vista de ejemplo porque la
+validación/el toggle son genéricos y no distinguen por id; ver
+test_toggle_acepta_cada_una_de_las_tres_vistas_nuevas_como_valor_valido
+para el caso explícito de las 3 vistas agregadas más recientemente.
 
 IMPORTANTE -- reutiliza las fixtures app_ctx/client/login definidas en
 tests/test_app_integration.py en vez de volver a hacer "import app": ese
 import solo puede pasar en un único archivo de toda la corrida. Ver el
 docstring de tests/test_app_integration.py para el detalle.
 """
+import pytest
+
 import db_finanzas as db
 
 from test_app_integration import app_ctx, client, login  # noqa: F401 (fixtures reutilizadas)
@@ -101,6 +108,33 @@ def test_toggle_visible_1_sobre_algo_ya_oculto_lo_vuelve_a_mostrar(client, app_c
 
     assert resp.status_code == 200
     assert resp.get_json()["ok"] is True
+    with db.conexion() as conn:
+        assert db.vistas_ocultas_de(conn, user_id) == set()
+
+
+@pytest.mark.parametrize("vista_id", ["deuda", "analisis", "movimientos"])
+def test_toggle_acepta_cada_una_de_las_tres_vistas_nuevas_como_valor_valido(client, app_ctx, vista_id):
+    """La validación de /api/admin/vistas/toggle es genérica (vistas_validas
+    = {v["id"] for v in db.VISTAS_DISPONIBLES}), así que "debería andar"
+    para deuda/analisis/movimientos sin tocar la ruta -- este test lo
+    ejercita explícitamente en vez de confiar en esa suposición."""
+    _, admin_id, user_id = app_ctx
+    login(client, "admin_test", "clave-admin-123")
+
+    resp = client.post("/api/admin/vistas/toggle", data={
+        "usuario_id": str(user_id), "vista": vista_id, "visible": "0",
+    })
+
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+    with db.conexion() as conn:
+        assert db.vistas_ocultas_de(conn, user_id) == {vista_id}
+
+    resp = client.post("/api/admin/vistas/toggle", data={
+        "usuario_id": str(user_id), "vista": vista_id, "visible": "1",
+    })
+
+    assert resp.status_code == 200
     with db.conexion() as conn:
         assert db.vistas_ocultas_de(conn, user_id) == set()
 
