@@ -320,6 +320,14 @@ def normalizar_card(mov, marca):
         "entidad": "Bancolombia",
         "_fuente": f"tarjeta_{marca}_{ultimos4}",
         "_valor_signo": valor,
+        # Propaga el último-4 ya conocido (parámetro `ultimos4` de
+        # parse_card_statement()) para la auto-asociación de tarjeta_id en
+        # db.insertar_movimientos() -- ver
+        # requisitos/2026-09-07_tarjetas-credito-cupo.md. Clave normal (no
+        # "_privada"): a diferencia de _fuente/_valor_signo, esta SÍ debe
+        # viajar hasta insertar_movimientos() cuando se usa desde
+        # routes/dashboard.py::api_cargar_extracto.
+        "ultimos4": ultimos4,
     }
 
 

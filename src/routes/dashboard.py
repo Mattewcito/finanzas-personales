@@ -62,15 +62,24 @@ def api_dashboard_data():
     única sub-vista cuyo cálculo nos ahorramos server-side. El resto de
     las sub-vistas ocultables ("insights", "deuda", "analisis",
     "movimientos") no cambian nada de lo que arma esta ruta: viajan
-    igual en "movimientos"/"ledger_deuda" y se esconden del lado del
-    cliente. El dashboard (dashboard_finanzas.html) recibe la lista
-    completa de sub-vistas ocultas en "vistas_ocultas" para poder
+    igual en "movimientos"/"ledger_deuda"/"tarjetas" y se esconden del
+    lado del cliente. El dashboard (dashboard_finanzas.html) recibe la
+    lista completa de sub-vistas ocultas en "vistas_ocultas" para poder
     esconder esas secciones ahí, ya que ese HTML es un archivo
-    estático, no una plantilla que se pueda filtrar acá."""
+    estático, no una plantilla que se pueda filtrar acá.
+
+    "tarjetas" (2026-09-07, ver
+    requisitos/2026-09-07_tarjetas-credito-cupo.md) vive DENTRO de la
+    sub-vista "deuda" ya existente -- no es una sub-vista nueva propia:
+    {"activas": [...], "sin_asignar": <float>}. Si el usuario tiene 0
+    tarjetas registradas, "activas" viaja como lista vacía y "deuda" se
+    ve exactamente igual que antes de esta feature (el agregado global
+    en "ledger_deuda" no cambia en nada)."""
     with db.conexion() as conn:
         movimientos = db.obtener_movimientos(conn, usuario_id=viendo_id())
         ledger_deuda = db.obtener_ledger_deuda(conn, usuario_id=viendo_id())
         vistas_ocultas_viendo = db.vistas_ocultas_de(conn, viendo_id())
+        tarjetas = db.obtener_tarjetas_con_deuda(conn, usuario_id=viendo_id())
 
     perfil = None
     if "perfil_financiero" not in vistas_ocultas_viendo:
@@ -80,6 +89,7 @@ def api_dashboard_data():
         movimientos=movimientos,
         ledger_deuda=ledger_deuda,
         perfil=perfil,
+        tarjetas=tarjetas,
         generated_at=datetime.datetime.now().isoformat(timespec="seconds"),
         vistas_ocultas=sorted(vistas_ocultas_viendo),
     )
@@ -92,7 +102,13 @@ def registrar():
         db.crear_esquema(conn)
         categorias = db.obtener_categorias(conn, usuario_id=viendo_id())
         entidades = db.obtener_entidades(conn, usuario_id=viendo_id())
-    return render_template("registrar.html", activo="registrar", categorias=categorias, entidades=entidades)
+        # Tarjetas ACTIVAS de viendo_id() -- para el selector opcional de
+        # "a qué tarjeta pertenece este movimiento" (ver
+        # requisitos/2026-09-07_tarjetas-credito-cupo.md). Las archivadas
+        # no se ofrecen como destino de movimientos nuevos.
+        tarjetas = db.obtener_tarjetas(conn, usuario_id=viendo_id(), solo_activas=True)
+    return render_template("registrar.html", activo="registrar", categorias=categorias,
+                            entidades=entidades, tarjetas=tarjetas)
 
 
 @dashboard_bp.route("/api/registrar-movimiento", methods=["POST"])
@@ -105,6 +121,7 @@ def api_registrar_movimiento():
     categoria = request.form.get("categoria", "").strip() or "otros"
     moneda = request.form.get("moneda", "COP").strip()
     entidad = request.form.get("entidad", "").strip() or "Manual"
+    tarjeta_id_raw = request.form.get("tarjeta_id", "").strip()
 
     if not fecha or not descripcion:
         return jsonify(ok=False, error="Falta fecha o descripción."), 400
@@ -122,6 +139,19 @@ def api_registrar_movimiento():
 
     with db.conexion() as conn:
         db.crear_esquema(conn)
+        # tarjeta_id es OPCIONAL -- si se manda, nunca se confía en el
+        # valor crudo del formulario: tiene que pertenecer a una tarjeta
+        # ACTIVA de viendo_id() (nunca de otro usuario, nunca archivada).
+        # Ver requisitos/2026-09-07_tarjetas-credito-cupo.md.
+        if tarjeta_id_raw:
+            try:
+                tarjeta_id = int(tarjeta_id_raw)
+            except ValueError:
+                return jsonify(ok=False, error="tarjeta_id inválido."), 400
+            tarjeta = db.obtener_tarjeta(conn, usuario_id=viendo_id(), tarjeta_id=tarjeta_id)
+            if not tarjeta or not tarjeta["activa"]:
+                return jsonify(ok=False, error="Esa tarjeta no existe o no está activa."), 400
+            movimiento["tarjeta_id"] = tarjeta_id
         stats = db.insertar_movimientos(conn, [movimiento], origen="manual", usuario_id=viendo_id())
 
     # El dashboard ya no se regenera a mano -- /api/dashboard-data lee la

@@ -340,18 +340,23 @@ def test_dashboard_data_redirige_a_login_sin_sesion(client):
     assert "/login" in resp.headers["Location"]
 
 
-def test_dashboard_data_con_sesion_devuelve_json_con_las_cinco_claves(client):
+def test_dashboard_data_con_sesion_devuelve_json_con_las_seis_claves(client):
     """Desde que se agregó "vistas ocultas por usuario" al dashboard, la
     respuesta también incluye "vistas_ocultas" (lista de sub-vistas
-    ocultas para viendo_id(), ver routes/dashboard.py::api_dashboard_data)
-    -- son 5 claves, no 4."""
+    ocultas para viendo_id(), ver routes/dashboard.py::api_dashboard_data).
+    Desde tarjetas de crédito con cupo (2026-09-07, ver
+    requisitos/2026-09-07_tarjetas-credito-cupo.md) se agregó "tarjetas"
+    ({"activas": [...], "sin_asignar": <float>}) -- son 6 claves, no 5."""
     login(client, "admin_test", "clave-admin-123")
     resp = client.get("/api/dashboard-data")
 
     assert resp.status_code == 200
     body = resp.get_json()
-    assert set(body.keys()) == {"movimientos", "ledger_deuda", "perfil", "generated_at", "vistas_ocultas"}
+    assert set(body.keys()) == {
+        "movimientos", "ledger_deuda", "perfil", "generated_at", "vistas_ocultas", "tarjetas",
+    }
     assert body["vistas_ocultas"] == []
+    assert body["tarjetas"] == {"activas": [], "sin_asignar": 0.0}
 
 
 def test_dashboard_data_usuario_sin_movimientos_devuelve_listas_vacias_sin_reventar(client):
