@@ -325,16 +325,24 @@
     .kpi.kpi-hero .icon{ font-size: 22px; }
     .kpi.kpi-hero .label{ font-size: 12.5px; margin-top:8px; }
     .kpi.kpi-hero .value{ font-size: 25px; margin-top:3px; } /* responsive a propósito: a este ancho un balance negativo de muchos dígitos (ej. -$12.345.678) no entraría a 38px sin desbordar */
-    /* El "sub" completo (2 líneas con el detalle de deuda) es el mayor
-       consumidor de alto de esta tarjeta en mobile -- se recorta a 1
-       línea con elipsis acá (requisito punto 4: liberar alto para que el
-       gráfico compacto entre sin scroll). El texto completo sigue
-       disponible sin recortar en tablet/desktop, y el VALOR del balance
-       (el dato que importa) nunca se toca. */
+    /* El "sub" completo es el mayor consumidor de alto de esta tarjeta en
+       mobile -- se recorta con elipsis acá (requisito punto 4: liberar
+       alto para que el gráfico compacto entre sin scroll). El texto
+       completo sigue disponible sin recortar en tablet/desktop, y el
+       VALOR del balance (el dato que importa) nunca se toca.
+       Fix qa_reports/2026-09-07/ux_review_tarjetas_credito.md 🟠#1: con
+       deuda de tarjeta > 0 el texto termina en "(deuda actual estimada:
+       $X)" -- a 1 línea ese cierre quedaba cortado por el clamp, ocultando
+       justamente la cifra que se agregó para no contradecir la sección de
+       Tarjetas de crédito. `.sub-con-deuda` (agregada por el JS solo
+       cuando deudaActual > 0) sube a 2 líneas de clamp para ese caso
+       puntual; el caso sin deuda (el más común) se queda en 1 línea como
+       antes, sin perder presupuesto de alto para el gráfico. */
     .kpi.kpi-hero .sub{
       font-size: 11px; margin-top:4px;
       display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden;
     }
+    .kpi.kpi-hero .sub.sub-con-deuda{ -webkit-line-clamp:2; }
   }
 
   /* Tarjetas de apoyo (Ingresos/Gasto real, + Deuda actual estimada si esa
@@ -600,6 +608,15 @@
   .tarjeta-card-titulo{ min-width:0; }
   .tarjeta-card-nombre{ display:block; font-size:14px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .tarjeta-card-meta{ display:block; font-size:11.5px; color:var(--text-dim); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  /* Fix qa_reports/2026-09-07/ux_review_tarjetas_credito.md 🟠#2: el
+     nowrap+ellipsis de arriba está pensado para la línea corta de las
+     tarjetas normales ("Entidad · Terminada en XXXX"), no para la frase
+     más larga del bloque "Sin tarjeta asignada" ("No es un error -- es
+     deuda real todavía sin clasificar por tarjeta"), que se truncaba en
+     mobile/tablet ocultando el "por qué". Este bloque no compite por
+     espacio con un badge de % a la derecha como las tarjetas normales
+     (no tiene .tarjeta-card-pct), así que puede hacer wrap sin problema. */
+  .tarjeta-card-meta.tarjeta-card-meta-wrap{ white-space:normal; overflow:visible; text-overflow:clip; }
   .tarjeta-card-pct{
     flex-shrink:0; font-size:11.5px; font-weight:800; padding:3px 9px; border-radius:999px;
     background: rgba(39,217,168,0.15); color: var(--green);
@@ -1231,7 +1248,7 @@ document.getElementById('lastUpdated').textContent = `Última actualización del
       <div class="tarjeta-card-head">
         <div class="tarjeta-card-titulo">
           <span class="tarjeta-card-nombre">🗂️ Sin tarjeta asignada</span>
-          <span class="tarjeta-card-meta">No es un error -- es deuda real todavía sin clasificar por tarjeta</span>
+          <span class="tarjeta-card-meta tarjeta-card-meta-wrap">No es un error -- es deuda real todavía sin clasificar por tarjeta</span>
         </div>
       </div>
       <div class="tarjeta-cifras" style="margin-top:12px;">
@@ -1686,7 +1703,7 @@ kpiGrid.innerHTML = `
          de "Tarjetas de crédito y deuda" más abajo cuando sí había saldo
          (bug real, QA 2026-09-06/07). Si hay deuda vigente, se nombra acá
          mismo con su valor para que no quede como un dato oculto/opuesto. -->
-    <div class="sub">${balanceCajaReal >= 0 ? 'Saldo positivo en el período' : 'El gasto real supera tus ingresos reales'} · no incluye deuda de tarjeta de crédito${deudaActual > 0 ? ` (deuda actual estimada: ${fmtCOP(deudaActual)})` : ''}</div>
+    <div class="sub${deudaActual > 0 ? ' sub-con-deuda' : ''}">${balanceCajaReal >= 0 ? 'Saldo positivo en el período' : 'El gasto real supera tus ingresos reales'} · no incluye deuda de tarjeta de crédito${deudaActual > 0 ? ` (deuda actual estimada: ${fmtCOP(deudaActual)})` : ''}</div>
   </div>
 
   <div class="kpi-support-grid">
