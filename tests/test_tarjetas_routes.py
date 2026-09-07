@@ -460,6 +460,57 @@ def test_registrar_movimiento_con_tarjeta_id_inexistente_da_400(client):
 
 
 # ============================================================================
+# GET /tarjetas (vista_tarjetas): página de gestión (alta/edición/archivado/
+# borrado) -- smoke test y aislamiento del datalist de entidades vía
+# viendo_id() (agregada por frontend-dataviz en routes/tarjetas.py; revisada
+# acá como cualquier ruta Flask nueva, ver requisitos/2026-09-07_tarjetas-
+# credito-cupo.md). El listado de tarjetas en sí se pide por AJAX a
+# GET /api/tarjetas, ya cubierto arriba -- esta sección cubre solo lo propio
+# de esta ruta: requiere sesión, renderiza 200, y el único dato propio que
+# arma el handler (entidades para el datalist) respeta viendo_id().
+# ============================================================================
+
+def test_vista_tarjetas_redirige_a_login_sin_sesion(client):
+    resp = client.get("/tarjetas")
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]
+
+
+def test_vista_tarjetas_con_sesion_da_200(client):
+    login(client, "admin_test", "clave-admin-123")
+    resp = client.get("/tarjetas")
+    assert resp.status_code == 200
+
+
+def test_vista_tarjetas_usuario_sin_movimientos_da_200_sin_reventar(client):
+    """Estado vacío: 0 movimientos (por lo tanto 0 entidades para el
+    datalist) no debe romper el render -- mismo tipo de caso borde que ya
+    se prueba para /registrar."""
+    login(client, "user_test", "clave-user-456")
+    resp = client.get("/tarjetas")
+    assert resp.status_code == 200
+
+
+def test_vista_tarjetas_admin_viendo_otro_perfil_ve_entidades_de_esa_cuenta(client, app_ctx):
+    """El datalist de entidades de /tarjetas usa viendo_id(), igual que
+    /registrar y que /api/tarjetas -- un admin viendo el perfil de otro
+    usuario ve las entidades de ESA cuenta (para el autocompletado al dar de
+    alta una tarjeta), no las propias. Mismo criterio de aislamiento que
+    test_api_listar_tarjetas_admin_viendo_otro_perfil_ve_las_tarjetas_de_ese_perfil."""
+    _, admin_id, user_id = app_ctx
+    login(client, "admin_test", "clave-admin-123")
+    client.post("/api/registrar-movimiento", data=datos_movimiento(entidad="EntidadDelAdmin"))
+
+    client.post("/cambiar-vista", data={"usuario_id": user_id})
+    client.post("/api/registrar-movimiento", data=datos_movimiento(entidad="EntidadDelUsuario"))
+
+    resp = client.get("/tarjetas")
+
+    assert b"EntidadDelUsuario" in resp.data
+    assert b"EntidadDelAdmin" not in resp.data
+
+
+# ============================================================================
 # GET /registrar: no debe reventar con o sin tarjetas activas del usuario
 # ============================================================================
 

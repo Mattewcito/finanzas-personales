@@ -1,0 +1,331 @@
+{% extends "base.html" %}
+{% block title %}Mis tarjetas{% endblock %}
+
+{% block head %}
+<style>
+  /* Mismo patrón que configurar_correo.html/registrar.html (aviso de a
+     qué cuenta se le está gestionando esto cuando un admin tiene
+     seleccionado "Viendo perfil de" otra persona). */
+  .aviso-cuenta{
+    display:flex; align-items:center; gap:8px; margin: 0 0 18px;
+    padding: 10px 14px; border-radius: 10px; font-size: 13px;
+    background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.28); color: var(--text);
+  }
+  .aviso-cuenta b{ color: #fbbf24; }
+
+  .btn-secundario{
+    padding: 11px 20px; border-radius: 10px;
+    border:1px solid var(--card-border); background: var(--bg-soft); color: var(--text);
+    font-weight:600; font-size:13.5px; cursor:pointer; font-family: inherit;
+  }
+  .btn-secundario:hover{ background: var(--card-hover); }
+
+  /* Modal crear/editar -- mismo patrón que configurar_correo.html
+     (modal de ayuda): esta página NO vive dentro del <iframe> del
+     Dashboard (ver templates/dashboard.html), así que un listener de
+     "click afuera" en `document` alcanza sin necesidad del enganche al
+     contentDocument del iframe que sí hace falta en base.html/dashboard. */
+  .modal-overlay{
+    display:none; position:fixed; inset:0; background:rgba(5,7,12,0.72);
+    z-index:500; align-items:center; justify-content:center; padding:24px;
+  }
+  .modal-overlay.abierto{ display:flex; }
+  .modal-box{
+    max-width:440px; width:100%; max-height:85vh; overflow-y:auto;
+    background: linear-gradient(180deg, var(--card-solid), #10141f);
+    border:1px solid var(--card-border); border-radius:16px; padding:26px 28px;
+  }
+  .modal-box h3{ margin:0 0 16px; font-size:17px; }
+
+  .section-title-simple{
+    font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+    color: var(--text-faint); margin: 26px 0 10px;
+  }
+  .section-title-simple:first-child{ margin-top:0; }
+
+  .tarjetas-grid{
+    display:grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+  }
+  @media (max-width: 720px){ .tarjetas-grid{ grid-template-columns: 1fr; } }
+
+  .tarjeta-card-mgmt{
+    background: var(--card-solid); border:1px solid var(--card-border); border-radius: 10px;
+    padding: 16px; min-width:0;
+  }
+  .tarjeta-card-mgmt.archivada{ opacity:.72; border-style:dashed; }
+  .tarjeta-card-nombre{ font-size:14px; font-weight:700; color:var(--text); }
+  .tag-archivada{
+    font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
+    color: var(--text-faint); background: var(--bg-soft); border:1px solid var(--card-border);
+    padding:2px 7px; border-radius:999px; margin-left:6px; vertical-align:middle;
+  }
+  .tarjeta-card-meta{ display:block; font-size:12px; color:var(--text-dim); margin-top:4px; word-break: break-word; }
+  .tarjeta-card-actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .btn-icono{
+    background: var(--bg-soft); border:1px solid var(--card-border); color: var(--text-dim);
+    font-family:inherit; font-size:12px; font-weight:600; padding:7px 11px; border-radius:8px; cursor:pointer;
+    transition: background .15s, color .15s;
+  }
+  .btn-icono:hover{ background: var(--card-hover); color:#fff; }
+  .btn-icono.peligro{ color:#f87171; border-color: rgba(248,113,113,0.3); }
+  .btn-icono.peligro:hover{ background: rgba(248,113,113,0.12); }
+
+  .empty-state{
+    padding: 22px; border-radius: 12px; text-align:center; font-size:13.5px;
+    color: var(--text-dim); background: var(--bg-soft); border:1px dashed var(--card-border);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-wrap" style="max-width: 980px;">
+
+  <div class="page-header" style="display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:12px;">
+    <div>
+      <h1>💳 Mis tarjetas de crédito</h1>
+      <p>Registrá tus tarjetas para ver cupo disponible y % de uso por tarjeta en el Dashboard. Archivar una tarjeta no borra su historial de movimientos.</p>
+    </div>
+    <button type="button" class="btn-primary" id="btnNuevaTarjeta" style="margin-top:0; white-space:nowrap;">+ Nueva tarjeta</button>
+  </div>
+
+  {% if usuario_rol == 'admin' %}
+  <div class="aviso-cuenta">
+    ⚠️ Estás gestionando las tarjetas de <b>{{ usuario_viendo_nombre }}</b>.
+    Si no es la cuenta que querés, cambiala primero en "Viendo perfil de" (menú de la izquierda).
+  </div>
+  {% endif %}
+
+  <div id="resultadoGlobal" class="result-box" style="display:none;"></div>
+
+  <div id="cargandoTarjetas" class="empty-state">⏳ Cargando tus tarjetas...</div>
+
+  <div id="seccionActivas" hidden>
+    <div class="section-title-simple">Activas</div>
+    <div class="tarjetas-grid" id="gridActivas"></div>
+  </div>
+
+  <div id="seccionArchivadas" hidden>
+    <div class="section-title-simple">Archivadas</div>
+    <div class="tarjetas-grid" id="gridArchivadas"></div>
+  </div>
+</div>
+
+<!-- Modal crear/editar (mismo form para las dos acciones -- el modo lo
+     decide si hay un id cargado en campoTarjetaId, ver JS). -->
+<div class="modal-overlay" id="modalTarjeta">
+  <div class="modal-box">
+    <h3 id="modalTitulo">Nueva tarjeta</h3>
+    <form id="formTarjeta">
+      <input type="hidden" id="campoTarjetaId">
+
+      <label class="field-label">Nombre / etiqueta</label>
+      <input type="text" id="campoNombre" class="field-input" placeholder="Bancolombia Visa Gold" required>
+
+      <label class="field-label">Entidad <span style="color:var(--text-faint); font-weight:400;">(opcional)</span></label>
+      <input type="text" id="campoEntidad" class="field-input" list="listaEntidadesTarjeta" placeholder="Bancolombia, Nequi...">
+      <datalist id="listaEntidadesTarjeta">
+        {% for e in entidades %}<option value="{{ e }}">{% endfor %}
+      </datalist>
+
+      <div class="field-row">
+        <div>
+          <label class="field-label">Cupo total (COP)</label>
+          <input type="number" id="campoCupo" class="field-input" min="0.01" step="0.01" placeholder="5000000" required>
+        </div>
+        <div>
+          <label class="field-label">Últimos 4 dígitos <span style="color:var(--text-faint); font-weight:400;">(opcional)</span></label>
+          <input type="text" id="campoUltimos4" class="field-input" inputmode="numeric" maxlength="4" pattern="\d{4}" placeholder="2011">
+        </div>
+      </div>
+      <p style="font-size:11.5px; color:var(--text-faint); margin:6px 0 0;">
+        Los últimos 4 dígitos solo sirven para asociar automáticamente movimientos nuevos (correo/extractos) que los traigan. Si dos tarjetas tuyas comparten el mismo último-4, nunca se asigna automático.
+      </p>
+
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button type="submit" class="btn-primary" id="btnGuardarTarjeta" style="margin-top:0;">Guardar</button>
+        <button type="button" class="btn-secundario" id="btnCancelarModal">Cancelar</button>
+      </div>
+    </form>
+    <div id="resultadoModal" class="result-box" style="display:none;"></div>
+  </div>
+</div>
+
+<script>
+let TARJETAS_CACHE = [];
+
+const modal = document.getElementById('modalTarjeta');
+const form = document.getElementById('formTarjeta');
+const modalTitulo = document.getElementById('modalTitulo');
+const campoId = document.getElementById('campoTarjetaId');
+const campoNombre = document.getElementById('campoNombre');
+const campoEntidad = document.getElementById('campoEntidad');
+const campoCupo = document.getElementById('campoCupo');
+const campoUltimos4 = document.getElementById('campoUltimos4');
+const resultadoModal = document.getElementById('resultadoModal');
+const resultadoGlobal = document.getElementById('resultadoGlobal');
+
+function mostrarResultado(el, clase, texto) {
+  el.style.display = 'block';
+  el.className = 'result-box ' + clase;
+  el.textContent = texto;
+}
+function ocultarResultado(el) { el.style.display = 'none'; }
+
+function fmtCOP(n) {
+  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
+}
+
+function abrirModal(modo, tarjeta) {
+  form.reset();
+  ocultarResultado(resultadoModal);
+  if (modo === 'editar' && tarjeta) {
+    modalTitulo.textContent = 'Editar tarjeta';
+    campoId.value = tarjeta.id;
+    campoNombre.value = tarjeta.nombre;
+    campoEntidad.value = tarjeta.entidad || '';
+    campoCupo.value = tarjeta.cupo_total;
+    campoUltimos4.value = tarjeta.ultimos4 || '';
+  } else {
+    modalTitulo.textContent = 'Nueva tarjeta';
+    campoId.value = '';
+  }
+  modal.classList.add('abierto');
+  campoNombre.focus();
+}
+function cerrarModal() { modal.classList.remove('abierto'); }
+
+document.getElementById('btnNuevaTarjeta').addEventListener('click', () => abrirModal('crear'));
+document.getElementById('btnCancelarModal').addEventListener('click', cerrarModal);
+// Página normal (no vive en el <iframe> del Dashboard) -- un listener en
+// `document` alcanza sin necesidad del enganche a contentDocument.
+modal.addEventListener('click', (e) => { if (e.target === modal) cerrarModal(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && modal.classList.contains('abierto')) cerrarModal(); });
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = campoId.value;
+  const datos = new FormData();
+  datos.set('nombre', campoNombre.value.trim());
+  datos.set('entidad', campoEntidad.value.trim());
+  datos.set('cupo_total', campoCupo.value);
+  datos.set('ultimos4', campoUltimos4.value.trim());
+
+  const btn = document.getElementById('btnGuardarTarjeta');
+  btn.disabled = true;
+  mostrarResultado(resultadoModal, 'loading', 'Guardando...');
+  try {
+    const url = id ? `/api/tarjetas/${id}/editar` : '/api/tarjetas/crear';
+    const res = await fetch(url, { method: 'POST', body: datos });
+    const json = await res.json();
+    if (!res.ok || !json.ok) {
+      mostrarResultado(resultadoModal, 'error', '❌ ' + (json.error || 'Error desconocido'));
+      return;
+    }
+    cerrarModal();
+    mostrarResultado(resultadoGlobal, 'ok', id ? '✅ Tarjeta actualizada.' : '✅ Tarjeta creada.');
+    await cargarTarjetas();
+  } catch (err) {
+    mostrarResultado(resultadoModal, 'error', '❌ No se pudo conectar con el servidor.');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function renderCard(t) {
+  const meta = [t.entidad, t.ultimos4 ? `Terminada en ${t.ultimos4}` : null, `Cupo: ${fmtCOP(t.cupo_total)}`]
+    .filter(Boolean).join(' · ');
+  return `
+  <div class="tarjeta-card-mgmt ${t.activa ? '' : 'archivada'}">
+    <div class="tarjeta-card-nombre">${t.nombre}${t.activa ? '' : ' <span class="tag-archivada">archivada</span>'}</div>
+    <span class="tarjeta-card-meta">${meta}</span>
+    <div class="tarjeta-card-actions">
+      <button type="button" class="btn-icono" data-accion="editar" data-id="${t.id}">✏️ Editar</button>
+      ${t.activa ? `<button type="button" class="btn-icono" data-accion="archivar" data-id="${t.id}">🗄️ Archivar</button>` : ''}
+      <button type="button" class="btn-icono peligro" data-accion="borrar" data-id="${t.id}">🗑️ Borrar</button>
+    </div>
+  </div>`;
+}
+
+async function cargarTarjetas() {
+  const cargando = document.getElementById('cargandoTarjetas');
+  const seccionActivas = document.getElementById('seccionActivas');
+  const seccionArchivadas = document.getElementById('seccionArchivadas');
+  const gridActivas = document.getElementById('gridActivas');
+  const gridArchivadas = document.getElementById('gridArchivadas');
+
+  let tarjetas;
+  try {
+    const res = await fetch('/api/tarjetas');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Error desconocido');
+    tarjetas = json.tarjetas;
+  } catch (err) {
+    if (cargando) { cargando.textContent = '⚠️ No se pudieron cargar tus tarjetas. Recargá la página.'; }
+    console.error('Error cargando /api/tarjetas:', err);
+    return;
+  }
+  if (cargando) cargando.remove();
+  document.getElementById('estadoVacioTarjetas')?.remove();
+
+  TARJETAS_CACHE = tarjetas;
+
+  if (!tarjetas.length) {
+    seccionActivas.hidden = true;
+    seccionArchivadas.hidden = true;
+    const div = document.createElement('div');
+    div.id = 'estadoVacioTarjetas';
+    div.className = 'empty-state';
+    div.textContent = '💳 Todavía no registraste ninguna tarjeta. Creá la primera con "+ Nueva tarjeta" para ver cupo disponible por tarjeta en el Dashboard.';
+    seccionActivas.parentNode.insertBefore(div, seccionActivas);
+    return;
+  }
+
+  const activas = tarjetas.filter(t => t.activa);
+  const archivadas = tarjetas.filter(t => !t.activa);
+
+  seccionActivas.hidden = activas.length === 0;
+  gridActivas.innerHTML = activas.length
+    ? activas.map(renderCard).join('')
+    : '<div class="empty-state" style="grid-column:1/-1;">No tenés tarjetas activas.</div>';
+
+  seccionArchivadas.hidden = archivadas.length === 0;
+  gridArchivadas.innerHTML = archivadas.map(renderCard).join('');
+}
+
+async function ejecutarAccion(url, mensajeOk) {
+  try {
+    const res = await fetch(url, { method: 'POST' });
+    const json = await res.json();
+    if (!res.ok || !json.ok) {
+      mostrarResultado(resultadoGlobal, 'error', '❌ ' + (json.error || 'Error desconocido'));
+      return;
+    }
+    mostrarResultado(resultadoGlobal, 'ok', '✅ ' + mensajeOk);
+    await cargarTarjetas();
+  } catch (err) {
+    mostrarResultado(resultadoGlobal, 'error', '❌ No se pudo conectar con el servidor.');
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-accion]');
+  if (!btn) return;
+  const id = btn.dataset.id;
+  const accion = btn.dataset.accion;
+  const tarjeta = TARJETAS_CACHE.find(t => String(t.id) === id);
+
+  if (accion === 'editar') {
+    abrirModal('editar', tarjeta);
+  } else if (accion === 'archivar') {
+    if (!confirm(`¿Archivar "${tarjeta ? tarjeta.nombre : 'esta tarjeta'}"? Vas a conservar su historial, pero ya no vas a poder elegirla para movimientos nuevos.`)) return;
+    ejecutarAccion(`/api/tarjetas/${id}/archivar`, 'Tarjeta archivada.');
+  } else if (accion === 'borrar') {
+    if (!confirm(`¿Borrar definitivamente "${tarjeta ? tarjeta.nombre : 'esta tarjeta'}"? Solo funciona si nunca tuvo movimientos asociados -- si los tiene, te vamos a sugerir archivarla en su lugar.`)) return;
+    ejecutarAccion(`/api/tarjetas/${id}/borrar`, 'Tarjeta borrada.');
+  }
+});
+
+cargarTarjetas();
+</script>
+{% endblock %}
