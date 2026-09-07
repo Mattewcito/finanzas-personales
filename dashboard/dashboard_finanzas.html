@@ -43,7 +43,17 @@
     --card-hover: #171e30;
     --text: #eef1f8;
     --text-dim: #8d96ab;
-    --text-faint: #5b6379;
+    /* 2026-09-07: subido de #5b6379 (contraste real 2.93:1 / 3.15:1, por
+       debajo del mínimo WCAG AA de 4.5:1 para texto normal) a #949cb2.
+       Medido con la fórmula de luminancia relativa del propio WCAG contra
+       los dos fondos donde se usa: 6.4:1 contra rgb(19,25,40) (tarjeta,
+       .sub) y 6.88:1 contra rgb(13,17,27) (página, .aviso/.last-updated/
+       th) -- ambos superan 4.5:1 con margen. Sigue siendo visualmente más
+       tenue que --text (rgb(238,241,248), casi blanco), así que la
+       jerarquía tipográfica entre texto principal y secundario no se
+       pierde. Una sola variable, los 4 usos (.sub, .aviso, .last-updated,
+       th) heredan el cambio automáticamente. */
+    --text-faint: #949cb2;
 
     --accent: #7c6cfb;      /* violeta primario */
     --accent-2: #38bdf8;    /* celeste secundario */
@@ -98,6 +108,17 @@
   header.top .title-block p{
     margin:0; color: var(--text-dim); font-size: 13.5px;
   }
+  /* Mobile (requisito 2026-09-07, punto 4): el objetivo explícito es que
+     el gráfico compacto de "Ingresos vs. gastos" entre sin scroll en el
+     primer viewport -- el copy descriptivo del header y la fecha de
+     "última actualización" son los candidatos más seguros para no
+     mostrar acá (siguen 100% disponibles en tablet/desktop, y ningún
+     dato financiero se pierde, es solo copy/metadata). */
+  @media (max-width: 560px){
+    header.top .title-block p{ display:none; }
+    header.top{ margin-bottom: 16px; }
+    .last-updated{ display:none; }
+  }
   .badge-row{ display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
   /* Sin nowrap: en pantallas angostas este texto ("Última actualización
      del dashboard: ...") es más largo que el viewport y, al no poder
@@ -131,14 +152,38 @@
     background-repeat:no-repeat; background-position: right 10px center; background-size:13px;
   }
   .pill-select:hover{ border-color: var(--accent); }
-  /* Botones de vista (trimestral/semestral/anual) -- por ahora es solo
-     el mockup visual, mismo lenguaje visual que .pill-select pero como
-     botones en vez de desplegables. Sin lógica todavía. */
-  .view-toggle{ display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
+  /* Control unificado de período (requisito 2026-09-07): un solo bloque
+     con 4 opciones -- Trimestral/Semestral/Anual (filtran de verdad,
+     ver aplicarPreset() en el JS) + Personalizado (revela los selects
+     año/mes ya existentes). Vive FUERA del header de dos columnas a
+     propósito: así el orden interno (título -> botones -> selects
+     condicionales -> badge) no depende de cómo el header haga wrap en
+     cada breakpoint -- es un único bloque columna, mismo orden siempre. */
+  .periodo-control{
+    display:flex; flex-direction:column; gap:10px;
+    margin: 4px 0 24px;
+  }
+  .periodo-control-titulo{
+    font-size: 11px; text-transform:uppercase; letter-spacing:.05em;
+    font-weight:700; color: var(--text-dim);
+  }
+  /* Botones de período: Trimestral/Semestral/Anual/Personalizado, ya
+     con lógica real detrás (ver aplicarPreset()/activarPersonalizado()
+     en el JS) -- dejaron de ser decorativos. */
+  .view-toggle{ display:flex; gap:8px; flex-wrap:wrap; }
   .view-toggle button{
     background: var(--card-solid); border:1px solid var(--card-border);
     padding: 8px 16px; border-radius: 999px; font-size: 12.5px; color: var(--text-dim);
     font-family: inherit; cursor:pointer;
+  }
+  /* Mobile (requisito punto 4, "arriba del pliegue"): más compacto para
+     que las 4 opciones entren en una sola fila (antes ocupaban 2, cada
+     una sumando ~40px de alto que el gráfico compacto necesita) -- sigue
+     siendo el mismo control, mismo orden, solo más chico. */
+  @media (max-width: 560px){
+    .periodo-control{ gap: 6px; margin: 4px 0 16px; }
+    .view-toggle{ gap: 6px; }
+    .view-toggle button{ padding: 6px 10px; font-size: 11px; }
   }
   .view-toggle button:hover{ border-color: var(--accent); color: var(--text); }
   .view-toggle button.active{
@@ -156,6 +201,10 @@
   }
   .pill b{ color: var(--text); font-weight:600; }
   .pill .dot{ width:7px; height:7px; border-radius:50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
+  @media (max-width: 560px){
+    .pill{ padding: 6px 10px; font-size: 11px; }
+    .pill-select{ padding: 6px 26px 6px 12px; font-size: 11px; }
+  }
 
   /* ===========================================================
      3) KPI CARDS
@@ -179,7 +228,20 @@
     transition: transform .15s ease, border-color .15s ease;
   }
   .kpi:hover{ transform: translateY(-2px); border-color: rgba(124,108,251,0.35); }
-  .kpi .icon{ font-size: 20px; opacity:.9; }
+  /* Ícono envuelto en badge circular (antes: .icon suelto a 20px, sin
+     fondo -- se veía chico y perdido junto al label). El badge reutiliza
+     el mismo criterio de color que ya existe para .value en las tarjetas
+     con accent (verde/rojo/violeta); las que no tienen accent hoy usan un
+     gris neutro consistente en vez de quedar sin fondo. */
+  .kpi .icon-badge{
+    width: 46px; height: 46px; border-radius: 50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    background: rgba(255,255,255,0.07);
+  }
+  .kpi .icon{ font-size: 30px; line-height:1; opacity:1; }
+  .kpi.accent-green .icon-badge{ background: rgba(39,217,168,0.18); }
+  .kpi.accent-red .icon-badge{ background: rgba(251,113,133,0.18); }
+  .kpi.accent-purple .icon-badge{ background: rgba(124,108,251,0.18); }
   .kpi .label{ color: var(--text-dim); font-size: 12.5px; margin-top:10px; font-weight:500; }
   .kpi .value{ font-size: 22px; font-weight: 800; margin-top: 4px; letter-spacing:-0.01em; }
   .kpi .sub{ color: var(--text-faint); font-size: 11.5px; margin-top: 6px; }
@@ -193,6 +255,81 @@
     content:''; position:absolute; right:-30px; top:-30px; width:100px; height:100px;
     background: radial-gradient(circle, rgba(124,108,251,0.15), transparent 70%);
   }
+
+  /* --- Jerarquía de tarjetas KPI (requisito 2026-09-07) ---------------
+     "Balance de caja real" pasa a ser la tarjeta destacada (hero): ancho
+     completo de la grilla, ≥1.8x el área de las tarjetas de apoyo, con
+     tamaño de fuente responsive (nunca fijo) para no reintroducir el
+     overflow horizontal de mobile ya resuelto (commits 6fc31ae/b65d23a)
+     con un balance negativo de muchos dígitos. */
+  .kpi.kpi-hero{
+    grid-column: 1 / -1;
+    padding: 24px 26px 22px;
+    min-height: 168px;
+    display:flex; flex-direction:column; justify-content:center;
+  }
+  .kpi.kpi-hero .icon-badge{ width: 56px; height:56px; }
+  .kpi.kpi-hero .icon{ font-size: 32px; }
+  .kpi.kpi-hero .label{ font-size: 14.5px; margin-top:14px; }
+  .kpi.kpi-hero .value{ font-size: 38px; margin-top: 6px; }
+  .kpi.kpi-hero .sub{ font-size: 12.5px; margin-top: 8px; }
+  @media (max-width: 1100px){
+    .kpi.kpi-hero .value{ font-size: 32px; }
+  }
+  @media (max-width: 560px){
+    .kpi.kpi-hero{ padding: 14px 16px 14px; min-height: 0; }
+    .kpi.kpi-hero .icon-badge{ width: 40px; height:40px; }
+    .kpi.kpi-hero .icon{ font-size: 22px; }
+    .kpi.kpi-hero .label{ font-size: 12.5px; margin-top:8px; }
+    .kpi.kpi-hero .value{ font-size: 25px; margin-top:3px; } /* responsive a propósito: a este ancho un balance negativo de muchos dígitos (ej. -$12.345.678) no entraría a 38px sin desbordar */
+    /* El "sub" completo (2 líneas con el detalle de deuda) es el mayor
+       consumidor de alto de esta tarjeta en mobile -- se recorta a 1
+       línea con elipsis acá (requisito punto 4: liberar alto para que el
+       gráfico compacto entre sin scroll). El texto completo sigue
+       disponible sin recortar en tablet/desktop, y el VALOR del balance
+       (el dato que importa) nunca se toca. */
+    .kpi.kpi-hero .sub{
+      font-size: 11px; margin-top:4px;
+      display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden;
+    }
+  }
+
+  /* Tarjetas de apoyo (Ingresos/Gasto real/Deuda actual): mismo tamaño
+     entre sí, más chicas que el balance -- grilla propia de 3 columnas
+     que NO depende de cuántas columnas tenga .kpi-grid en ese breakpoint
+     (a propósito: así se mantienen compactas y en fila también en
+     mobile, en vez de apilarse una debajo de otra y empujar el resto del
+     contenido "arriba del pliegue" fuera de la primera pantalla). */
+  .kpi-support-grid{
+    grid-column: 1 / -1;
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  @media (max-width: 560px){
+    .kpi-support-grid{ gap:6px; }
+    .kpi-support-grid .kpi{ padding: 10px 8px 8px; }
+    .kpi-support-grid .kpi .icon-badge{ width:26px; height:26px; }
+    .kpi-support-grid .kpi .icon{ font-size:14px; }
+    .kpi-support-grid .kpi .label{ font-size:9.5px; margin-top:5px; }
+    .kpi-support-grid .kpi .value{ font-size:13px; margin-top:2px; }
+    /* El "sub" (ej. "12 movimientos · excluye avances...") se oculta SOLO
+       acá, en mobile, para liberar alto -- el dato principal (el monto,
+       en .value) sigue siempre visible; el detalle completo sigue
+       disponible en tablet/desktop y en la sección "Tarjetas de crédito y
+       deuda" para el caso de Deuda actual. Ningún valor deja de mostrarse. */
+    .kpi-support-grid .kpi .sub{ display:none; }
+  }
+
+  /* Fila secundaria (Transacciones/Categoría/Promedio/Entidad): mismos
+     datos que hoy, menor protagonismo visual -- ícono sin badge grande
+     (no entra un badge de 46px en una tarjeta de este tamaño sin generar
+     overflow, ver requisito punto 5, caso borde). */
+  .kpi.kpi-compact .icon-badge{ width: 30px; height: 30px; }
+  .kpi.kpi-compact .icon{ font-size: 17px; }
+  .kpi.kpi-compact .label{ font-size: 11px; margin-top:8px; }
+  .kpi.kpi-compact .value{ font-size: 16px; margin-top:3px; }
+  .kpi.kpi-compact .sub{ font-size: 10.5px; }
 
   /* ===========================================================
      4) SECTION HEADINGS
@@ -258,6 +395,11 @@
   .chart-card .desc{ margin:0 0 12px; font-size: 11.5px; color: var(--text-faint); }
   .chart-holder{ position: relative; height: 260px; }
   .chart-holder.tall{ height: 300px; }
+  /* Gráfico compacto de "Ingresos vs. gastos" arriba del pliegue (requisito
+     2026-09-07, punto 4) -- mismo <canvas>/Chart.js, altura reducida a
+     propósito para que quepa sin scroll junto al resto de la zona de KPIs. */
+  .chart-holder.compact{ height: 130px; }
+  @media (max-width: 560px){ .chart-holder.compact{ height: 96px; } }
 
   /* Gráficos expandibles: click en la tarjeta para verla en grande con
      una tabla de detalle debajo (ver modal más abajo). */
@@ -527,24 +669,37 @@
     <div class="title-block">
       <h1>💰 Dashboard Financiero Personal</h1>
       <p>Análisis automático de movimientos — generado desde <b style="color:var(--text-dim)">finanzas.db</b>, sincronizada con el Excel, el correo y los extractos que cargues</p>
-      <!-- Vista previa visual únicamente -- todavía sin lógica de agrupación
-           (los botones no hacen nada aún, es solo para ver cómo quedan). -->
-      <div class="view-toggle">
-        <button type="button">Trimestral</button>
-        <button type="button">Semestral</button>
-        <button type="button">Anual</button>
-      </div>
     </div>
     <div style="display:flex; flex-direction:column; align-items:flex-end; gap:10px;">
-      <div class="badge-row" id="rangoTotalBadge"></div>
-      <div class="badge-row">
-        <select id="filtroAnio" class="pill-select"></select>
-        <select id="filtroMes" class="pill-select"></select>
-      </div>
       <div class="movimientos-info" id="movimientosInfo"></div>
       <div class="last-updated" id="lastUpdated"></div>
     </div>
   </header>
+
+  <!-- ============================================================
+       CONTROL UNIFICADO DE PERÍODO (requisito 2026-09-07, punto 1)
+       -----------------------------------------------------------------
+       Un único bloque -- mismo orden interno (título -> botones ->
+       selects condicionales -> badge de rango) en los 3 breakpoints.
+       Trimestral/Semestral/Anual filtran de verdad todo el dashboard
+       (ver aplicarPreset() en el JS, reutiliza renderDashboard()); antes
+       eran decorativos. "Personalizado" revela los mismos selects
+       año/mes de siempre (no se reconstruyen, se reutilizan tal cual).
+       ============================================================ -->
+  <section class="periodo-control" id="periodoControl" aria-label="Filtro de período del dashboard">
+    <span class="periodo-control-titulo">Período</span>
+    <div class="view-toggle" id="periodoBotones">
+      <button type="button" data-periodo="trimestral">Trimestral</button>
+      <button type="button" data-periodo="semestral">Semestral</button>
+      <button type="button" data-periodo="anual">Anual</button>
+      <button type="button" data-periodo="personalizado" class="active">Personalizado</button>
+    </div>
+    <div class="badge-row" id="periodoSelectsWrap">
+      <select id="filtroAnio" class="pill-select" aria-label="Año"></select>
+      <select id="filtroMes" class="pill-select" aria-label="Mes"></select>
+    </div>
+    <div class="badge-row" id="rangoTotalBadge"></div>
+  </section>
 
   <div class="empty-state" id="cargandoDashboard">⏳ Cargando tu dashboard...</div>
 
@@ -592,7 +747,7 @@
       <div class="chart-holder"><canvas id="chartIngresosGastos"></canvas></div>
     </div>
 
-    <div class="chart-card expandible" onclick="abrirModalGrafico('chartMoneda','💱 Distribución por moneda')">
+    <div class="chart-card expandible" id="chartMonedaCard" onclick="abrirModalGrafico('chartMoneda','💱 Distribución por moneda')">
       <h3>💱 Distribución por moneda</h3>
       <p class="desc">Cantidad de movimientos según la moneda utilizada.</p>
       <div class="chart-holder"><canvas id="chartMoneda"></canvas></div>
@@ -768,8 +923,15 @@ async function iniciarDashboard() {
   // antes de mandarlo). Cada sección tiene un título (.section-title)
   // y un bloque de contenido con id propio, más un link opcional en el
   // menú lateral (side-nav) que también hay que sacar.
+  // Nivel de módulo (no solo dentro del IIFE) porque la tarjeta
+  // "Deuda actual estimada" duplicada en la grilla superior de KPIs
+  // (requisito 2026-09-07, punto 3) necesita este mismo criterio de
+  // visibilidad más abajo, dentro de renderDashboard() -- sin esto
+  // quedaría huérfana mostrando un dato de una sección que el resto
+  // de "Tarjetas de crédito y deuda" tiene oculta para esta cuenta.
+  const VISTAS_OCULTAS = new Set(datosApi.vistas_ocultas || []);
+
   (function ocultarSubvistas() {
-    const ocultas = new Set(datosApi.vistas_ocultas || []);
     // "contenido" es siempre una LISTA de ids -- la mayoría de las
     // secciones tienen un solo bloque, pero deuda/analisis/movimientos
     // tienen varios (KPIs, charts-grid, tablas) que hay que remover todos.
@@ -781,7 +943,7 @@ async function iniciarDashboard() {
       movimientos: { titulo: 'movimientos', contenido: ['todosMovimientosCard', 'cincoVistasCard'] },
     };
     for (const [vista, ids] of Object.entries(SECCIONES)) {
-      if (!ocultas.has(vista)) continue;
+      if (!VISTAS_OCULTAS.has(vista)) continue;
       document.getElementById(ids.titulo)?.remove();
       ids.contenido.forEach(id => document.getElementById(id)?.remove());
       document.querySelector(`.side-nav a[data-section="${ids.titulo}"]`)?.remove();
@@ -848,7 +1010,7 @@ document.getElementById('lastUpdated').textContent = `Última actualización del
 const CAT_ICONS = {
   salario:'💼', transferencias:'🔁', suscripciones:'📱', restaurantes:'🍽️', comida:'🍔',
   'crédito':'💳', transporte:'🚌', entretenimiento:'🎬', compras:'🛍️', retiro:'🏧',
-  'tecnología':'💻', ropa:'👕', supermercado:'🛒', otros:'❔', movilidad:'🛴',
+  'tecnología':'💻', ropa:'👕', supermercado:'🛒', otros:'📦', movilidad:'🛴',
   celular:'📶', servicios:'🧾', internet:'🌐', salud:'🏥', 'educación':'🎓', hogar:'🏠',
   avance_credito:'💰', pago_tarjeta_credito:'💳'
 };
@@ -904,6 +1066,37 @@ const TODOS_MOV_POR_PAGINA = 25;
 let todosMovActivo = false;
 let todosMovPagina = 1;
 let DATA_ACTUAL = []; // el DATA (ya filtrado) del último renderDashboard() -- lo usa el switch al prenderse
+
+// Control unificado de período (requisito 2026-09-07, punto 1): qué botón
+// está activo ahora mismo -- 'personalizado' es el default, equivalente al
+// comportamiento actual al cargar la página (año/mes en "todos", histórico
+// completo). Vive afuera de renderDashboard() porque el bloque de badge/
+// texto de más abajo, DENTRO de renderDashboard(), necesita leerlo en cada
+// render para saber si calcular el rango a partir de los selects (modo
+// personalizado) o de la definición fija del preset activo.
+let filtroPeriodoActivo = 'personalizado';
+
+// Definiciones FIJAS de cada preset (fijadas por product-owner en el
+// requerimiento, no a discreción de quien implementa): "corrido hasta
+// hoy" -- incluye el mes calendario en curso completo hasta la fecha de
+// hoy, más N-1 meses calendario anteriores completos. calcularInicio()
+// recibe "hoy" (medianoche) y devuelve el primer día del mes de inicio;
+// el fin de los 3 rangos es siempre "hoy" (mismo criterio de corte que ya
+// usa el badge de rango en modo Personalizado).
+const PRESETS_PERIODO = {
+  trimestral: {
+    texto: 'en el trimestre actual (últimos 3 meses)',
+    calcularInicio: (hoy) => new Date(hoy.getFullYear(), hoy.getMonth() - 2, 1),
+  },
+  semestral: {
+    texto: 'en el semestre actual (últimos 6 meses)',
+    calcularInicio: (hoy) => new Date(hoy.getFullYear(), hoy.getMonth() - 5, 1),
+  },
+  anual: {
+    texto: 'en el año actual',
+    calcularInicio: (hoy) => new Date(hoy.getFullYear(), 0, 1),
+  },
+};
 
 function crearGrafico(canvasId, config) {
   const canvas = document.getElementById(canvasId);
@@ -988,83 +1181,100 @@ if (todosMovActivo) renderTodosMovimientos(DATA);
 // se destruye la instancia anterior antes de crear una nueva sobre el
 // mismo canvas, Chart.js tira error. Chart.getChart(id) devuelve la
 // instancia activa de ese canvas (o nada, la primera vez).
-['chartDeudaEvolucion','chartCategorias','chartIngresosGastos','chartMoneda',
+['chartDeudaEvolucion','chartCategorias','chartIngresosGastos','chartIngresosGastosCompact','chartMoneda',
  'chartEvolucion','chartDistribucion','chartTendenciaMensual','chartEntidades'].forEach(id => {
   const existente = Chart.getChart(id);
   if (existente) existente.destroy();
 });
 
-// Textos dinámicos: reaccionan al período seleccionado en los filtros de
-// año/mes. Van ANTES del corte por período vacío de más abajo -- si no,
-// un período sin datos los dejaría pegados con los del período anterior.
+// Textos dinámicos: reaccionan al período seleccionado (los presets
+// Trimestral/Semestral/Anual, o los selects año/mes en modo Personalizado
+// -- ver filtroPeriodoActivo). Van ANTES del corte por período vacío de
+// más abajo -- si no, un período sin datos los dejaría pegados con los
+// del período anterior.
 {
-  const anioSel = document.getElementById('filtroAnio');
-  const mesSel = document.getElementById('filtroMes');
-  const anioVal = anioSel ? anioSel.value : 'todos';
-  const mesVal = mesSel ? mesSel.value : 'todos';
-
-  let periodoTxt = 'en total';
-  if (anioVal !== 'todos' && mesVal !== 'todos') {
-    periodoTxt = `en ${mesSel.selectedOptions[0].text.toLowerCase()} de ${anioVal}`;
-  } else if (anioVal !== 'todos') {
-    periodoTxt = `en ${anioVal}`;
-  } else if (mesVal !== 'todos') {
-    periodoTxt = `en ${mesSel.selectedOptions[0].text.toLowerCase()} (todos los años)`;
-  }
-  document.getElementById('movimientosInfo').innerHTML =
-    `<span class="dot"></span> <b>${DATA.length}</b> movimiento${DATA.length === 1 ? '' : 's'} cargado${DATA.length === 1 ? '' : 's'} ${periodoTxt}`;
-
-  // Rango de fechas: se muestra el calendario completo del período (mes
-  // y/o año entero) en vez de la última fecha con movimiento -- así un
-  // período en curso (o con huecos de carga) no aparenta estar
-  // "desactualizado" contra la fecha de "Última actualización" de abajo.
-  // Si el período incluye hoy, se corta en la fecha actual, ya que esos
-  // días todavía no pasaron. Solo "Todos los años" + "Todos los meses"
-  // (sin ningún filtro) no tiene un calendario propio -- ahí se usa el
-  // rango real del histórico completo.
   const pad = n => String(n).padStart(2, '0');
   const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  let periodoTxt = 'en total';
   let rangoHTML = '';
 
-  if (anioVal !== 'todos') {
-    // Año concreto: mes completo, o el año completo si mes = "todos".
-    const anio = parseInt(anioVal, 10);
-    let inicio, fin;
-    if (mesVal !== 'todos') {
+  if (filtroPeriodoActivo !== 'personalizado') {
+    // Trimestral/Semestral/Anual: rango FIJO calculado sobre "hoy" (ver
+    // PRESETS_PERIODO, definido junto al resto del selector de período)
+    // -- ya no dependen de los selects año/mes en absoluto.
+    const preset = PRESETS_PERIODO[filtroPeriodoActivo];
+    const inicio = preset.calcularInicio(hoy);
+    periodoTxt = preset.texto;
+    if (hoy >= inicio) {
+      rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(iso(inicio))}</b> hasta <b>${fmtDate(iso(hoy))}</b></div>`;
+    }
+  } else {
+    // Modo Personalizado: mismo comportamiento de siempre, basado en los
+    // selects año/mes ya existentes (reutilizados tal cual).
+    const anioSel = document.getElementById('filtroAnio');
+    const mesSel = document.getElementById('filtroMes');
+    const anioVal = anioSel ? anioSel.value : 'todos';
+    const mesVal = mesSel ? mesSel.value : 'todos';
+
+    if (anioVal !== 'todos' && mesVal !== 'todos') {
+      periodoTxt = `en ${mesSel.selectedOptions[0].text.toLowerCase()} de ${anioVal}`;
+    } else if (anioVal !== 'todos') {
+      periodoTxt = `en ${anioVal}`;
+    } else if (mesVal !== 'todos') {
+      periodoTxt = `en ${mesSel.selectedOptions[0].text.toLowerCase()} (todos los años)`;
+    }
+
+    // Rango de fechas: se muestra el calendario completo del período (mes
+    // y/o año entero) en vez de la última fecha con movimiento -- así un
+    // período en curso (o con huecos de carga) no aparenta estar
+    // "desactualizado" contra la fecha de "Última actualización" de abajo.
+    // Si el período incluye hoy, se corta en la fecha actual, ya que esos
+    // días todavía no pasaron. Solo "Todos los años" + "Todos los meses"
+    // (sin ningún filtro) no tiene un calendario propio -- ahí se usa el
+    // rango real del histórico completo.
+    if (anioVal !== 'todos') {
+      // Año concreto: mes completo, o el año completo si mes = "todos".
+      const anio = parseInt(anioVal, 10);
+      let inicio, fin;
+      if (mesVal !== 'todos') {
+        const mesIdx = parseInt(mesVal, 10) - 1;
+        inicio = new Date(anio, mesIdx, 1);
+        fin = new Date(anio, mesIdx + 1, 0); // último día de ese mes
+      } else {
+        inicio = new Date(anio, 0, 1);
+        fin = new Date(anio, 11, 31);
+      }
+      if (fin > hoy) fin = hoy;
+      if (fin >= inicio) {
+        rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(iso(inicio))}</b> hasta <b>${fmtDate(iso(fin))}</b></div>`;
+      }
+    } else if (mesVal === 'todos') {
+      // Sin ningún filtro: "todos los datos" es un período abierto (llega
+      // hasta ahora), así que el final es HOY -- no el último movimiento
+      // cargado. Si no, esta fecha queda atrás de "Última actualización"
+      // apenas pasa un día sin cargar nada, y parece un error.
+      if (DATA_COMPLETA.length) {
+        const fechasCompletas = [...new Set(DATA_COMPLETA.map(r => r.fecha))].sort();
+        rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(fechasCompletas[0])}</b> hasta <b>${fmtDate(iso(hoy))}</b></div>`;
+      }
+    } else if (DATA.length) {
+      // "Todos los años" + un mes específico: puede abarcar varios años --
+      // se toma el mes completo desde el primer año con datos hasta el
+      // mes completo del último año con datos (cortado en hoy si aplica).
+      const aniosEnPeriodo = [...new Set(DATA.map(r => r.fecha.slice(0, 4)))].sort();
       const mesIdx = parseInt(mesVal, 10) - 1;
-      inicio = new Date(anio, mesIdx, 1);
-      fin = new Date(anio, mesIdx + 1, 0); // último día de ese mes
-    } else {
-      inicio = new Date(anio, 0, 1);
-      fin = new Date(anio, 11, 31);
-    }
-    if (fin > hoy) fin = hoy;
-    if (fin >= inicio) {
-      rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(iso(inicio))}</b> hasta <b>${fmtDate(iso(fin))}</b></div>`;
-    }
-  } else if (mesVal === 'todos') {
-    // Sin ningún filtro: "todos los datos" es un período abierto (llega
-    // hasta ahora), así que el final es HOY -- no el último movimiento
-    // cargado. Si no, esta fecha queda atrás de "Última actualización"
-    // apenas pasa un día sin cargar nada, y parece un error.
-    if (DATA_COMPLETA.length) {
-      const fechasCompletas = [...new Set(DATA_COMPLETA.map(r => r.fecha))].sort();
-      rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(fechasCompletas[0])}</b> hasta <b>${fmtDate(iso(hoy))}</b></div>`;
-    }
-  } else if (DATA.length) {
-    // "Todos los años" + un mes específico: puede abarcar varios años --
-    // se toma el mes completo desde el primer año con datos hasta el
-    // mes completo del último año con datos (cortado en hoy si aplica).
-    const aniosEnPeriodo = [...new Set(DATA.map(r => r.fecha.slice(0, 4)))].sort();
-    const mesIdx = parseInt(mesVal, 10) - 1;
-    let inicio = new Date(parseInt(aniosEnPeriodo[0], 10), mesIdx, 1);
-    let fin = new Date(parseInt(aniosEnPeriodo[aniosEnPeriodo.length - 1], 10), mesIdx + 1, 0);
-    if (fin > hoy) fin = hoy;
-    if (fin >= inicio) {
-      rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(iso(inicio))}</b> hasta <b>${fmtDate(iso(fin))}</b></div>`;
+      let inicio = new Date(parseInt(aniosEnPeriodo[0], 10), mesIdx, 1);
+      let fin = new Date(parseInt(aniosEnPeriodo[aniosEnPeriodo.length - 1], 10), mesIdx + 1, 0);
+      if (fin > hoy) fin = hoy;
+      if (fin >= inicio) {
+        rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(iso(inicio))}</b> hasta <b>${fmtDate(iso(fin))}</b></div>`;
+      }
     }
   }
+
+  document.getElementById('movimientosInfo').innerHTML =
+    `<span class="dot"></span> <b>${DATA.length}</b> movimiento${DATA.length === 1 ? '' : 's'} cargado${DATA.length === 1 ? '' : 's'} ${periodoTxt}`;
   document.getElementById('rangoTotalBadge').innerHTML = rangoHTML;
 }
 
@@ -1089,6 +1299,11 @@ if (!DATA.length) {
     '<div class="empty-state">🧠 Todavía no hay suficientes movimientos en este período para generar insights automáticos.</div>';
   const _leaderboardVacio = document.getElementById('leaderboard');
   if (_leaderboardVacio) _leaderboardVacio.innerHTML = '';
+  // Distribución por moneda (requisito punto 6, caso borde "cuenta sin
+  // movimientos"): 0 monedas distintas también es <=1 -- se oculta igual
+  // que con una sola moneda, no queda un gráfico de dona vacío/roto.
+  const _chartMonedaCardVacio = document.getElementById('chartMonedaCard'); // null si "analisis" está oculta
+  if (_chartMonedaCardVacio) _chartMonedaCardVacio.hidden = true;
   GASTO_POR_CATEGORIA_ACTUAL = []; // que el modal del ranking tampoco muestre datos de un período anterior
   INSIGHTS_ACTUAL = []; // ídem, para el modal de insight
   // Ninguno de los crearGrafico() de más abajo llega a correr en este
@@ -1209,24 +1424,24 @@ const monedaCount = groupCount(DATA, r=>r.moneda);
 /* =================================================================
    KPIs
 ================================================================= */
+// Distribución por moneda (requisito 2026-09-07, punto 6): tarjeta KPI y
+// gráfico de dona se ocultan cuando el período FILTRADO actual (DATA, no
+// DATA_COMPLETA) tiene 1 sola moneda o menos -- conteo estricto de
+// monedas distintas presentes, nunca un umbral de porcentaje. Se recalcula
+// en cada renderDashboard(), así que cambia de inmediato al cambiar de
+// filtro (ver casos borde del requisito).
+const haySoloUnaMoneda = monedaCount.size <= 1;
+
+// "Deuda actual estimada" duplicada acá arriba (requisito punto 3): mismo
+// valor exacto que la tarjeta original de "Tarjetas de crédito y deuda"
+// (deudaActual, una sola variable) -- si esa sub-vista está oculta para
+// esta cuenta, la copia de acá tampoco se muestra (ver VISTAS_OCULTAS).
+const deudaVisibleArriba = !VISTAS_OCULTAS.has('deuda');
+
 const kpiGrid = document.getElementById('kpiGrid');
 kpiGrid.innerHTML = `
-  <div class="kpi accent-green">
-    <div class="icon">📥</div>
-    <div class="label">Ingresos reales</div>
-    <div class="value">${fmtCOP(totalIngresosReales)}</div>
-    <div class="sub">${ingresosReales.length} movimientos · excluye avances de tarjeta de crédito</div>
-  </div>
-
-  <div class="kpi accent-red">
-    <div class="icon">📤</div>
-    <div class="label">Gasto real (caja)</div>
-    <div class="value">${fmtCOP(totalGastoReal)}</div>
-    <div class="sub">${gastosReales.length} movimientos · dinero que realmente salió de tus cuentas</div>
-  </div>
-
-  <div class="kpi ${balanceCajaReal >= 0 ? 'accent-green' : 'accent-red'}">
-    <div class="icon">${balanceCajaReal >= 0 ? '✅' : '⚠️'}</div>
+  <div class="kpi kpi-hero ${balanceCajaReal >= 0 ? 'accent-green' : 'accent-red'}">
+    <div class="icon-badge"><div class="icon">${balanceCajaReal >= 0 ? '✅' : '⚠️'}</div></div>
     <div class="label">Balance de caja real</div>
     <div class="value">${fmtCOP(balanceCajaReal)}</div>
     <!-- "no incluye deuda de tarjeta" describe la METODOLOGÍA del cálculo
@@ -1239,42 +1454,83 @@ kpiGrid.innerHTML = `
     <div class="sub">${balanceCajaReal >= 0 ? 'Saldo positivo en el período' : 'El gasto real supera tus ingresos reales'} · no incluye deuda de tarjeta de crédito${deudaActual > 0 ? ` (deuda actual estimada: ${fmtCOP(deudaActual)})` : ''}</div>
   </div>
 
-  <div class="kpi accent-purple">
-    <div class="icon">🧾</div>
+  <div class="kpi-support-grid">
+    <div class="kpi accent-green">
+      <div class="icon-badge"><div class="icon">📥</div></div>
+      <div class="label">Ingresos reales</div>
+      <div class="value">${fmtCOP(totalIngresosReales)}</div>
+      <div class="sub">${ingresosReales.length} movimientos · excluye avances de tarjeta de crédito</div>
+    </div>
+
+    <div class="kpi accent-red">
+      <div class="icon-badge"><div class="icon">📤</div></div>
+      <div class="label">Gasto real (caja)</div>
+      <div class="value">${fmtCOP(totalGastoReal)}</div>
+      <div class="sub">${gastosReales.length} movimientos · dinero que realmente salió de tus cuentas</div>
+    </div>
+
+    ${deudaVisibleArriba ? `
+    <div class="kpi ${deudaActual > 0 ? 'accent-red' : 'accent-green'}">
+      <div class="icon-badge"><div class="icon">💳</div></div>
+      <div class="label">Deuda actual estimada</div>
+      <div class="value">${fmtCOP(deudaActual)}</div>
+      <div class="sub">saldo acumulado: compras a crédito + avances − pagos</div>
+    </div>` : ''}
+  </div>
+
+  <!-- Gráfico compacto "Ingresos vs. gastos" (requisito punto 4): mismo
+       cálculo (totalIngresosReales/totalGastoReal) que el gráfico completo
+       de "Análisis visual", ver configIngresosVsGastos() más abajo -- se
+       crea la instancia de Chart.js después de insertar este HTML (el
+       <canvas> tiene que existir en el DOM primero). -->
+  <div class="chart-card full" style="padding:12px 16px 8px;">
+    <h3 style="font-size:12.5px;">⚖️ Ingresos vs. gastos <span class="tag" style="margin-left:8px; font-weight:400;">vista compacta</span></h3>
+    <div class="chart-holder compact"><canvas id="chartIngresosGastosCompact"></canvas></div>
+  </div>
+
+  <div class="kpi kpi-compact accent-purple">
+    <div class="icon-badge"><div class="icon">🧾</div></div>
     <div class="label">Transacciones totales</div>
     <div class="value">${fmtNum(DATA.length)}</div>
     <div class="sub">${gastosCOP.length + dataUSD.length} gastos · ${ingresosCOP.length} ingresos</div>
   </div>
 
-  <div class="kpi">
-    <div class="icon">${catIcon(catTop)}</div>
+  <div class="kpi kpi-compact">
+    <div class="icon-badge"><div class="icon">${catIcon(catTop)}</div></div>
     <div class="label">Categoría con mayor gasto</div>
-    <div class="value" style="font-size:19px; text-transform:capitalize;">${catTop}</div>
+    <div class="value" style="text-transform:capitalize;">${catTop}</div>
     <div class="sub">${fmtCOP(catTopMonto)} · ${fmtPct(totalGastosCOP ? catTopMonto/totalGastosCOP*100 : 0)} del consumo total (incl. crédito)</div>
   </div>
 
-  <div class="kpi">
-    <div class="icon">📆</div>
+  <div class="kpi kpi-compact">
+    <div class="icon-badge"><div class="icon">📆</div></div>
     <div class="label">Promedio mensual de gasto real</div>
     <div class="value">${fmtCOP(promedioMensualGasto)}</div>
     <div class="sub">calculado sobre ${mesesPresentes.length} meses con datos · solo caja real</div>
   </div>
 
+  <div class="kpi kpi-compact">
+    <div class="icon-badge"><div class="icon">🏦</div></div>
+    <div class="label">Entidad más utilizada</div>
+    <div class="value">${entidadTop}</div>
+    <div class="sub">${entidadCount[0]?.[1] || 0} movimientos · ${fmtCOP(entidadMonto.find(e=>e[0]===entidadTop)?.[1]||0)}</div>
+  </div>
+
+  ${!haySoloUnaMoneda ? `
   <div class="kpi">
-    <div class="icon">💱</div>
+    <div class="icon-badge"><div class="icon">💱</div></div>
     <div class="label">Distribución por moneda</div>
     <div class="mini-rows">
       ${[...monedaCount.entries()].map(([m,c])=>`<div class="row"><span>${m}</span><b>${c} mov. (${fmtPct(c/DATA.length*100)})</b></div>`).join('')}
     </div>
-  </div>
-
-  <div class="kpi">
-    <div class="icon">🏦</div>
-    <div class="label">Entidad más utilizada</div>
-    <div class="value" style="font-size:19px;">${entidadTop}</div>
-    <div class="sub">${entidadCount[0]?.[1] || 0} movimientos · ${fmtCOP(entidadMonto.find(e=>e[0]===entidadTop)?.[1]||0)}</div>
-  </div>
+  </div>` : ''}
 `;
+
+// El <canvas id="chartIngresosGastosCompact"> recién quedó en el DOM
+// (arriba) -- configIngresosVsGastos() está definida más abajo (sección
+// "GRÁFICO 2"), pero al ser una function declaration queda hoisteada
+// dentro de renderDashboard() y ya se puede llamar acá.
+crearGrafico('chartIngresosGastosCompact', configIngresosVsGastos({ compacto: true }));
 
 /* =================================================================
    KPIs — TARJETAS DE CRÉDITO Y DEUDA
@@ -1282,28 +1538,28 @@ kpiGrid.innerHTML = `
 const _kpiGridDeuda = document.getElementById('kpiGridDeuda'); // null si "deuda" está oculta -- ver ocultarSubvistas()
 if (_kpiGridDeuda) _kpiGridDeuda.innerHTML = `
   <div class="kpi ${deudaActual > 0 ? 'accent-red' : 'accent-green'}">
-    <div class="icon">💳</div>
+    <div class="icon-badge"><div class="icon">💳</div></div>
     <div class="label">Deuda actual estimada</div>
     <div class="value">${fmtCOP(deudaActual)}</div>
     <div class="sub">saldo acumulado: compras a crédito + avances − pagos</div>
   </div>
 
   <div class="kpi">
-    <div class="icon">🛍️</div>
+    <div class="icon-badge"><div class="icon">🛍️</div></div>
     <div class="label">Gasto con tarjeta de crédito</div>
     <div class="value">${fmtCOP(totalGastoCredito)}</div>
     <div class="sub">${gastosCredito.length} compras · ${fmtPct(totalGastosCOP ? totalGastoCredito/totalGastosCOP*100 : 0)} de todo lo que gastaste</div>
   </div>
 
   <div class="kpi">
-    <div class="icon">💰</div>
+    <div class="icon-badge"><div class="icon">💰</div></div>
     <div class="label">Avances de crédito recibidos</div>
     <div class="value">${fmtCOP(totalAvancesCredito)}</div>
     <div class="sub">${avancesCredito.length} adelanto(s) de efectivo — es deuda, no ingreso real</div>
   </div>
 
   <div class="kpi accent-green">
-    <div class="icon">✅</div>
+    <div class="icon-badge"><div class="icon">✅</div></div>
     <div class="label">Pagos a tarjetas de crédito</div>
     <div class="value">${fmtCOP(totalPagosTarjeta)}</div>
     <div class="sub">${pagosTarjeta.length} pago(s) registrados que abonan la deuda</div>
@@ -1421,51 +1677,84 @@ crearGrafico('chartCategorias', {
 
 /* =================================================================
    GRÁFICO 2 — Ingresos vs gastos (totales)
+   -----------------------------------------------------------------
+   configIngresosVsGastos() arma la config a partir de los mismos totales
+   ya calculados (totalIngresosReales/totalGastoReal, definidos arriba en
+   el pre-procesamiento) -- se usa acá para el gráfico completo Y para la
+   versión compacta de la sección de KPIs (ver más arriba en este mismo
+   render): misma fuente de datos, sin duplicar el cálculo. Se llama una
+   vez por canvas (no se comparte el mismo objeto de config entre dos
+   Chart.js vivos a la vez -- Chart.js le agrega metadata interna propia a
+   cada dataset, y compartir el objeto rompe la segunda instancia).
 ================================================================= */
-crearGrafico('chartIngresosGastos', {
-  type: 'bar',
-  data: {
-    labels: ['Ingresos reales', 'Gasto real (caja)'],
-    datasets: [{
-      data: [totalIngresosReales, totalGastoReal],
-      backgroundColor: ['#27d9a8', '#fb7185'],
-      borderRadius: 10,
-      barThickness: 60
-    }]
-  },
-  options: {
-    responsive: true, maintainAspectRatio: false,
-    plugins: { legend: { display:false }, tooltip: { callbacks: { label:(ctx)=> fmtCOP(ctx.parsed.y) } } },
-    scales: {
-      y: { ticks: { callback:(v)=> fmtNum(v) }, grid: { color:'rgba(255,255,255,0.05)' } },
-      x: { grid: { display:false } }
+function configIngresosVsGastos({ compacto = false } = {}) {
+  return {
+    type: 'bar',
+    data: {
+      labels: ['Ingresos reales', 'Gasto real (caja)'],
+      datasets: [{
+        data: [totalIngresosReales, totalGastoReal],
+        backgroundColor: ['#27d9a8', '#fb7185'],
+        borderRadius: compacto ? 6 : 10,
+        barThickness: compacto ? 22 : 60
+      }]
+    },
+    options: {
+      // Compacto: barras horizontales -- aprovechan mejor un contenedor
+      // bajo y ancho (130px de alto) que las verticales, que necesitan
+      // espacio debajo para las etiquetas del eje X.
+      indexAxis: compacto ? 'y' : 'x',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display:false },
+        tooltip: { callbacks: { label:(ctx)=> fmtCOP(compacto ? ctx.parsed.x : ctx.parsed.y) } }
+      },
+      scales: compacto ? {
+        x: { ticks: { callback:(v)=> fmtNum(v), font:{ size:9 } }, grid: { color:'rgba(255,255,255,0.05)' } },
+        y: { ticks: { font:{ size:9 } }, grid: { display:false } }
+      } : {
+        y: { ticks: { callback:(v)=> fmtNum(v) }, grid: { color:'rgba(255,255,255,0.05)' } },
+        x: { grid: { display:false } }
+      }
     }
-  }
-});
+  };
+}
+crearGrafico('chartIngresosGastos', configIngresosVsGastos());
 
 /* =================================================================
    GRÁFICO 3 — Distribución por moneda (nº movimientos)
+   -----------------------------------------------------------------
+   Requisito 2026-09-07, punto 6: tarjeta KPI (ver sección KPIs, más
+   arriba) y este gráfico de dona comparten la MISMA condición
+   (haySoloUnaMoneda, sobre DATA ya filtrado por el período activo) --
+   nunca uno oculto y el otro visible. Se recalcula en cada render.
 ================================================================= */
-crearGrafico('chartMoneda', {
-  type: 'doughnut',
-  data: {
-    labels: [...monedaCount.keys()],
-    datasets: [{
-      data: [...monedaCount.values()],
-      backgroundColor: ['#7c6cfb', '#fbbf24'],
-      borderColor: '#131928',
-      borderWidth: 3
-    }]
-  },
-  options: {
-    responsive: true, maintainAspectRatio: false,
-    cutout: '68%',
-    plugins: {
-      legend: { position:'bottom', labels:{ boxWidth:10, padding:14 } },
-      tooltip: { callbacks: { label:(ctx)=> `${ctx.label}: ${ctx.parsed} movimiento(s)` } }
+const _chartMonedaCard = document.getElementById('chartMonedaCard'); // null si "analisis" está oculta -- ver ocultarSubvistas()
+if (_chartMonedaCard) _chartMonedaCard.hidden = haySoloUnaMoneda;
+if (haySoloUnaMoneda) {
+  delete GRAFICOS_REGISTRY['chartMoneda']; // que el modal "ver en grande" no reabra un gráfico oculto
+} else {
+  crearGrafico('chartMoneda', {
+    type: 'doughnut',
+    data: {
+      labels: [...monedaCount.keys()],
+      datasets: [{
+        data: [...monedaCount.values()],
+        backgroundColor: ['#7c6cfb', '#fbbf24'],
+        borderColor: '#131928',
+        borderWidth: 3
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '68%',
+      plugins: {
+        legend: { position:'bottom', labels:{ boxWidth:10, padding:14 } },
+        tooltip: { callbacks: { label:(ctx)=> `${ctx.label}: ${ctx.parsed} movimiento(s)` } }
+      }
     }
-  }
-});
+  });
+}
 
 /* =================================================================
    GRÁFICO 4 — Evolución temporal de gastos (línea diaria)
@@ -1876,6 +2165,62 @@ function aplicarFiltroPeriodo() {
 selAnio.addEventListener('change', aplicarFiltroPeriodo);
 selMes.addEventListener('change', aplicarFiltroPeriodo);
 
+/* =================================================================
+   CONTROL UNIFICADO DE PERÍODO -- botones Trimestral/Semestral/Anual/
+   Personalizado (requisito 2026-09-07, punto 1)
+   -----------------------------------------------------------------
+   Trimestral/Semestral/Anual ya NO son decorativos: calculan un rango
+   fijo sobre "hoy" (PRESETS_PERIODO, definido junto a filtroPeriodoActivo
+   más arriba) y llaman a renderDashboard() con el mismo DATA_COMPLETA/
+   DEUDA_COMPLETA filtrados por fecha -- mismo pipeline que usa
+   aplicarFiltroPeriodo() para año/mes, sin una segunda ruta de cálculo.
+   "Personalizado" no filtra nada por sí solo: revela los selects y
+   delega en aplicarFiltroPeriodo(), que ya sabe leerlos.
+================================================================= */
+const btnsPeriodo = document.getElementById('periodoBotones');
+const periodoSelectsWrap = document.getElementById('periodoSelectsWrap');
+
+function actualizarUIPeriodoControl() {
+  btnsPeriodo?.querySelectorAll('button').forEach(b => {
+    b.classList.toggle('active', b.dataset.periodo === filtroPeriodoActivo);
+  });
+  if (periodoSelectsWrap) periodoSelectsWrap.hidden = filtroPeriodoActivo !== 'personalizado';
+}
+
+function aplicarPreset(tipo) {
+  filtroPeriodoActivo = tipo;
+  actualizarUIPeriodoControl();
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const pad = n => String(n).padStart(2, '0');
+  const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const isoInicio = iso(PRESETS_PERIODO[tipo].calcularInicio(hoy));
+  const isoFin = iso(hoy);
+  // Comparación de strings YYYY-MM-DD: lexicográficamente equivalente a
+  // comparar fechas reales (mismo truco que ya usa startsWith() más arriba).
+  renderDashboard(
+    DATA_COMPLETA.filter(r => r.fecha >= isoInicio && r.fecha <= isoFin),
+    DEUDA_COMPLETA.filter(r => r.fecha >= isoInicio && r.fecha <= isoFin)
+  );
+}
+
+function activarPersonalizado() {
+  // Caso borde explícito del requisito: si el usuario ya había ajustado
+  // año/mes a mano antes de pasar a un preset, y vuelve a "Personalizado",
+  // NO se resetea nada -- reaparece exactamente donde lo había dejado
+  // (los selects nunca se tocaron, solo estaban ocultos).
+  filtroPeriodoActivo = 'personalizado';
+  actualizarUIPeriodoControl();
+  aplicarFiltroPeriodo();
+}
+
+btnsPeriodo?.querySelectorAll('button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tipo = btn.dataset.periodo;
+    if (tipo === 'personalizado') activarPersonalizado();
+    else aplicarPreset(tipo);
+  });
+});
+
 // Switch "Movimientos": es excluyente con las "5 vistas" -- prender uno
 // apaga (oculta) el otro, nunca los dos a la vez. La lógica interna de
 // cada uno (tabs, filtros, paginado) sigue exactamente igual, esto solo
@@ -2017,6 +2362,7 @@ window.cerrarModalGrafico = cerrarModalGrafico;
 window.abrirModalInsight = abrirModalInsight;
 window.cerrarModalInsight = cerrarModalInsight;
 
+actualizarUIPeriodoControl(); // estado inicial: "Personalizado" activo, selects visibles (ya reflejado en el HTML, esto solo lo confirma)
 renderDashboard(DATA_COMPLETA, DEUDA_COMPLETA); // primera carga: histórico completo, sin filtro
 
 /* =================================================================
