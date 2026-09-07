@@ -152,12 +152,111 @@ def api_registrar_movimiento():
             if not tarjeta or not tarjeta["activa"]:
                 return jsonify(ok=False, error="Esa tarjeta no existe o no está activa."), 400
             movimiento["tarjeta_id"] = tarjeta_id
-        stats = db.insertar_movimientos(conn, [movimiento], origen="manual", usuario_id=viendo_id())
+        # "app_manual" (no "manual") -- TODA la lógica de conciliación de
+        # insertar_movimientos() (y los tests que la cubren) compara
+        # contra el literal exacto "app_manual" para decidir qué fila
+        # puede "absorber" una coincidencia automática posterior
+        # (correo/PDF/Excel) y guardarle referencia_bancaria. Con
+        # "manual" ese matching nunca se disparaba para movimientos
+        # cargados a mano por un usuario real -- bug de producción
+        # corregido 2026-09-07 (ver
+        # requisitos/2026-09-07_editar-borrar-movimiento.md).
+        stats = db.insertar_movimientos(conn, [movimiento], origen="app_manual", usuario_id=viendo_id())
 
     # El dashboard ya no se regenera a mano -- /api/dashboard-data lee la
     # BD en cada carga de página, así que este movimiento ya está
     # disponible ni bien el navegador vuelva a pedirlo.
     return jsonify(ok=True, **stats)
+
+
+def _es_true(valor_form: str | None) -> bool:
+    """"true"/"1"/"on"/"yes" (sin importar mayúsculas) cuentan como
+    confirmación explícita -- cualquier otra cosa (incluido ausente) no.
+    Usado para confirmar_riesgo/confirmar, nunca se asume True por
+    default."""
+    return (valor_form or "").strip().lower() in ("true", "1", "on", "yes")
+
+
+@dashboard_bp.route("/api/movimiento/<int:movimiento_id>/editar", methods=["POST"])
+@login_required
+def api_editar_movimiento(movimiento_id):
+    """Edición parcial de UN movimiento propio de viendo_id() -- ver
+    requisitos/2026-09-07_editar-borrar-movimiento.md. La validación de
+    negocio (gate de confirmar_riesgo, limpieza de referencia_bancaria,
+    reclasificación, tarjeta_id nunca re-inferido) vive en
+    db.editar_movimiento(); acá solo se arma `cambios` a partir del
+    form y se traduce el resultado a códigos HTTP.
+
+    Aislamiento: SIEMPRE viendo_id() (contenido/datos de una cuenta,
+    igual que tarjetas/registrar-movimiento), nunca
+    session["usuario_id"] a secas -- un admin viendo el perfil de otro
+    usuario edita los movimientos de ESA cuenta.
+
+    "no existe / es ajeno" da 404 ANTES de intentar nada más (nunca un
+    error que revele que existe pero es de otra cuenta), mismo criterio
+    que api_editar_tarjeta()."""
+    with db.conexion() as conn:
+        db.crear_esquema(conn)
+        existente = db.obtener_movimiento(conn, usuario_id=viendo_id(), movimiento_id=movimiento_id)
+        if existente is None:
+            return jsonify(ok=False, error="Ese movimiento no existe."), 404
+
+        # Edición parcial: solo se incluye en `cambios` lo que el form
+        # realmente mandó -- el criterio de "¿esto exige
+        # confirmar_riesgo?" lo decide db.editar_movimiento() comparando
+        # VALORES contra lo ya guardado, no la mera presencia de estas
+        # claves (ver su docstring): así reenviar el formulario completo
+        # precargado, tocando solo un campo descriptivo, nunca dispara
+        # la advertencia de fecha/monto/tipo/moneda.
+        cambios = {}
+        for campo in ("fecha", "tipo", "monto", "moneda", "descripcion"):
+            if campo in request.form:
+                cambios[campo] = request.form.get(campo, "").strip()
+        if "categoria" in request.form:
+            cambios["categoria"] = request.form.get("categoria", "").strip() or "otros"
+        if "entidad" in request.form:
+            cambios["entidad"] = request.form.get("entidad", "").strip() or "Manual"
+        if "tarjeta_id" in request.form:
+            # tarjeta_id NUNCA se re-infiere acá -- solo cambia si esta
+            # clave viene explícita en el form (selector del modal de
+            # edición), nunca por texto/descripción. "" es des-asignar.
+            cambios["tarjeta_id"] = request.form.get("tarjeta_id", "").strip()
+        cambios["confirmar_riesgo"] = _es_true(request.form.get("confirmar_riesgo"))
+
+        resultado = db.editar_movimiento(conn, usuario_id=viendo_id(), movimiento_id=movimiento_id, cambios=cambios)
+        resultado["advertencia"] = db.advertencia_riesgo_movimiento(existente)
+
+    if resultado["ok"]:
+        return jsonify(**resultado)
+    status = 404 if resultado["error"] == "Ese movimiento no existe." else 400
+    return jsonify(**resultado), status
+
+
+@dashboard_bp.route("/api/movimiento/<int:movimiento_id>/borrar", methods=["POST"])
+@login_required
+def api_borrar_movimiento(movimiento_id):
+    """Hard delete DEFINITIVO de un movimiento propio de viendo_id() --
+    sin papelera, sin deshacer. Exige `confirmar=true` en el body como
+    defensa adicional a nivel API (no solo confiar en que el frontend
+    mostró el modal de confirmación) -- mismo criterio que
+    api_borrar_tarjeta(), reforzado acá porque este documento en
+    particular insiste en que el borrado es irreversible."""
+    with db.conexion() as conn:
+        db.crear_esquema(conn)
+        existente = db.obtener_movimiento(conn, usuario_id=viendo_id(), movimiento_id=movimiento_id)
+        if existente is None:
+            return jsonify(ok=False, error="Ese movimiento no existe."), 404
+
+        if not _es_true(request.form.get("confirmar")):
+            return jsonify(
+                ok=False,
+                error="Confirmá el borrado (confirmar=true) -- es definitivo, no hay papelera en esta versión.",
+                advertencia=db.advertencia_riesgo_movimiento(existente),
+            ), 400
+
+        db.borrar_movimiento(conn, usuario_id=viendo_id(), movimiento_id=movimiento_id)
+
+    return jsonify(ok=True, advertencia=db.advertencia_riesgo_movimiento(existente))
 
 
 @dashboard_bp.route("/cargar-extractos")
