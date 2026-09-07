@@ -101,12 +101,30 @@ def login(sesion: SesionQA, usuario: str, clave: str) -> None:
     page.wait_for_load_state("networkidle")
 
 
+def _frame_dashboard(sesion: SesionQA):
+    """El Dashboard vive en un <iframe src="/vista/dashboard"> con
+    altura FIJA (`calc(100vh - 60px)`, ver templates/dashboard.html) --
+    la página EXTERIOR nunca desborda ni scrollea, todo el contenido
+    real vive y scrollea DENTRO de ese iframe. Cualquier chequeo de
+    overflow o captura "de toda la página" hecho sobre `sesion.page`
+    directamente mide/captura el documento equivocado -- silenciosamente
+    da falsos negativos (dice "sin overflow" cuando sí lo hay) o una
+    captura idéntica al viewport (nunca el contenido completo). Esta
+    función devuelve el Frame real si la página actual lo tiene
+    embebido, o None si no (otras páginas del sitio no usan iframe)."""
+    return next((f for f in sesion.page.frames if "/vista/dashboard" in f.url), None)
+
+
 def hay_overflow_horizontal(sesion: SesionQA) -> bool:
-    """True si la página se desborda horizontalmente (obliga a hacer
-    scroll lateral de TODA la página, no de una tabla en particular
+    """True si el documento se desborda horizontalmente (obliga a hacer
+    scroll lateral de TODO el contenido, no de una tabla en particular
     dentro de su propio contenedor) -- el bug responsive más común y
-    más fácil de detectar sin ojo humano."""
-    return sesion.page.evaluate(
+    más fácil de detectar sin ojo humano. Si la página actual es el
+    Dashboard, chequea el documento REAL (dentro del iframe, ver
+    `_frame_dashboard`) en vez de la página exterior, que nunca
+    desborda por diseño."""
+    doc = _frame_dashboard(sesion) or sesion.page
+    return doc.evaluate(
         "document.documentElement.scrollWidth > document.documentElement.clientWidth + 1"
     )
 
@@ -115,10 +133,23 @@ def capturar(sesion: SesionQA, carpeta: Path, nombre: str, *, full_page: bool = 
     """Guarda un PNG real en `carpeta/<breakpoint>_<nombre>.png` y
     devuelve la ruta -- esa ruta es la que después se lee con el tool
     `Read` (para juicio visual) y se embebe en el Excel con
-    `crear_reporte_excel()`."""
+    `crear_reporte_excel()`.
+
+    Si la página actual es el Dashboard y pedís `full_page=True`, un
+    screenshot de `sesion.page` NO sirve (ver `_frame_dashboard`): el
+    iframe tiene altura fija, así que "toda la página exterior" es
+    igual al viewport, nunca el contenido real. En ese caso capturamos
+    directamente el contenedor de contenido (`.wrap`) dentro del
+    iframe, que Playwright captura completo aunque no entre en el
+    viewport ni haya scroll -- ese es el equivalente real de
+    "full_page" para esta app."""
     carpeta.mkdir(parents=True, exist_ok=True)
     destino = carpeta / f"{sesion.breakpoint}_{nombre}.png"
-    sesion.page.screenshot(path=str(destino), full_page=full_page)
+    frame = _frame_dashboard(sesion)
+    if full_page and frame is not None:
+        frame.locator(".wrap").screenshot(path=str(destino))
+    else:
+        sesion.page.screenshot(path=str(destino), full_page=full_page)
     return destino
 
 
