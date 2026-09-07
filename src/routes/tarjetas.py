@@ -29,12 +29,27 @@ verbos HTTP DELETE/PUT en ningún otro blueprint):
   POST /api/tarjetas/<id>/archivar        -> soft delete (activa=0)
   POST /api/tarjetas/<id>/borrar          -> borrado definitivo (falla si tiene movimientos)
 """
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, render_template, request
 
 import db_finanzas as db
 from auth import login_required, viendo_id
 
 tarjetas_bp = Blueprint("tarjetas", __name__)
+
+
+@tarjetas_bp.route("/tarjetas")
+@login_required
+def vista_tarjetas():
+    """Página de gestión (alta/edición/archivado/borrado) -- consumo,
+    aislamiento y validación reales viven en los endpoints /api/tarjetas/*
+    de abajo; esta ruta solo sirve la plantilla, el listado en sí se pide
+    por AJAX a GET /api/tarjetas (mismo patrón que el Dashboard, ver
+    dashboard.py::vista_dashboard). `entidades` es solo para el datalist
+    del formulario de alta/edición -- mismo campo/función que ya usa
+    registrar.html."""
+    with db.conexion() as conn:
+        entidades = db.obtener_entidades(conn, usuario_id=viendo_id())
+    return render_template("tarjetas.html", activo="tarjetas", entidades=entidades)
 
 
 def _parsear_cupo(valor_raw: str | None) -> tuple[float | None, str | None]:

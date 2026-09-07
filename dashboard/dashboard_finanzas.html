@@ -116,10 +116,35 @@
      dato financiero se pierde, es solo copy/metadata). */
   @media (max-width: 560px){
     header.top .title-block p{ display:none; }
-    header.top{ margin-bottom: 16px; }
+    /* 16px -> 8px (bug qa-responsive 2026-09-07 #2): con el fix del bug #1
+       (.movimientos-info ya no usa white-space:nowrap, ver su comentario),
+       los presets Trimestral/Semestral wrappean a 2 líneas en vez de
+       desbordar horizontalmente -- eso suma ~20px de alto extra al header
+       SOLO con esos dos presets activos, que antes de este ajuste volvían
+       a empujar el gráfico compacto fuera de los 690px reales del iframe
+       (bug #1 y #2 interactúan: arreglar el overflow horizontal de uno
+       resucitaba el vertical del otro). Se recorta acá para cubrir ese
+       peor caso con margen. */
+    header.top{ margin-bottom: 8px; }
     .last-updated{ display:none; }
   }
   .badge-row{ display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+  /* Hallazgo incidental (2026-09-07, mientras se medía el presupuesto
+     vertical del bug #2 de abajo): el atributo `hidden` que
+     actualizarUIPeriodoControl() alterna sobre #periodoSelectsWrap
+     (class="badge-row") NO estaba ocultando nada -- un `display:flex`
+     de un stylesheet de autor SIEMPRE le gana en la cascada a la regla
+     `[hidden]{display:none}` del stylesheet de user-agent, sin importar
+     especificidad (el origen "autor" pesa más que "user-agent" antes de
+     comparar especificidad). Resultado real: los selects de año/mes
+     quedaban SIEMPRE visibles, incluso con Trimestral/Semestral/Anual
+     activos -- lo que contradice el requisito ya aprobado ("Personalizado"
+     revela los selectores... y oculta el resto del tiempo", ver
+     requisitos/2026-09-07_mejoras-ux-dashboard-kpis.md línea ~99-100).
+     No es uno de los 3 bugs de esta ronda de QA, pero se corrige acá
+     mismo porque es de una línea, sin riesgo, y en el mismo archivo/
+     sección que ya se estaba tocando. */
+  .badge-row[hidden]{ display:none; }
   /* Sin nowrap: en pantallas angostas este texto ("Última actualización
      del dashboard: ...") es más largo que el viewport y, al no poder
      wrappear, forzaba a toda la columna derecha del header (y por lo
@@ -128,10 +153,19 @@
   .last-updated{ font-size: 11px; color: var(--text-faint); white-space:normal; text-align:right; }
   /* Texto de "movimientos cargados": informativo (sin fondo de botón/pill),
      pero más marcado que .last-updated -- es el dato dinámico que reacciona
-     al filtro de período, y debe notarse más que la fecha de actualización. */
+     al filtro de período, y debe notarse más que la fecha de actualización.
+     Sin nowrap (bug qa-responsive 2026-09-07 #1): los presets Trimestral
+     ("...en el trimestre actual (últimos 3 meses)") y Semestral (su
+     equivalente de 6 meses) generan un texto más largo que el viewport en
+     mobile -- con nowrap forzaba el overflow horizontal de TODA la página
+     (scrollWidth 461-471px vs 375px real), exactamente el mismo tipo de bug
+     que .last-updated/.pill ya resolvieron antes (ver sus comentarios acá
+     arriba) con el mismo tratamiento: permitir que el texto wrappee en vez
+     de desbordar. En desktop/tablet no cambia nada, entra de sobra en una
+     sola línea igual que antes. */
   .movimientos-info{
     font-size: 13.5px; font-weight:600; color: var(--text);
-    display:flex; align-items:center; gap:6px; white-space:nowrap;
+    display:flex; align-items:center; gap:6px; white-space:normal;
   }
   .movimientos-info .dot{ width:7px; height:7px; border-radius:50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
   /* Estado vacío / mensaje informativo destacable -- para que un "sin datos"
@@ -181,7 +215,9 @@
      una sumando ~40px de alto que el gráfico compacto necesita) -- sigue
      siendo el mismo control, mismo orden, solo más chico. */
   @media (max-width: 560px){
-    .periodo-control{ gap: 6px; margin: 4px 0 16px; }
+    /* margin-bottom 16px -> 10px: mismo motivo que header.top de arriba
+       (bug qa-responsive 2026-09-07 #2, interacción con el fix del #1). */
+    .periodo-control{ gap: 6px; margin: 4px 0 10px; }
     .view-toggle{ gap: 6px; }
     .view-toggle button{ padding: 6px 10px; font-size: 11px; }
   }
@@ -216,7 +252,14 @@
     margin-bottom: 26px;
   }
   @media (max-width: 1100px){ .kpi-grid{ grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 560px){ .kpi-grid{ grid-template-columns: 1fr; } }
+  /* gap 14px -> 8px (bug qa-responsive 2026-09-07 #2): entre kpi-hero,
+     kpi-support-grid y el gráfico compacto hay 2 gaps de este tamaño --
+     junto con los otros recortes de este mismo bug (ver header.top y
+     .periodo-control más arriba, y .chart-card-compacto-ingersos/
+     .chart-holder.compact más abajo) es lo que hace que el gráfico
+     compacto entre completo incluso en el peor caso (preset Trimestral/
+     Semestral, con .movimientos-info en 2 líneas). */
+  @media (max-width: 560px){ .kpi-grid{ grid-template-columns: 1fr; gap: 8px; } }
 
   .kpi{
     background: linear-gradient(180deg, var(--card-solid), #10141f);
@@ -294,16 +337,32 @@
     }
   }
 
-  /* Tarjetas de apoyo (Ingresos/Gasto real/Deuda actual): mismo tamaño
-     entre sí, más chicas que el balance -- grilla propia de 3 columnas
-     que NO depende de cuántas columnas tenga .kpi-grid en ese breakpoint
-     (a propósito: así se mantienen compactas y en fila también en
-     mobile, en vez de apilarse una debajo de otra y empujar el resto del
-     contenido "arriba del pliegue" fuera de la primera pantalla). */
+  /* Tarjetas de apoyo (Ingresos/Gasto real, + Deuda actual estimada si esa
+     sub-vista no está oculta -- ver deudaVisibleArriba en el JS): mismo
+     tamaño entre sí, más chicas que el balance -- grilla propia de hasta 3
+     columnas que NO depende de cuántas columnas tenga .kpi-grid en ese
+     breakpoint (a propósito: así se mantienen compactas y en fila también
+     en mobile, en vez de apilarse una debajo de otra y empujar el resto
+     del contenido "arriba del pliegue" fuera de la primera pantalla).
+     auto-fit + minmax (bug qa-responsive 2026-09-07 #3) en vez de un
+     repeat(3,1fr) fijo: con "deuda" oculta para la cuenta que se esté
+     viendo (admin > Ocultar vistas) esta grilla solo tiene 2 tarjetas, y
+     con un template fijo de 3 columnas quedaba un tercio de la fila vacío
+     (hueco de layout). Con auto-fit, el tercer track queda "empty" y
+     colapsa a 0 -- el espacio libre se reparte entre las 2 tarjetas
+     presentes (1fr en ambas), sin tocar nada del caso de 3 tarjetas: ahí
+     los 3 tracks quedan ocupados y el resultado es idéntico a
+     repeat(3,1fr) de antes (mismo ancho por tarjeta, en los 3
+     breakpoints). minmax(90px, 1fr): 90px es bien por debajo del ancho
+     real que le toca a cada tarjeta incluso en mobile (~109px con 3
+     tarjetas a 375px), así que nunca fuerza un salto de línea antes de
+     tiempo -- solo evita que, en una pantalla hipotéticamente más angosta
+     que las 3 soportadas, el auto-fit intente amontonar demasiadas
+     columnas. */
   .kpi-support-grid{
     grid-column: 1 / -1;
     display:grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
     gap: 12px;
   }
   @media (max-width: 560px){
@@ -397,9 +456,34 @@
   .chart-holder.tall{ height: 300px; }
   /* Gráfico compacto de "Ingresos vs. gastos" arriba del pliegue (requisito
      2026-09-07, punto 4) -- mismo <canvas>/Chart.js, altura reducida a
-     propósito para que quepa sin scroll junto al resto de la zona de KPIs. */
+     propósito para que quepa sin scroll junto al resto de la zona de KPIs.
+     Bug qa-responsive 2026-09-07 #2: en mobile (375px) la tarjeta completa
+     (h3 + este holder + padding) no entraba en los 690px reales del
+     iframe (100vh - 60px de header - 62px de la barra inferior, ver
+     templates/dashboard.html) -- sobraban entre ~25 y ~40px según el
+     contenido dinámico (más o menos deuda/movimientos cambia el alto del
+     resto de tarjetas de arriba). Se compensa achicando ESTA tarjeta un
+     poco más en mobile (ver .chart-card-compacto-ingresos más abajo) en
+     vez de tocar kpi-hero/kpi-support-grid, que ya entraban bien. */
   .chart-holder.compact{ height: 130px; }
-  @media (max-width: 560px){ .chart-holder.compact{ height: 96px; } }
+  @media (max-width: 560px){ .chart-holder.compact{ height: 72px; } }
+
+  /* Tarjeta que envuelve el gráfico compacto de arriba -- el padding y el
+     tamaño del h3 vivían como style="" inline; se movieron acá para poder
+     recortarlos más en mobile (bug qa-responsive 2026-09-07 #2) sin pelear
+     contra la especificidad de un inline style. En tablet/desktop el
+     padding/tamaño son EXACTAMENTE los mismos que ya tenía (no cambia nada
+     ahí, ya entraba completo). El tag "vista compacta" se oculta en mobile
+     -- ya entraba en una sola línea, pero ocultarlo (en vez de solo
+     achicar la fuente) deja el h3 con una sola caja de texto simple y
+     evita cualquier reflow raro con font-size muy chico + emoji. */
+  .chart-card-compacto-ingresos{ padding: 12px 16px 8px; }
+  .chart-card-compacto-ingresos h3{ font-size: 12.5px; }
+  @media (max-width: 560px){
+    .chart-card-compacto-ingresos{ padding: 6px 12px 4px; }
+    .chart-card-compacto-ingresos h3{ font-size: 10.5px; margin-bottom: 0; line-height: 1.3; }
+    .chart-card-compacto-ingresos h3 .tag{ display: none; }
+  }
 
   /* Gráficos expandibles: click en la tarjeta para verla en grande con
      una tabla de detalle debajo (ver modal más abajo). */
@@ -487,6 +571,61 @@
   .lb-top .amt{ color: var(--text-dim); font-variant-numeric: tabular-nums; }
   .lb-bar{ height:7px; border-radius:999px; background: var(--bg-soft); overflow:hidden; }
   .lb-bar > span{ display:block; height:100%; border-radius:999px; }
+
+  /* ===========================================================
+     5b) TARJETAS DE CRÉDITO CON CUPO (2026-09-07)
+     Ver requisitos/2026-09-07_tarjetas-credito-cupo.md. Reusa el mismo
+     lenguaje visual que .kpi (icon-badge, accent-*, tipografía) en vez
+     de inventar un estilo nuevo -- mismo criterio de consistencia que
+     ya estableció el track UX paralelo (commit 3417d28). Los 3 niveles
+     de alerta (normal/ámbar ≥80%/rojo ≥95%) usan las mismas variables
+     --gold/--red que ya existen para insights/gastos, no colores nuevos.
+     =========================================================== */
+  .tarjetas-grid{
+    display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 4px;
+  }
+  .tarjetas-grid:empty{ display:none; margin:0; } /* 0 tarjetas + sin deuda sin asignar: no queda un hueco vacío */
+  @media (max-width: 1100px){ .tarjetas-grid{ grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px){ .tarjetas-grid{ grid-template-columns: 1fr; } }
+
+  .tarjeta-card{
+    background: var(--card-solid); border:1px solid var(--card-border); border-radius: var(--radius-sm);
+    padding: 16px; min-width:0; /* min-width:0 -- mismo fix de overflow que .kpi (ver nota de .wrap arriba) */
+  }
+  .tarjeta-card.nivel-amber{ border-color: rgba(251,191,36,0.45); }
+  .tarjeta-card.nivel-rojo{ border-color: rgba(251,113,133,0.55); }
+  .tarjeta-card.sin-asignar{ border-style:dashed; }
+
+  .tarjeta-card-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+  .tarjeta-card-titulo{ min-width:0; }
+  .tarjeta-card-nombre{ display:block; font-size:14px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tarjeta-card-meta{ display:block; font-size:11.5px; color:var(--text-dim); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tarjeta-card-pct{
+    flex-shrink:0; font-size:11.5px; font-weight:800; padding:3px 9px; border-radius:999px;
+    background: rgba(39,217,168,0.15); color: var(--green);
+  }
+  .tarjeta-card.nivel-amber .tarjeta-card-pct{ background: rgba(251,191,36,0.2); color: var(--gold); }
+  .tarjeta-card.nivel-rojo .tarjeta-card-pct{ background: rgba(251,113,133,0.2); color: var(--red); }
+
+  .tarjeta-barra{ height:8px; border-radius:999px; background: var(--bg-soft); overflow:hidden; margin: 12px 0; }
+  .tarjeta-barra > span{ display:block; height:100%; border-radius:999px; background: var(--green); }
+  .tarjeta-card.nivel-amber .tarjeta-barra > span{ background: var(--gold); }
+  .tarjeta-card.nivel-rojo .tarjeta-barra > span{ background: var(--red); }
+
+  .tarjeta-cifras{ display:flex; flex-direction:column; gap:6px; }
+  .tarjeta-cifras .fila{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:12px; color:var(--text-dim); }
+  .tarjeta-cifras .fila b{
+    color: var(--text); font-size:13.5px; font-weight:700; font-variant-numeric: tabular-nums;
+    text-align:right; word-break: break-word; /* cupo disponible negativo (más dígitos que el positivo) nunca se corta -- mismo riesgo que 6fc31ae/b65d23a */
+  }
+  .tarjeta-cifras .fila.negativo b{ color: var(--red); }
+  .tarjeta-cifras .fila.positivo b{ color: var(--green); }
+
+  @media (max-width: 560px){
+    .tarjeta-card{ padding:12px; }
+    .tarjeta-cifras .fila{ font-size:10.5px; }
+    .tarjeta-cifras .fila b{ font-size:12px; }
+  }
 
   /* ===========================================================
      6) INSIGHTS
@@ -720,6 +859,15 @@
   <div class="section-title" id="deuda"><h2>💳 Tarjetas de crédito y deuda</h2><div class="line"></div><span class="tag">clasificación automática por texto</span></div>
   <p id="resumenDeuda" style="margin:-6px 0 14px; font-size:12.5px; color:var(--text-dim); max-width:820px;"></p>
   <div class="kpi-grid" id="kpiGridDeuda"></div>
+  <!-- Desglose por tarjeta (2026-09-07, ver
+       requisitos/2026-09-07_tarjetas-credito-cupo.md): NO depende del
+       filtro de período (mismo criterio que "Deuda actual estimada",
+       una foto del presente) -- se llena una sola vez en
+       renderTarjetas(), fuera de renderDashboard(). Vacío por default;
+       si "deuda" está oculta para esta cuenta, ocultarSubvistas() borra
+       este div del DOM antes de que renderTarjetas() intente usarlo
+       (guard `if (!el) return` ahí, mismo patrón que renderPerfilFinanciero()). -->
+  <div class="tarjetas-grid" id="tarjetasGrid"></div>
   <div class="charts-grid" id="deudaChartsGrid" style="margin-top:16px;">
     <div class="chart-card full expandible" onclick="abrirModalGrafico('chartDeudaEvolucion','📈 Evolución de la deuda en tarjetas de crédito')">
       <h3>📈 Evolución de la deuda en tarjetas de crédito</h3>
@@ -915,6 +1063,15 @@ async function iniciarDashboard() {
   const DEUDA_TARJETAS = datosApi.ledger_deuda;
   const GENERATED_AT = datosApi.generated_at;
   const PERFIL_FINANCIERO = datosApi.perfil;
+  // Desglose por tarjeta (2026-09-07, ver
+  // requisitos/2026-09-07_tarjetas-credito-cupo.md): {activas:[...], sin_asignar}.
+  // NO depende del filtro de período -- obtener_tarjetas_con_deuda() en el
+  // backend agrega sobre TODOS los movimientos, igual que "Deuda actual
+  // estimada" (deudaActual, más abajo) toma el último punto de
+  // DEUDA_COMPLETA sin importar qué período esté filtrado. Con respaldo
+  // por si algún día esta clave faltara en la respuesta (cuenta vieja,
+  // caché de red, etc.) -- nunca un TypeError leyendo .activas de undefined.
+  const TARJETAS = datosApi.tarjetas || { activas: [], sin_asignar: 0 };
 
   // Sub-secciones del dashboard que un admin ocultó para esta cuenta
   // (ver "Ocultar vistas" -- routes/admin_vistas.py). Se esconden
@@ -937,7 +1094,7 @@ async function iniciarDashboard() {
     // tienen varios (KPIs, charts-grid, tablas) que hay que remover todos.
     const SECCIONES = {
       perfil_financiero: { titulo: 'perfil', contenido: ['perfilFinancieroCard'] },
-      deuda: { titulo: 'deuda', contenido: ['resumenDeuda', 'kpiGridDeuda', 'deudaChartsGrid'] },
+      deuda: { titulo: 'deuda', contenido: ['resumenDeuda', 'kpiGridDeuda', 'tarjetasGrid', 'deudaChartsGrid'] },
       analisis: { titulo: 'analisis', contenido: ['analisisChartsGrid'] },
       insights: { titulo: 'insights', contenido: ['insightsGrid'] },
       movimientos: { titulo: 'movimientos', contenido: ['todosMovimientosCard', 'cincoVistasCard'] },
@@ -1005,6 +1162,84 @@ document.getElementById('lastUpdated').textContent = `Última actualización del
       btnVerMas.remove();
     });
   }
+})();
+
+/* =================================================================
+   TARJETAS DE CRÉDITO CON CUPO (2026-09-07) — igual que el perfil
+   financiero de arriba, es una foto del presente (no depende del
+   filtro de período), así que se renderiza una sola vez acá, no
+   dentro de renderDashboard(). Ver requisitos/2026-09-07_tarjetas-
+   credito-cupo.md para el diseño completo aprobado.
+================================================================= */
+(function renderTarjetas() {
+  const el = document.getElementById('tarjetasGrid'); // null si "deuda" está oculta para esta cuenta -- ver ocultarSubvistas() más arriba
+  if (!el) return;
+
+  const activas = Array.isArray(TARJETAS.activas) ? TARJETAS.activas : [];
+  const sinAsignar = TARJETAS.sin_asignar || 0;
+
+  if (!activas.length) {
+    // 0 tarjetas registradas: la sección se ve EXACTAMENTE igual que antes
+    // de esta feature (el agregado global en kpiGridDeuda/el gráfico de
+    // evolución no cambian en nada) -- lo único que se agrega es una
+    // invitación discreta a registrar una tarjeta, y solo si de verdad hay
+    // algo que ganar con eso (deuda de tarjeta ya detectada pero sin
+    // clasificar por tarjeta). Si no hay ninguna deuda de tarjeta, no se
+    // agrega nada -- ':empty' en el CSS de arriba evita que quede un
+    // hueco vacío en el layout.
+    el.innerHTML = sinAsignar > 0
+      ? `<div class="empty-state" style="grid-column:1/-1;">💳 Registrá tus tarjetas en <a href="/tarjetas" target="_top" style="color:var(--accent-2); font-weight:600;">Mis tarjetas</a> para ver cupo disponible y % de uso por tarjeta.</div>`
+      : '';
+    return;
+  }
+
+  // Umbrales de alerta (propuestos en el requisito, ajuste visual final
+  // de product-designer): ámbar ≥80%, rojo ≥95%. >=95 también cubre
+  // >100% (cupo superado) -- incluido gasto por debajo de 0 (cupo_total
+  // mal cargado) queda protegido con Math.max(0, ...) más abajo.
+  const nivel = (pct) => pct >= 95 ? 'nivel-rojo' : (pct >= 80 ? 'nivel-amber' : '');
+
+  const cardsHTML = activas.map(t => {
+    const pct = Math.max(0, t.porcentaje_uso || 0);
+    const metaTexto = [t.entidad, t.ultimos4 ? `Terminada en ${t.ultimos4}` : null].filter(Boolean).join(' · ') || 'Tarjeta de crédito';
+    return `
+    <div class="tarjeta-card ${nivel(pct)}" title="${t.nombre}">
+      <div class="tarjeta-card-head">
+        <div class="tarjeta-card-titulo">
+          <span class="tarjeta-card-nombre">${t.nombre}</span>
+          <span class="tarjeta-card-meta">${metaTexto}</span>
+        </div>
+        <span class="tarjeta-card-pct">${fmtPct(pct)}</span>
+      </div>
+      <div class="tarjeta-barra"><span style="width:${Math.min(pct, 100)}%"></span></div>
+      <div class="tarjeta-cifras">
+        <div class="fila"><span>Cupo total</span><b>${fmtCOP(t.cupo_total)}</b></div>
+        <div class="fila"><span>Deuda actual</span><b>${fmtCOP(t.deuda_actual)}</b></div>
+        <div class="fila ${t.cupo_disponible < 0 ? 'negativo' : 'positivo'}"><span>Cupo disponible</span><b>${fmtCOP(t.cupo_disponible)}</b></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // "Sin tarjeta asignada" -- bloque APARTE con su propio total (nunca
+  // mezclado silenciosamente dentro del número de una tarjeta real), solo
+  // si hay algo que mostrar (requisito: "si es > 0"). Incluye tanto
+  // movimientos realmente sin tarjeta como los de cualquier tarjeta ya
+  // archivada (ver el docstring de obtener_tarjetas_con_deuda() en
+  // db_finanzas.py para por qué se define así).
+  const sinAsignarHTML = sinAsignar > 0 ? `
+    <div class="tarjeta-card sin-asignar" title="Deuda de tarjeta sin vincular a ninguna tarjeta registrada">
+      <div class="tarjeta-card-head">
+        <div class="tarjeta-card-titulo">
+          <span class="tarjeta-card-nombre">🗂️ Sin tarjeta asignada</span>
+          <span class="tarjeta-card-meta">No es un error -- es deuda real todavía sin clasificar por tarjeta</span>
+        </div>
+      </div>
+      <div class="tarjeta-cifras" style="margin-top:12px;">
+        <div class="fila"><span>Deuda sin asignar</span><b>${fmtCOP(sinAsignar)}</b></div>
+      </div>
+    </div>` : '';
+
+  el.innerHTML = cardsHTML + sinAsignarHTML;
 })();
 
 const CAT_ICONS = {
@@ -1482,9 +1717,13 @@ kpiGrid.innerHTML = `
        cálculo (totalIngresosReales/totalGastoReal) que el gráfico completo
        de "Análisis visual", ver configIngresosVsGastos() más abajo -- se
        crea la instancia de Chart.js después de insertar este HTML (el
-       <canvas> tiene que existir en el DOM primero). -->
-  <div class="chart-card full" style="padding:12px 16px 8px;">
-    <h3 style="font-size:12.5px;">⚖️ Ingresos vs. gastos <span class="tag" style="margin-left:8px; font-weight:400;">vista compacta</span></h3>
+       <canvas> tiene que existir en el DOM primero). El padding/tamaño de
+       h3 vivían como style="" inline -- se movieron a la clase
+       .chart-card-compacto-ingresos (ver CSS) para poder recortarlos más
+       en mobile sin pelear contra la especificidad de un inline style
+       (bug qa-responsive 2026-09-07 #2). -->
+  <div class="chart-card full chart-card-compacto-ingresos">
+    <h3>⚖️ Ingresos vs. gastos <span class="tag" style="margin-left:8px; font-weight:400;">vista compacta</span></h3>
     <div class="chart-holder compact"><canvas id="chartIngresosGastosCompact"></canvas></div>
   </div>
 
