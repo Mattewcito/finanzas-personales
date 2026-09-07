@@ -34,6 +34,14 @@ venv/
 # nombres de contenedor) -- nunca deben subirse ni pisarse con git reset.
 docker-compose.override.yml
 
+# Agentes de Claude Code (.claude/agents/) -- son herramienta de flujo
+# de trabajo del desarrollador, no parte del producto. Un repo de
+# equipo real no versiona la configuración del asistente de IA de cada
+# dev; quedan solo en local (ver .claude/agents/security-devops.md
+# para el criterio completo). .claude/settings.json SÍ se versiona --
+# es un hook de equipo, no config personal.
+.claude/agents/
+
 # Salidas de las corridas del agente qa-responsive (capturas .png y el
 # .xlsx de bugs encontrados) -- son artefactos de una corrida puntual,
 # no código fuente. El helper reutilizable sí se versiona
