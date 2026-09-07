@@ -95,8 +95,8 @@ def login(sesion: SesionQA, usuario: str, clave: str) -> None:
     las cuentas descartables que crea el agente vía `docker exec`, no
     para cuentas reales."""
     page = sesion.page
-    page.fill('input[name="usuario"]', usuario)
-    page.fill('input[name="clave"]', clave)
+    page.fill('input[name="username"]', usuario)
+    page.fill('input[name="password"]', clave)
     page.click('button[type="submit"]')
     page.wait_for_load_state("networkidle")
 
