@@ -503,8 +503,13 @@ def obtener_movimientos(conn: sqlite3.Connection, usuario_id: int | None = None)
     # dashboard qué se cargó a mano y qué llegó solo (correo/PDF/Excel),
     # y cuándo -- ayuda a decidir/confiar en cada movimiento, no solo a
     # verlo (pedido explícito 2026-09-06).
+    # tarjeta_id (2026-09-07, ver requisitos/2026-09-07_editar-borrar-movimiento.md):
+    # el formulario de edición precarga sus datos desde ESTE array (el
+    # documento asume explícitamente que ya viaja acá, "no hace falta un
+    # endpoint de lectura nuevo") -- sin este campo el selector de
+    # tarjeta del modal de edición no podría saber cuál venía asignada.
     sql = """SELECT id, fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, es_deuda,
-                    origen, referencia_bancaria, creado_en
+                    origen, referencia_bancaria, creado_en, tarjeta_id
              FROM movimientos"""
     params = ()
     if usuario_id is not None:
@@ -1100,3 +1105,239 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
         "duplicados_bd": duplicados_bd,
         "duplicados_lote": duplicados_lote,
     }
+
+
+# ----------------------------- Editar/borrar un movimiento individual -----------------------------
+# 2026-09-07, ver requisitos/2026-09-07_editar-borrar-movimiento.md.
+
+CAMPOS_IDENTIDAD_MOVIMIENTO = ("fecha", "monto", "tipo", "moneda")
+
+
+def obtener_movimiento(conn: sqlite3.Connection, usuario_id: int, movimiento_id: int) -> dict | None:
+    """None si no existe O si existe pero es de otro usuario -- mismo
+    criterio de aislamiento que obtener_tarjeta(): el AND va en el WHERE
+    de la consulta, nunca se filtra después en Python (nunca se le
+    devuelve al llamador una fila ajena para que decida qué hacer)."""
+    r = conn.execute(
+        "SELECT * FROM movimientos WHERE id = ? AND usuario_id = ?", (movimiento_id, usuario_id)
+    ).fetchone()
+    if not r:
+        return None
+    d = dict(r)
+    d["es_deuda"] = bool(d["es_deuda"])
+    return d
+
+
+def editar_movimiento(conn: sqlite3.Connection, usuario_id: int, movimiento_id: int, cambios: dict) -> dict:
+    """Edición PARCIAL de un movimiento propio de usuario_id -- mismo
+    criterio que actualizar_tarjeta()/actualizar_usuario(): solo se
+    tocan los campos presentes en `cambios`.
+
+    Devuelve un dict (no el tuple[bool, str | None] del primer borrador
+    del requerimiento): además de "ok"/"error" hace falta poder avisar
+    la reclasificación de medio_pago/es_deuda (viejo vs. nuevo) para que
+    la ruta se la pase al frontend -- forzar esa info en un string de
+    error hubiera sido más fràgil que un dict explícito. Claves siempre
+    presentes: "ok" (bool), "error" (str | None), "reclasificado"
+    (bool). Si "reclasificado" es True, además: "medio_pago_anterior",
+    "medio_pago_nuevo", "es_deuda_anterior", "es_deuda_nuevo".
+
+    Reglas (ver documento de requisitos para el detalle completo):
+      - 404 se modela acá como ok=False -- es la ruta quien decide el
+        status code exacto, esta función no conoce HTTP.
+      - Campos "de identidad" (fecha/monto/tipo/moneda) en un movimiento
+        YA CONCILIADO (referencia_bancaria IS NOT NULL) o de ORIGEN
+        AUTOMÁTICO (origen != 'app_manual') exigen
+        cambios["confirmar_riesgo"] is True; si falta, se rechaza TODO
+        el cambio (nunca una edición parcial a medias por falta de
+        confirmación -- ni siquiera los campos descriptivos que vinieran
+        en el mismo `cambios` se aplican).
+
+        El gate se dispara por VALOR final distinto al que el movimiento
+        ya tenía, no por la mera presencia de la clave en `cambios`
+        (deliberado, a diferencia de actualizar_tarjeta()): el modal de
+        edición del frontend precarga TODOS los campos del movimiento
+        (ver requisitos, "ya están en el cliente") y lo más probable es
+        que reenvíe el formulario completo aunque el usuario solo haya
+        tocado un campo descriptivo -- si el gate mirara solo "¿vino la
+        clave fecha/monto/tipo/moneda en el body?" en vez de "¿cambió de
+        verdad?", CUALQUIER edición de descripción en un movimiento
+        conciliado exigiría confirmar_riesgo, violando directamente el
+        criterio de aceptación "los campos descriptivos nunca requieren
+        esta advertencia".
+      - Confirmar un cambio de identidad sobre un movimiento con
+        referencia_bancaria no nula la limpia (NULL) en la misma
+        transacción -- ya no se puede seguir garantizando que ese dato
+        es lo que el banco confirmó. Si el movimiento es de origen
+        automático pero nunca tuvo referencia_bancaria, no hay nada que
+        limpiar (el movimiento en sí ES el registro de la fuente
+        automática).
+      - tarjeta_id SOLO se toca si viene explícito en `cambios` -- nunca
+        se re-infiere por texto/descripción (a diferencia de la
+        resolución automática por últimos4 al insertar, ver
+        _resolver_tarjeta_por_ultimos4()). Debe pertenecer a una tarjeta
+        ACTIVA de usuario_id, salvo que sea exactamente la misma que ya
+        tenía (aunque esa tarjeta esté archivada -- no se fuerza a
+        des-asignar solo por no tocarla). Un valor "vacío"
+        (None/0/"") en cambios["tarjeta_id"] es una des-asignación
+        explícita, siempre permitida.
+      - Se recalcula medio_pago/es_deuda con enriquecer_movimiento()
+        sobre el resultado final (lo que no cambió + lo editado) -- es
+        la MISMA función que ya corre al insertar, así que un campo
+        editado (típicamente descripción) puede reclasificar el
+        movimiento exactamente igual que si se hubiera cargado así desde
+        el principio."""
+    existente = obtener_movimiento(conn, usuario_id, movimiento_id)
+    if existente is None:
+        return {"ok": False, "error": "Ese movimiento no existe.", "reclasificado": False, "requiere_confirmacion": False}
+
+    fecha = cambios.get("fecha", existente["fecha"])
+    tipo = cambios.get("tipo", existente["tipo"])
+    monto = cambios.get("monto", existente["monto"])
+    moneda = cambios.get("moneda", existente["moneda"])
+    descripcion = cambios.get("descripcion", existente["descripcion"])
+    categoria = cambios.get("categoria", existente["categoria"])
+    entidad = cambios.get("entidad", existente["entidad"])
+
+    if not str(fecha or "").strip():
+        return {"ok": False, "error": "Falta fecha.", "reclasificado": False, "requiere_confirmacion": False}
+    if not str(descripcion or "").strip():
+        return {"ok": False, "error": "Falta descripción.", "reclasificado": False, "requiere_confirmacion": False}
+    try:
+        monto = float(monto)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "El monto no es un número válido.", "reclasificado": False, "requiere_confirmacion": False}
+    if monto <= 0:
+        return {"ok": False, "error": "El monto tiene que ser mayor a 0.", "reclasificado": False, "requiere_confirmacion": False}
+
+    fecha = str(fecha).strip()
+    tipo = str(tipo).strip()
+    moneda = str(moneda).strip()
+    descripcion = str(descripcion).strip()
+
+    identidad_cambio = (
+        fecha != existente["fecha"]
+        or tipo != existente["tipo"]
+        or round(monto) != round(existente["monto"])
+        or moneda != existente["moneda"]
+    )
+    ya_conciliado = existente["referencia_bancaria"] is not None
+    es_automatico = existente["origen"] != "app_manual"
+    requiere_confirmacion = identidad_cambio and (ya_conciliado or es_automatico)
+    if requiere_confirmacion and cambios.get("confirmar_riesgo") is not True:
+        return {
+            "ok": False,
+            "error": "Editar fecha/monto/tipo/moneda de este movimiento requiere confirmar_riesgo=true.",
+            "reclasificado": False,
+            "requiere_confirmacion": True,
+        }
+
+    tarjeta_id = existente["tarjeta_id"]
+    if "tarjeta_id" in cambios:
+        tid_raw = cambios["tarjeta_id"]
+        if not tid_raw:
+            tarjeta_id = None
+        else:
+            try:
+                nuevo_tid = int(tid_raw)
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "tarjeta_id inválido.", "reclasificado": False, "requiere_confirmacion": False}
+            if nuevo_tid == existente["tarjeta_id"]:
+                tarjeta_id = nuevo_tid  # sin cambio real, aunque esa tarjeta esté archivada
+            else:
+                tarjeta = obtener_tarjeta(conn, usuario_id, nuevo_tid)
+                if not tarjeta or not tarjeta["activa"]:
+                    return {"ok": False, "error": "Esa tarjeta no existe o no está activa.", "reclasificado": False, "requiere_confirmacion": False}
+                tarjeta_id = nuevo_tid
+
+    fila_final = enriquecer_movimiento({
+        "fecha": fecha, "tipo": tipo, "categoria": categoria, "moneda": moneda,
+        "monto": monto, "descripcion": descripcion, "entidad": entidad,
+    })
+
+    medio_pago_anterior = existente["medio_pago"]
+    es_deuda_anterior = existente["es_deuda"]
+    reclasificado = (
+        fila_final["medio_pago"] != medio_pago_anterior
+        or fila_final["es_deuda"] != es_deuda_anterior
+    )
+
+    limpiar_referencia = requiere_confirmacion and ya_conciliado
+
+    campos_sql = [
+        "fecha = ?", "tipo = ?", "categoria = ?", "moneda = ?", "monto = ?",
+        "descripcion = ?", "entidad = ?", "medio_pago = ?", "es_deuda = ?", "tarjeta_id = ?",
+    ]
+    valores = [
+        fila_final["fecha"], fila_final["tipo"], fila_final["categoria"], fila_final["moneda"],
+        fila_final["monto"], fila_final["descripcion"], fila_final["entidad"],
+        fila_final["medio_pago"], int(fila_final["es_deuda"]), tarjeta_id,
+    ]
+    if limpiar_referencia:
+        campos_sql.append("referencia_bancaria = NULL")
+    valores.extend([movimiento_id, usuario_id])
+
+    conn.execute(f"UPDATE movimientos SET {', '.join(campos_sql)} WHERE id = ? AND usuario_id = ?", valores)
+    conn.commit()
+
+    resultado = {"ok": True, "error": None, "reclasificado": reclasificado, "requiere_confirmacion": requiere_confirmacion}
+    if reclasificado:
+        resultado["medio_pago_anterior"] = medio_pago_anterior
+        resultado["medio_pago_nuevo"] = fila_final["medio_pago"]
+        resultado["es_deuda_anterior"] = es_deuda_anterior
+        resultado["es_deuda_nuevo"] = fila_final["es_deuda"]
+    return resultado
+
+
+def advertencia_riesgo_movimiento(movimiento: dict) -> str | None:
+    """Texto de advertencia (o None si no aplica) sobre el riesgo real de
+    editar/borrar `movimiento` -- centralizado acá (no en el frontend)
+    para que la ruta se lo devuelva a quien consuma la API en vez de que
+    cada cliente reinvente su propia versión del copy. Ver
+    requisitos/2026-09-07_editar-borrar-movimiento.md, "Casos borde" y
+    "Riesgo financiero/UX a vigilar" -- el copy nombra la consecuencia en
+    plata real, no un "¿Estás seguro?" genérico.
+
+    - None: movimiento manual (origen='app_manual') sin conciliar
+      (referencia_bancaria IS NULL) -- no hay ningún riesgo real que
+      avisar todavía.
+    - Texto ESPECÍFICO Y MÁS FUERTE para origen='gmail_bot_excel':
+      nombra el mecanismo real (actualizar_dashboard.py, corrida en cada
+      deploy, borra y reinserta TODOS los movimientos de ese origen
+      leyendo el Excel de nuevo) -- se puede perder solo, sin ninguna
+      acción adicional del usuario, no solo "podría duplicarse".
+    - Texto GENÉRICO para cualquier otro caso conciliado o de origen
+      automático: la próxima vez que se detecte la misma transacción
+      (correo/PDF/Excel), puede volver a insertarse -- mismo gasto
+      contado dos veces en los totales."""
+    origen = movimiento.get("origen")
+    conciliado = movimiento.get("referencia_bancaria") is not None
+    if origen == "gmail_bot_excel":
+        return (
+            "Este movimiento viene del Excel sincronizado por el bot de Gmail. "
+            "En cada deploy, actualizar_dashboard.py borra y vuelve a cargar TODOS "
+            "los movimientos de este origen leyendo el Excel de nuevo -- si el dato "
+            "sigue igual ahí, tu edición o borrado se puede perder solo en la próxima "
+            "sincronización, sin que vuelvas a tocar nada."
+        )
+    if conciliado or origen != "app_manual":
+        return (
+            "Este movimiento ya fue conciliado con un correo/PDF/Excel del banco, o "
+            "viene directo de una fuente automática. Si esa misma transacción se "
+            "vuelve a detectar más adelante (una corrida repetida de la lectura de "
+            "correo, o resubir el mismo extracto), puede insertarse de nuevo y vas a "
+            "ver el mismo gasto contado dos veces en tus totales."
+        )
+    return None
+
+
+def borrar_movimiento(conn: sqlite3.Connection, usuario_id: int, movimiento_id: int) -> bool:
+    """Hard delete DEFINITIVO -- no hay papelera ni deshacer en esta
+    versión. Devuelve True si borró una fila, False si no existía o era
+    de otro usuario (aislamiento en el propio WHERE, nunca filtrado
+    después en Python). No hay ninguna FK entrante hacia movimientos.id
+    (a diferencia de tarjetas_credito.id, ver borrar_tarjeta()), así que
+    es un DELETE simple sin IntegrityError que capturar."""
+    cur = conn.execute("DELETE FROM movimientos WHERE id = ? AND usuario_id = ?", (movimiento_id, usuario_id))
+    conn.commit()
+    return cur.rowcount > 0
