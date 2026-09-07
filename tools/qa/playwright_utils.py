@@ -142,7 +142,22 @@ def capturar(sesion: SesionQA, carpeta: Path, nombre: str, *, full_page: bool = 
     directamente el contenedor de contenido (`.wrap`) dentro del
     iframe, que Playwright captura completo aunque no entre en el
     viewport ni haya scroll -- ese es el equivalente real de
-    "full_page" para esta app."""
+    "full_page" para esta app.
+
+    ⚠️ Nota metodológica (2026-09-07, encontrado por `qa-responsive`):
+    justo porque este modo recorta a `.wrap`, una captura con
+    `full_page=True` NO sirve para ver a simple vista un overflow
+    HORIZONTAL (texto/elementos cortados en los bordes) -- `.wrap`
+    puede ser más ancho que el viewport real y la imagen resultante lo
+    muestra completo, sin transmitir que en el navegador real ese
+    ancho de más se traduce en contenido cortado. Para confirmar
+    VISUALMENTE un hallazgo de `hay_overflow_horizontal() == True`,
+    complementá con una captura de viewport real
+    (`capturar(..., full_page=False)`, o `sesion.page.screenshot
+    (full_page=False)` directo) -- la medición programática de
+    `hay_overflow_horizontal()` sigue siendo la fuente de verdad para
+    detectarlo, esto es solo para el paso de "verlo con tus propios
+    ojos" antes de reportarlo."""
     carpeta.mkdir(parents=True, exist_ok=True)
     destino = carpeta / f"{sesion.breakpoint}_{nombre}.png"
     frame = _frame_dashboard(sesion)
