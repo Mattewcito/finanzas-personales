@@ -39,5 +39,9 @@ Dos checkouts/entornos separados que comparten solo `data/finanzas.db`:
 - Agentes de proyecto en `.claude/agents/`: `product-owner`,
   `backend-engineer`, `frontend-dataviz`, `devops-engineer`,
   `test-engineer`, `qa-responsive`, `product-designer`,
-  `security-devops`, `marketing-brand` -- ver `PIPELINE.md` para el
-  orden y qué produce/consume cada uno.
+  `security-devops`, `marketing-brand`, `experto-financiero` -- ver
+  `PIPELINE.md` para el orden y qué produce/consume cada uno.
+- **Excepción a "cuentas de prueba desechables":** `experto-financiero`
+  usa una cuenta propia, real y PERSISTENTE (nunca se borra) -- es la
+  única excepción deliberada a la regla de arriba, documentada en su
+  propio `.md`. Sigue sin ser una cuenta de la familia real.
