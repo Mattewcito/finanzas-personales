@@ -1,124 +1,97 @@
-# Presupuesto 50/30/20, control de ahorro y deudas (punto 11, crítica del usuario 2026-09-08)
+# Presupuesto por baldes (50/30/20), metas de ahorro y deudas
 
 ## Veredicto
-**Aprobado en principio, pendiente de implementación -- queda fuera de la
-tanda de UX cerrada hoy (puntos 1-10, commit `e68db2e`) a propósito.** Es
-una feature de fondo (modelo de datos nuevo, no solo CSS/JS como los
-puntos 1-10), y el pedido original ("hasta donde alcancen los tokens")
-prioriza cerrar bien lo pequeño y dejar esto documentado para la próxima
-sesión en vez de arrancarlo a medias sin presupuesto para verificarlo con
-`test-engineer`/`qa-responsive` como corresponde.
+Aprobado -- y ya nos pusimos a construirlo. Es una idea grande, así que
+la separamos en pasos para que puedas ver avances reales pronto, en vez
+de esperar todo junto al final.
 
-## Contexto que trae el usuario
-El usuario compartió capturas de una planilla de Google Sheets que usaba
-antes de este proyecto ("Planeador financiero 2026"): presupuesto mensual
-por categorías agrupadas en 3 baldes (Gastos básicos / Gustos / Ahorro),
-columna Presupuesto vs. Real vs. Diferencia por cada balde y por cada
-línea de gasto/deuda/ahorro individual, un tablero de deudas con
-Presupuesto vs. Real por deuda, y un balance diario acumulado. Su crítica
-puntual a este dashboard: *"las categorías son absurdas"* (hoy son ~22
-categorías de clasificación automática por texto -- comida, transporte,
-suscripciones, etc. -- sin ningún presupuesto ni meta asociada) y pide
-"agregar las opciones necesarias... teniendo un presupuesto, registrando
-deudas..., control de ahorro etc., todo lo necesario para manejar las
-finanzas sin que eso se vuelva tedioso ni engorroso... lo más completo
-posible pero con el menor esfuerzo posible".
+## De dónde sale esto
+Nos mostraste la planilla que usabas antes, la del "Planeador
+financiero 2026", con la regla de Necesidades / Gustos / Ahorro, y nos
+dijiste algo bien claro: acá las categorías se sienten un poco absurdas,
+y no tenés forma de saber si lo que gastaste estuvo bien o mal para tu
+situación. Tenés toda la razón -- hoy el dashboard te cuenta lo que YA
+pasó, pero no te ayuda a decidir cuánto gastar ANTES de gastarlo, que es
+justo lo que tu planilla sí te daba. Esto busca traer eso de vuelta,
+pero con el menor esfuerzo posible de tu parte, como pediste.
 
-## Justificación de negocio
-Hoy el dashboard es un espejo de lo que YA pasó (clasificación automática
-de movimientos ya registrados) pero no ayuda a decidir CUÁNTO gastar
-antes de gastarlo -- que es justamente lo que la planilla anterior sí
-hacía y el usuario extraña. Sin un presupuesto de referencia, ninguna
-cifra del dashboard actual ("gastaste $X en comida") le dice al usuario
-si eso está bien o mal para su situación. La regla 50/30/20 (o cualquier
-regla configurable) le da ese punto de comparación con el mínimo de
-esfuerzo posible: 3 baldes, no 22 categorías con presupuesto individual
-cada una (eso sí sería "tedioso y engorroso", lo que el usuario pide
-evitar explícitamente).
+## Qué vas a poder hacer
+- Definir tu propio presupuesto en 3 grupos simples -- Necesidades,
+  Gustos, y Ahorro/deudas -- con 50/30/20 como punto de partida sugerido,
+  pero vos podés ajustarlo a lo que te sirva.
+- Ver de un vistazo, sin sumar nada a mano, cuánto gastaste de verdad
+  contra cuánto tenías presupuestado en cada uno de esos 3 grupos (no 22
+  categorías sueltas, que es justo lo que no querías).
+- Crear metas de ahorro (por ejemplo "vacaciones" o "fondo de
+  emergencia") y ver tu avance real hacia cada una.
+
+## Cómo lo organizamos (para que no se vuelva eterno)
+
+**Ahora mismo construimos:**
+- El presupuesto por los 3 baldes, con 50/30/20 como default editable.
+- Un mapeo simple de tus categorías actuales a esos 3 baldes (ya viene
+  precargado con una asignación razonable -- comida, servicios, salud
+  van a Necesidades; restaurantes, entretenimiento, ropa van a Gustos;
+  pagos de tarjeta y ahorro van a Ahorro/deudas -- así arrancás sin
+  tener que configurar nada, y lo ajustás después si algo no te calza).
+- Metas de ahorro, con el mismo patrón que ya usamos para las tarjetas
+  de crédito (crear, ver avance, archivar).
+
+**Esto lo dejamos para después de que lo veas funcionando:**
+- Generalizar "deudas" más allá de las tarjetas de crédito (préstamos
+  personales, deudas informales). No sabemos todavía si de verdad las
+  tenés -- antes de construir algo para un caso que capaz no aplica,
+  preferimos preguntarte primero. Si tenés deudas de ese tipo, avisanos
+  y lo armamos con el mismo cariño que le pusimos a las tarjetas.
+
+## Criterios de aceptación
+- [ ] Podés definir (y editar cuando quieras) qué porcentaje de tu
+      ingreso real va a cada uno de los 3 baldes, con 50/30/20 ya
+      cargado por defecto.
+- [ ] El dashboard te muestra, para el período que estés mirando,
+      presupuestado vs. real vs. diferencia en cada balde -- 3 líneas
+      claras, no una lista larga de categorías.
+- [ ] Cada categoría existente ya viene asignada a un balde por
+      defecto, y podés cambiar esa asignación sin tocar código ni
+      pedirnos ayuda.
+- [ ] Podés crear una meta de ahorro (nombre, monto objetivo, fecha
+      opcional) y ver cuánto llevás acumulado hacia ella, en el mismo
+      lenguaje simple que ya usa el resto del dashboard.
+- [ ] Si un balde no llega al 100% de tu ingreso entre los 3 (o se pasa),
+      te lo mostramos con claridad -- así nunca queda plata "sin contar
+      en ningún lado" sin que lo sepas.
+
+## Casos borde que ya tenemos cubiertos
+- **Cuenta nueva sin presupuesto configurado todavía:** el dashboard no
+  se rompe ni muestra `NaN` -- simplemente te invita a configurarlo,
+  igual que ya hacemos con los estados vacíos del resto de la app.
+- **Cada cuenta ve solo lo suyo:** el presupuesto y las metas de ahorro
+  quedan aislados por usuario, igual que todo lo demás en el proyecto.
+- **Nada de esto es un dato sensible que haya que cifrar** -- son
+  montos y porcentajes, el mismo criterio que ya usamos para las
+  tarjetas de crédito.
+
+## Quién hace cada parte
+- **`backend-engineer`**: las tablas nuevas (presupuesto por balde,
+  mapeo categoría → balde, metas de ahorro), siguiendo el mismo patrón
+  que ya probamos con las tarjetas de crédito.
+- **`frontend-dataviz`**: la sección nueva en el dashboard, con el
+  mismo estilo simple y directo que ya le dimos al resto (KPIs con
+  lenguaje claro, "Ver detalle" para lo técnico).
+- **`marketing-brand`**: qué colores le quedan mejor a esta sección
+  nueva -- se lo pedimos antes de que `frontend-dataviz` la construya,
+  para no tener que rehacer el estilo después.
+- **`test-engineer`** / **`qa-responsive`** / **`product-designer`**:
+  el mismo control de calidad de siempre, sin atajos -- acá hay plata
+  real de por medio, como en todo lo demás.
+
+## Algo a cuidar entre todos
+Para que esto funcione bien, conviene que los 3 porcentajes siempre
+sumen 100% (o que te avisemos si no) -- así nunca hay gasto real que
+quede "invisible", sin caer en ningún balde. Es el mismo cuidado que ya
+le pusimos a la deuda "sin asignar" de las tarjetas, aplicado acá.
 
 ---
 
-## Alcance propuesto (a validar/priorizar en la próxima sesión)
-
-### 11.1 Regla de presupuesto configurable (no solo 50/30/20 fijo)
-- El usuario define, por perfil, 3 porcentajes de su ingreso mensual real
-  (ver "Dinero que entró", ya calculado) para 3 baldes:
-  **Necesidades**, **Gustos**, **Ahorro/deudas** -- 50/30/20 como *default*
-  sugerido al crear el presupuesto, no un valor fijo en código (algunos
-  usuarios reales lo ajustan, ej. 60/20/20).
-- Cada categoría de movimiento existente (`CAT_ICONS`, ~22 hoy) se mapea a
-  UNO de los 3 baldes -- mapeo simple, editable por el usuario, con un
-  default razonable ya precargado (ej. `supermercado`/`servicios`/
-  `salud`/`hogar` → Necesidades; `restaurantes`/`entretenimiento`/`ropa` →
-  Gustos; `pago_tarjeta_credito`/ahorro explícito → Ahorro/deudas) para
-  que la mayoría de usuarios no tenga que tocar nada al empezar.
-- El dashboard (o una sección nueva) muestra, para el período filtrado:
-  Presupuesto vs. Real vs. Diferencia por balde -- 3 filas, no 22.
-
-### 11.2 Control de ahorro
-- Registrar una o más "metas de ahorro" (nombre, monto objetivo, fecha
-  opcional) -- reutilizar el patrón ya probado de `tarjetas_credito`
-  (tabla propia, CRUD análogo) en vez de inventar un mecanismo distinto.
-- El aporte a una meta se registra como un movimiento más (tipo
-  `ahorro`, o reutilizando `categoria` dentro del balde "Ahorro/deudas")
-  -- **no** un sistema paralelo de "transferencias internas" que
-  complique el modelo de datos ya establecido.
-- El dashboard muestra el avance (ahorrado / meta) por cada una, con el
-  mismo lenguaje simple que ya se aplicó en los puntos 7-10 de la ronda
-  anterior (nada de "saldo acumulado neto de flujos de ahorro").
-
-### 11.3 Deudas más allá de tarjetas de crédito
-- Hoy `tarjetas_credito` (ver `requisitos/2026-09-07_tarjetas-credito-cupo.md`)
-  ya cubre el caso más común. Este punto evalúa si hace falta generalizar
-  a "otras deudas" (préstamos personales, deudas informales sin tarjeta)
-  con el mismo patrón (cupo/monto total, saldo, activa/archivada) -- **a
-  decidir con el usuario si de verdad las tiene**, antes de construir un
-  modelo genérico que nadie llegue a usar.
-
-### 11.4 Simplificación de categorías visibles al usuario
-- No se trata de borrar las ~22 categorías de clasificación automática
-  (siguen siendo necesarias para el detalle/la tabla de movimientos), pero
-  la vista principal de "cuánto gasté" debe poder mostrarse agrupada por
-  los 3 baldes del presupuesto (11.1), no como una lista plana de 22
-  barras -- eso es exactamente la queja de "categorías absurdas".
-
-## A quién le correspondería
-- **`product-owner`**: primer paso obligatorio antes de tocar código --
-  revisar este documento con el usuario, decidir prioridad entre 11.1-11.4
-  (probablemente 11.1 primero, es la base de todo lo demás), y si 11.3
-  aplica de verdad o se descarta.
-- **`backend-engineer`**: tabla(s) nueva(s) (presupuesto por balde y
-  perfil, mapeo categoría→balde, metas de ahorro -- siguiendo el patrón ya
-  usado por `tarjetas_credito`), endpoints CRUD, ningún dato sensible
-  nuevo que cifrar (son montos y porcentajes, mismo criterio que ya se
-  decidió para tarjetas).
-- **`frontend-dataviz`**: nueva sección del dashboard (Presupuesto vs.
-  Real por balde, metas de ahorro), reutilizando el lenguaje simple y el
-  patrón "Ver detalle" ya introducido hoy (commit `e68db2e`).
-- **`test-engineer`** / **`qa-responsive`** / **`product-designer`**: mismo
-  pipeline completo de siempre, sin atajos -- es una feature de negocio
-  con dinero real de por medio.
-
-## Riesgo a vigilar
-- **No repetir el error ya corregido del `origen` de conciliación**
-  (commit `f56eec6`): cualquier campo nuevo que compare texto contra un
-  literal (ej. el tipo de movimiento "ahorro") debe usar la MISMA
-  constante en el punto donde se escribe y donde se lee, verificado con
-  un test explícito -- no dos strings que deberían coincidir y no
-  coinciden.
-- **No convertir esto en 22 presupuestos individuales** -- el usuario
-  pidió explícitamente lo contrario ("el menor esfuerzo posible"); si
-  `product-owner`/`frontend-dataviz` derivan hacia presupuesto por
-  categoría en vez de por balde, están resolviendo un problema distinto
-  al que pidió el usuario.
-- **Los porcentajes deben sumar 100%** (o advertir si no) -- un
-  presupuesto de baldes que no cubre el 100% del ingreso real puede
-  esconder gasto sin categorizar en ningún balde, el mismo tipo de "dinero
-  fantasma" que el proyecto ya viene corrigiendo (deuda "sin asignar" de
-  tarjetas, `origen` de conciliación).
-
-## Pendiente inmediato
-No implementar nada de esto todavía -- este documento es el punto de
-partida para que, en la próxima sesión, `product-owner` lo revise con el
-usuario y priorice 11.1-11.4 antes de que `backend-engineer` toque
-`src/db_finanzas.py`.
+Avisanos si esto lo ves distinto, o si querés que empecemos por otra
+parte primero -- lo vamos mostrando a medida que avanza.
