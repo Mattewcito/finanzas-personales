@@ -80,6 +80,15 @@
   }
   .app-sidebar.collapsed .sidebar-nav a{ justify-content:center; }
   .app-sidebar.collapsed .sidebar-nav a span{ display:none; }
+  /* Bug real (reporte usuario 2026-09-08 punto 4): el botón "Cuenta" del
+     final del nav está pensado EXCLUSIVAMENTE para mobile (ver su
+     comentario y el @media max-width:720px más abajo, que es el único
+     lugar que le pone `display:flex`) -- pero nunca tuvo un `display:none`
+     por defecto acá arriba, así que en desktop/tablet caía en el
+     `display: inline-block` de un <button> sin estilos y aparecía suelto
+     al final del menú lateral, sin ningún propósito (en esos anchos el
+     footer de abajo ya está siempre visible). */
+  .sidebar-nav-account-toggle{ display:none; }
 
   .sidebar-footer{
     padding: 13px 18px; border-top:1px solid var(--card-border);

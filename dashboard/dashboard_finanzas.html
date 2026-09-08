@@ -108,6 +108,17 @@
   header.top .title-block p{
     margin:0; color: var(--text-dim); font-size: 13.5px;
   }
+  /* Requisito 2026-09-08 puntos 2/3: reemplaza el <div style="..."> inline
+     que tenía este bloque antes. margin-left:auto (no solo el
+     justify-content:space-between del padre) es lo que garantiza que
+     quede pegado a la derecha incluso cuando el header hace flex-wrap y
+     este bloque termina solo en su propia fila (ver comentario en el
+     HTML) -- sin esto, un único ítem en una fila nueva se va a la
+     izquierda, quedando "pegado" debajo del título/subtítulo. */
+  header.top .header-meta{
+    display:flex; flex-direction:column; align-items:flex-end; gap:10px;
+    margin-left:auto;
+  }
   /* Mobile (requisito 2026-09-07, punto 4): el objetivo explícito es que
      el gráfico compacto de "Ingresos vs. gastos" entre sin scroll en el
      primer viewport -- el copy descriptivo del header y la fecha de
@@ -186,6 +197,15 @@
     background-repeat:no-repeat; background-position: right 10px center; background-size:13px;
   }
   .pill-select:hover{ border-color: var(--accent); }
+  /* Requisito 2026-09-08 punto 5: antes, fuera de "Personalizado", los
+     selects de año/mes se OCULTABAN (`hidden`) -- la interfaz "saltaba"
+     de estructura cada vez que se cambiaba de preset. Ahora quedan
+     siempre en el mismo lugar (ver `.header-meta` arriba) y solo se
+     deshabilitan -- opacos y sin poder interactuar -- cuando el preset
+     activo no es "Personalizado" (ver actualizarUIPeriodoControl() en el
+     JS, que ahora alterna `.disabled` en vez de `.hidden`). */
+  .pill-select:disabled{ opacity: .4; cursor: not-allowed; }
+  .pill-select:disabled:hover{ border-color: var(--card-border); }
   /* Control unificado de período (requisito 2026-09-07): un solo bloque
      con 4 opciones -- Trimestral/Semestral/Anual (filtran de verdad,
      ver aplicarPreset() en el JS) + Personalizado (revela los selects
@@ -282,9 +302,19 @@
     background: rgba(255,255,255,0.07);
   }
   .kpi .icon{ font-size: 30px; line-height:1; opacity:1; }
-  .kpi.accent-green .icon-badge{ background: rgba(39,217,168,0.18); }
-  .kpi.accent-red .icon-badge{ background: rgba(251,113,133,0.18); }
-  .kpi.accent-purple .icon-badge{ background: rgba(124,108,251,0.18); }
+  /* Requisito 2026-09-08 punto 6: los íconos fijos de estas tarjetas
+     (ver ICONS_KPI en el JS) ahora son SVG de trazo, no emoji -- se
+     dimensionan en % del propio `.icon-badge` así escalan solos en los 3
+     tamaños de badge que ya existían (hero/normal/compacto) sin necesitar
+     una regla de tamaño por breakpoint como antes hacía falta con
+     font-size. El color lo hereda de `color` en `.icon-badge` (ver abajo,
+     tintado por accent-*) -- los emoji de catIcon() siguen usando `.icon`
+     normalmente, sin verse afectados por esta regla (no son <svg>). */
+  .kpi .icon-badge svg{ width: 56%; height: 56%; display:block; }
+  .kpi .icon-badge{ color: rgba(255,255,255,0.82); }
+  .kpi.accent-green .icon-badge{ background: rgba(39,217,168,0.18); color: var(--green); }
+  .kpi.accent-red .icon-badge{ background: rgba(251,113,133,0.18); color: var(--red); }
+  .kpi.accent-purple .icon-badge{ background: rgba(124,108,251,0.18); color: var(--accent); }
   .kpi .label{ color: var(--text-dim); font-size: 12.5px; margin-top:10px; font-weight:500; }
   .kpi .value{ font-size: 22px; font-weight: 800; margin-top: 4px; letter-spacing:-0.01em; }
   .kpi .sub{ color: var(--text-faint); font-size: 11.5px; margin-top: 6px; }
@@ -294,6 +324,29 @@
   .kpi .mini-rows{ margin-top: 8px; display:flex; flex-direction:column; gap:4px; }
   .kpi .mini-rows .row{ display:flex; justify-content:space-between; font-size:12px; color:var(--text-dim); }
   .kpi .mini-rows .row b{ color: var(--text); font-weight:600; }
+  /* Requisito 2026-09-08 puntos 8 y 10: el texto metodológico ("no incluye
+     deuda...", "excluye avances...") ocupaba espacio permanente en la
+     tarjeta con lenguaje técnico que no es lo primero que alguien
+     necesita ver -- ahora vive colapsado detrás de "Ver detalle" (mismo
+     patrón en las 4 tarjetas: hero + las 3 de apoyo), en texto simple.
+     `.kpi-detalle-btn` es un <button> sin estilo de botón a propósito
+     (parece un link) para no competir visualmente con el valor grande. */
+  .kpi-detalle-btn{
+    margin-top: 8px; background:none; border:none; padding:0; cursor:pointer;
+    font-family:inherit; font-size: 11.5px; font-weight:600; color: var(--accent-2);
+    display:inline-flex; align-items:center; gap:4px;
+  }
+  .kpi-detalle-btn:hover{ color:#fff; }
+  .kpi-detalle-btn .chev{ font-size:9px; transition: transform .15s ease; display:inline-block; }
+  .kpi-detalle-btn[aria-expanded="true"] .chev{ transform: rotate(180deg); }
+  .kpi-detalle{
+    margin-top:8px; padding-top:8px; border-top:1px solid var(--card-border);
+    font-size:12px; color:var(--text-dim); line-height:1.45;
+  }
+  .kpi-detalle[hidden]{ display:none; }
+  .kpi-detalle p{ margin:0 0 6px; }
+  .kpi-detalle p:last-child{ margin-bottom:0; }
+  .kpi.kpi-hero .kpi-detalle{ font-size:12.5px; }
   .kpi::after{
     content:''; position:absolute; right:-30px; top:-30px; width:100px; height:100px;
     background: radial-gradient(circle, rgba(124,108,251,0.15), transparent 70%);
@@ -312,37 +365,22 @@
     display:flex; flex-direction:column; justify-content:center;
   }
   .kpi.kpi-hero .icon-badge{ width: 56px; height:56px; }
-  .kpi.kpi-hero .icon{ font-size: 32px; }
   .kpi.kpi-hero .label{ font-size: 14.5px; margin-top:14px; }
   .kpi.kpi-hero .value{ font-size: 38px; margin-top: 6px; }
-  .kpi.kpi-hero .sub{ font-size: 12.5px; margin-top: 8px; }
   @media (max-width: 1100px){
     .kpi.kpi-hero .value{ font-size: 32px; }
   }
   @media (max-width: 560px){
     .kpi.kpi-hero{ padding: 14px 16px 14px; min-height: 0; }
     .kpi.kpi-hero .icon-badge{ width: 40px; height:40px; }
-    .kpi.kpi-hero .icon{ font-size: 22px; }
     .kpi.kpi-hero .label{ font-size: 12.5px; margin-top:8px; }
     .kpi.kpi-hero .value{ font-size: 25px; margin-top:3px; } /* responsive a propósito: a este ancho un balance negativo de muchos dígitos (ej. -$12.345.678) no entraría a 38px sin desbordar */
-    /* El "sub" completo es el mayor consumidor de alto de esta tarjeta en
-       mobile -- se recorta con elipsis acá (requisito punto 4: liberar
-       alto para que el gráfico compacto entre sin scroll). El texto
-       completo sigue disponible sin recortar en tablet/desktop, y el
-       VALOR del balance (el dato que importa) nunca se toca.
-       Fix qa_reports/2026-09-07/ux_review_tarjetas_credito.md 🟠#1: con
-       deuda de tarjeta > 0 el texto termina en "(deuda actual estimada:
-       $X)" -- a 1 línea ese cierre quedaba cortado por el clamp, ocultando
-       justamente la cifra que se agregó para no contradecir la sección de
-       Tarjetas de crédito. `.sub-con-deuda` (agregada por el JS solo
-       cuando deudaActual > 0) sube a 2 líneas de clamp para ese caso
-       puntual; el caso sin deuda (el más común) se queda en 1 línea como
-       antes, sin perder presupuesto de alto para el gráfico. */
-    .kpi.kpi-hero .sub{
-      font-size: 11px; margin-top:4px;
-      display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden;
-    }
-    .kpi.kpi-hero .sub.sub-con-deuda{ -webkit-line-clamp:2; }
+    /* Requisito 2026-09-08 punto 8: el texto metodológico que antes vivía
+       siempre visible en `.sub` (y que en mobile necesitaba un
+       line-clamp dedicado para no comerse el alto del gráfico compacto,
+       ver historial del commit anterior) ahora arranca COLAPSADO detrás
+       de "Ver detalle" en las 3 pantallas -- ya no hace falta recortarlo
+       acá, el presupuesto de alto de mobile ya está resuelto de raíz. */
   }
 
   /* Tarjetas de apoyo (Ingresos/Gasto real, + Deuda actual estimada si esa
@@ -377,15 +415,13 @@
     .kpi-support-grid{ gap:6px; }
     .kpi-support-grid .kpi{ padding: 10px 8px 8px; }
     .kpi-support-grid .kpi .icon-badge{ width:26px; height:26px; }
-    .kpi-support-grid .kpi .icon{ font-size:14px; }
     .kpi-support-grid .kpi .label{ font-size:9.5px; margin-top:5px; }
     .kpi-support-grid .kpi .value{ font-size:13px; margin-top:2px; }
-    /* El "sub" (ej. "12 movimientos · excluye avances...") se oculta SOLO
-       acá, en mobile, para liberar alto -- el dato principal (el monto,
-       en .value) sigue siempre visible; el detalle completo sigue
-       disponible en tablet/desktop y en la sección "Tarjetas de crédito y
-       deuda" para el caso de Deuda actual. Ningún valor deja de mostrarse. */
-    .kpi-support-grid .kpi .sub{ display:none; }
+    /* Requisito 2026-09-08 punto 10: ya no hace falta ocultar "sub" en
+       mobile -- ese texto ahora arranca colapsado detrás de "Ver detalle"
+       en los 3 breakpoints (ver .kpi-detalle-btn en el CSS de más arriba),
+       nunca ocupa espacio hasta que alguien lo pide. */
+    .kpi-support-grid .kpi .kpi-detalle-btn{ font-size:10px; margin-top:4px; }
   }
 
   /* Fila secundaria (Transacciones/Categoría/Promedio/Entidad): mismos
@@ -824,10 +860,36 @@
   <header class="top">
     <div class="title-block">
       <h1>💰 Dashboard Financiero Personal</h1>
-      <p>Análisis automático de movimientos — generado desde <b style="color:var(--text-dim)">finanzas.db</b>, sincronizada con el Excel, el correo y los extractos que cargues</p>
+      <!-- Requisito 2026-09-08 punto 1: el texto anterior ("Análisis
+           automático de movimientos -- generado desde finanzas.db,
+           sincronizada con el Excel, el correo y los extractos que
+           cargues") era lenguaje de implementación -- nombraba la base de
+           datos y las fuentes de sincronización, cero valor para quien
+           solo quiere saber cómo está su plata. Se reemplaza por un
+           resumen real y dinámico del período filtrado (ver
+           renderDashboard(), variable headerResumenEl más abajo) --
+           arranca vacío para no mostrar un placeholder mientras carga. -->
+      <p id="headerResumen"></p>
     </div>
-    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:10px;">
+    <!-- Requisito 2026-09-08 puntos 2 y 3: antes este era un <div
+         style="..."> inline sin nombre -- cuando el header no entraba en
+         una sola fila (textos largos de "movimientos cargados", ej. los
+         presets Trimestral/Semestral) el flex-wrap de <header> lo mandaba
+         a su propia fila SIN mantener la alineación a la derecha (un
+         único ítem en una fila con justify-content:space-between se va a
+         la izquierda, no a la derecha) -- se veía "pegado" debajo del
+         título en vez de prolijo en la esquina superior derecha.
+         `.header-meta` con margin-left:auto (ver CSS) lo resuelve incluso
+         en ese caso. Además ahora vive acá el selector de año/mes (antes
+         en `.periodo-control`, ocupando una fila ancha propia que le
+         quitaba espacio y protagonismo a los KPIs de abajo) -- mismo
+         <select> de siempre, mismo id, solo se reubicó el markup. -->
+    <div class="header-meta">
       <div class="movimientos-info" id="movimientosInfo"></div>
+      <div class="badge-row" id="periodoSelectsWrap">
+        <select id="filtroAnio" class="pill-select" aria-label="Año"></select>
+        <select id="filtroMes" class="pill-select" aria-label="Mes"></select>
+      </div>
       <div class="last-updated" id="lastUpdated"></div>
     </div>
   </header>
@@ -835,12 +897,12 @@
   <!-- ============================================================
        CONTROL UNIFICADO DE PERÍODO (requisito 2026-09-07, punto 1)
        -----------------------------------------------------------------
-       Un único bloque -- mismo orden interno (título -> botones ->
-       selects condicionales -> badge de rango) en los 3 breakpoints.
+       Un único bloque -- título -> botones -> badge de rango. El selector
+       año/mes (antes acá también, como fila propia) se movió al header
+       (`.header-meta`, ver arriba -- requisito 2026-09-08 punto 3).
        Trimestral/Semestral/Anual filtran de verdad todo el dashboard
        (ver aplicarPreset() en el JS, reutiliza renderDashboard()); antes
-       eran decorativos. "Personalizado" revela los mismos selects
-       año/mes de siempre (no se reconstruyen, se reutilizan tal cual).
+       eran decorativos.
        ============================================================ -->
   <section class="periodo-control" id="periodoControl" aria-label="Filtro de período del dashboard">
     <span class="periodo-control-titulo">Período</span>
@@ -849,10 +911,6 @@
       <button type="button" data-periodo="semestral">Semestral</button>
       <button type="button" data-periodo="anual">Anual</button>
       <button type="button" data-periodo="personalizado" class="active">Personalizado</button>
-    </div>
-    <div class="badge-row" id="periodoSelectsWrap">
-      <select id="filtroAnio" class="pill-select" aria-label="Año"></select>
-      <select id="filtroMes" class="pill-select" aria-label="Mes"></select>
     </div>
     <div class="badge-row" id="rangoTotalBadge"></div>
   </section>
@@ -1259,6 +1317,30 @@ document.getElementById('lastUpdated').textContent = `Última actualización del
   el.innerHTML = cardsHTML + sinAsignarHTML;
 })();
 
+// Requisito 2026-09-08 punto 6: los íconos de las tarjetas KPI (antes
+// emoji sueltos -- ✅📥📤💳 etc.) se ven "genéricos" y su tamaño real
+// varía según la fuente/SO de quien mira el dashboard (un emoji no es un
+// asset con medidas fijas). Se reemplazan por el MISMO lenguaje visual
+// que ya usa el menú lateral (SVG de trazo, stroke-width 1.8, currentColor
+// -- ver base.html): consistente entre navegadores, y el color lo hereda
+// de `.icon-badge` (ver CSS, ya tintado por accent-verde/rojo/violeta).
+// Los emoji de CAT_ICONS (más abajo) NO se tocan a propósito -- son
+// decenas de categorías, cada emoji ya funciona como distintivo visual
+// rápido por categoría, y reconstruir todos como SVG no es proporcional
+// al resto de esta ronda de cambios.
+const ICONS_KPI = {
+  check:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9 12l2 2 4-4"></path></svg>',
+  warning:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>',
+  arrowDown:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v7"></path><path d="M9 12l3 3 3-3"></path></svg>',
+  arrowUp:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 16V9"></path><path d="M9 12l3-3 3 3"></path></svg>',
+  card:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg>',
+  list:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>',
+  calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4"></path><path d="M8 2v4"></path><path d="M3 10h18"></path></svg>',
+  bank:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M5 21V10l7-6 7 6v11"></path><path d="M9 21v-7h6v7"></path></svg>',
+  exchange: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3l4 4-4 4"></path><path d="M20 7H8"></path><path d="M8 21l-4-4 4-4"></path><path d="M4 17h12"></path></svg>',
+  bag:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg>',
+};
+
 const CAT_ICONS = {
   salario:'💼', transferencias:'🔁', suscripciones:'📱', restaurantes:'🍽️', comida:'🍔',
   'crédito':'💳', transporte:'🚌', entretenimiento:'🎬', compras:'🛍️', retiro:'🏧',
@@ -1536,6 +1618,8 @@ if (todosMovActivo) renderTodosMovimientos(DATA);
 if (!DATA.length) {
   document.getElementById('kpiGrid').innerHTML =
     '<div class="empty-state">📭 No hay movimientos registrados en el período seleccionado.</div>';
+  const _headerResumenVacio = document.getElementById('headerResumen'); // requisito 2026-09-08 punto 1
+  if (_headerResumenVacio) _headerResumenVacio.textContent = 'No hay movimientos registrados en este período.';
   // Todo lo que sigue puede no existir si un admin ocultó "deuda",
   // "analisis" o "movimientos" para esta cuenta -- ver ocultarSubvistas().
   const _kpiGridDeudaVacio = document.getElementById('kpiGridDeuda');
@@ -1661,6 +1745,10 @@ const [catTop, catTopMonto] = gastoPorCategoria[0] || ['sin datos', 0];
 // Promedio mensual de gasto REAL de caja (COP): total gasto real / nº de meses distintos presentes en los datos
 const mesesPresentes = [...new Set(dataCOP.map(r=>r.fecha.slice(0,7)))].sort();
 const promedioMensualGasto = mesesPresentes.length ? totalGastoReal / mesesPresentes.length : 0;
+// Mismo cálculo que arriba pero de lo que entró (requisito 2026-09-08 punto
+// 8) -- se usa en el detalle expandible de "Dinero disponible", no como
+// tarjeta propia, para no sumar otra tarjeta más a la grilla.
+const promedioMensualIngreso = mesesPresentes.length ? totalIngresosReales / mesesPresentes.length : 0;
 // Formato de etiqueta de mes ("Ene 2026") reutilizado por todos los gráficos
 // que agregan por mes (deuda de tarjetas, evolución de gastos, tendencia
 // mensual) -- definido acá, antes de su primer uso, para que esté disponible
@@ -1690,43 +1778,69 @@ const haySoloUnaMoneda = monedaCount.size <= 1;
 // esta cuenta, la copia de acá tampoco se muestra (ver VISTAS_OCULTAS).
 const deudaVisibleArriba = !VISTAS_OCULTAS.has('deuda');
 
+// Requisito 2026-09-08 punto 1: reemplaza el texto fijo/técnico del header
+// ("Análisis automático de movimientos -- generado desde finanzas.db...")
+// por un resumen real del período que sí filtró la persona, en lenguaje
+// llano -- se recalcula en cada render, así que cambia con el filtro.
+const _headerResumenEl = document.getElementById('headerResumen');
+if (_headerResumenEl) _headerResumenEl.textContent = balanceCajaReal >= 0
+  ? `Vas bien: en este período te sobraron ${fmtCOP(balanceCajaReal)} después de tus gastos.`
+  : `Atención: en este período gastaste ${fmtCOP(Math.abs(balanceCajaReal))} más de lo que te entró.`;
+
+// Requisito 2026-09-08 puntos 8 y 10: helper para el patrón "Ver detalle"
+// que reemplaza el texto técnico permanente de estas 4 tarjetas (antes en
+// `.sub`, siempre visible) -- arranca colapsado (`hidden`), se abre con un
+// click delegado en document (ver más abajo, cerca de btnSubir) porque
+// este HTML se reconstruye entero en cada render.
+function kpiDetalle(id, htmlInterno) {
+  return `
+    <button type="button" class="kpi-detalle-btn" data-detalle-target="${id}" aria-expanded="false">Ver detalle <span class="chev">▾</span></button>
+    <div class="kpi-detalle" id="${id}" hidden>${htmlInterno}</div>
+  `;
+}
+
 const kpiGrid = document.getElementById('kpiGrid');
 kpiGrid.innerHTML = `
   <div class="kpi kpi-hero ${balanceCajaReal >= 0 ? 'accent-green' : 'accent-red'}">
-    <div class="icon-badge"><div class="icon">${balanceCajaReal >= 0 ? '✅' : '⚠️'}</div></div>
-    <div class="label">Balance de caja real</div>
+    <div class="icon-badge"><div class="icon">${ICONS_KPI[balanceCajaReal >= 0 ? 'check' : 'warning']}</div></div>
+    <!-- Requisito 2026-09-08 punto 7: "Balance de caja real" sonaba
+         técnico -- "Dinero disponible" es lo mismo dicho en el lenguaje
+         que usaría cualquiera que no maneje jerga contable. -->
+    <div class="label">Dinero disponible</div>
     <div class="value">${fmtCOP(balanceCajaReal)}</div>
-    <!-- "no incluye deuda de tarjeta" describe la METODOLOGÍA del cálculo
-         (de dónde sale este número), no si tenés o no deuda -- la frase
-         anterior ("sin deuda de tarjeta") se leía como una afirmación de
-         que la deuda era cero, contradiciendo a simple vista la sección
-         de "Tarjetas de crédito y deuda" más abajo cuando sí había saldo
-         (bug real, QA 2026-09-06/07). Si hay deuda vigente, se nombra acá
-         mismo con su valor para que no quede como un dato oculto/opuesto. -->
-    <div class="sub${deudaActual > 0 ? ' sub-con-deuda' : ''}">${balanceCajaReal >= 0 ? 'Saldo positivo en el período' : 'El gasto real supera tus ingresos reales'} · no incluye deuda de tarjeta de crédito${deudaActual > 0 ? ` (deuda actual estimada: ${fmtCOP(deudaActual)})` : ''}</div>
+    ${kpiDetalle('detalleBalance', `
+      <p>${balanceCajaReal >= 0 ? 'Es el dinero que de verdad entró y salió de tus cuentas en este período -- lo que sobró.' : 'En este período gastaste más de lo que te entró.'} No incluye lo que debes en tarjetas de crédito.</p>
+      ${deudaActual > 0 ? `<p>Hoy debés <b style="color:var(--text)">${fmtCOP(deudaActual)}</b> en tarjetas de crédito (no está restado de este número).</p>` : ''}
+      <div class="mini-rows">
+        <div class="row"><span>Promedio mensual que entró</span><b>${fmtCOP(promedioMensualIngreso)}</b></div>
+        <div class="row"><span>Promedio mensual que salió</span><b>${fmtCOP(promedioMensualGasto)}</b></div>
+      </div>
+    `)}
   </div>
 
   <div class="kpi-support-grid">
     <div class="kpi accent-green">
-      <div class="icon-badge"><div class="icon">📥</div></div>
-      <div class="label">Ingresos reales</div>
+      <div class="icon-badge"><div class="icon">${ICONS_KPI.arrowDown}</div></div>
+      <!-- Requisito 2026-09-08 punto 9: "Ingresos reales" sonaba a que
+           existen "ingresos falsos" -- se nombra directamente qué es. -->
+      <div class="label">Dinero que entró</div>
       <div class="value">${fmtCOP(totalIngresosReales)}</div>
-      <div class="sub">${ingresosReales.length} movimientos · excluye avances de tarjeta de crédito</div>
+      ${kpiDetalle('detalleIngresos', `<p>Se contaron ${ingresosReales.length} movimiento${ingresosReales.length===1?'':'s'}. No incluye los adelantos de efectivo de tu tarjeta de crédito -- eso es deuda, no un ingreso real.</p>`)}
     </div>
 
     <div class="kpi accent-red">
-      <div class="icon-badge"><div class="icon">📤</div></div>
-      <div class="label">Gasto real (caja)</div>
+      <div class="icon-badge"><div class="icon">${ICONS_KPI.arrowUp}</div></div>
+      <div class="label">Dinero que salió</div>
       <div class="value">${fmtCOP(totalGastoReal)}</div>
-      <div class="sub">${gastosReales.length} movimientos · dinero que realmente salió de tus cuentas</div>
+      ${kpiDetalle('detalleGasto', `<p>Se contaron ${gastosReales.length} movimiento${gastosReales.length===1?'':'s'}. Es lo que de verdad salió de tus cuentas -- no incluye compras a crédito que todavía no pagaste.</p>`)}
     </div>
 
     ${deudaVisibleArriba ? `
     <div class="kpi ${deudaActual > 0 ? 'accent-red' : 'accent-green'}">
-      <div class="icon-badge"><div class="icon">💳</div></div>
+      <div class="icon-badge"><div class="icon">${ICONS_KPI.card}</div></div>
       <div class="label">Deuda actual estimada</div>
       <div class="value">${fmtCOP(deudaActual)}</div>
-      <div class="sub">saldo acumulado: compras a crédito + avances − pagos</div>
+      ${kpiDetalle('detalleDeuda', `<p>Es lo que debés hoy en tus tarjetas de crédito: se suman tus compras y adelantos, y se resta lo que ya pagaste.</p>`)}
     </div>` : ''}
   </div>
 
@@ -1745,7 +1859,7 @@ kpiGrid.innerHTML = `
   </div>
 
   <div class="kpi kpi-compact accent-purple">
-    <div class="icon-badge"><div class="icon">🧾</div></div>
+    <div class="icon-badge"><div class="icon">${ICONS_KPI.list}</div></div>
     <div class="label">Transacciones totales</div>
     <div class="value">${fmtNum(DATA.length)}</div>
     <div class="sub">${gastosCOP.length + dataUSD.length} gastos · ${ingresosCOP.length} ingresos</div>
@@ -1759,14 +1873,14 @@ kpiGrid.innerHTML = `
   </div>
 
   <div class="kpi kpi-compact">
-    <div class="icon-badge"><div class="icon">📆</div></div>
+    <div class="icon-badge"><div class="icon">${ICONS_KPI.calendar}</div></div>
     <div class="label">Promedio mensual de gasto real</div>
     <div class="value">${fmtCOP(promedioMensualGasto)}</div>
     <div class="sub">calculado sobre ${mesesPresentes.length} meses con datos · solo caja real</div>
   </div>
 
   <div class="kpi kpi-compact">
-    <div class="icon-badge"><div class="icon">🏦</div></div>
+    <div class="icon-badge"><div class="icon">${ICONS_KPI.bank}</div></div>
     <div class="label">Entidad más utilizada</div>
     <div class="value">${entidadTop}</div>
     <div class="sub">${entidadCount[0]?.[1] || 0} movimientos · ${fmtCOP(entidadMonto.find(e=>e[0]===entidadTop)?.[1]||0)}</div>
@@ -1774,7 +1888,7 @@ kpiGrid.innerHTML = `
 
   ${!haySoloUnaMoneda ? `
   <div class="kpi">
-    <div class="icon-badge"><div class="icon">💱</div></div>
+    <div class="icon-badge"><div class="icon">${ICONS_KPI.exchange}</div></div>
     <div class="label">Distribución por moneda</div>
     <div class="mini-rows">
       ${[...monedaCount.entries()].map(([m,c])=>`<div class="row"><span>${m}</span><b>${c} mov. (${fmtPct(c/DATA.length*100)})</b></div>`).join('')}
@@ -1794,28 +1908,28 @@ crearGrafico('chartIngresosGastosCompact', configIngresosVsGastos({ compacto: tr
 const _kpiGridDeuda = document.getElementById('kpiGridDeuda'); // null si "deuda" está oculta -- ver ocultarSubvistas()
 if (_kpiGridDeuda) _kpiGridDeuda.innerHTML = `
   <div class="kpi ${deudaActual > 0 ? 'accent-red' : 'accent-green'}">
-    <div class="icon-badge"><div class="icon">💳</div></div>
+    <div class="icon-badge"><div class="icon">${ICONS_KPI.card}</div></div>
     <div class="label">Deuda actual estimada</div>
     <div class="value">${fmtCOP(deudaActual)}</div>
     <div class="sub">saldo acumulado: compras a crédito + avances − pagos</div>
   </div>
 
   <div class="kpi">
-    <div class="icon-badge"><div class="icon">🛍️</div></div>
+    <div class="icon-badge"><div class="icon">${ICONS_KPI.bag}</div></div>
     <div class="label">Gasto con tarjeta de crédito</div>
     <div class="value">${fmtCOP(totalGastoCredito)}</div>
     <div class="sub">${gastosCredito.length} compras · ${fmtPct(totalGastosCOP ? totalGastoCredito/totalGastosCOP*100 : 0)} de todo lo que gastaste</div>
   </div>
 
   <div class="kpi">
-    <div class="icon-badge"><div class="icon">💰</div></div>
+    <div class="icon-badge"><div class="icon">${ICONS_KPI.arrowDown}</div></div>
     <div class="label">Avances de crédito recibidos</div>
     <div class="value">${fmtCOP(totalAvancesCredito)}</div>
     <div class="sub">${avancesCredito.length} adelanto(s) de efectivo — es deuda, no ingreso real</div>
   </div>
 
   <div class="kpi accent-green">
-    <div class="icon-badge"><div class="icon">✅</div></div>
+    <div class="icon-badge"><div class="icon">${ICONS_KPI.check}</div></div>
     <div class="label">Pagos a tarjetas de crédito</div>
     <div class="value">${fmtCOP(totalPagosTarjeta)}</div>
     <div class="sub">${pagosTarjeta.length} pago(s) registrados que abonan la deuda</div>
@@ -2434,13 +2548,20 @@ selMes.addEventListener('change', aplicarFiltroPeriodo);
    delega en aplicarFiltroPeriodo(), que ya sabe leerlos.
 ================================================================= */
 const btnsPeriodo = document.getElementById('periodoBotones');
-const periodoSelectsWrap = document.getElementById('periodoSelectsWrap');
 
 function actualizarUIPeriodoControl() {
   btnsPeriodo?.querySelectorAll('button').forEach(b => {
     b.classList.toggle('active', b.dataset.periodo === filtroPeriodoActivo);
   });
-  if (periodoSelectsWrap) periodoSelectsWrap.hidden = filtroPeriodoActivo !== 'personalizado';
+  // Requisito 2026-09-08 punto 5: antes se OCULTABAN los selects año/mes
+  // (`hidden`) fuera de "Personalizado" -- la interfaz cambiaba de
+  // estructura en cada click, una percepción de la UI "saltando". Ahora
+  // quedan siempre en el mismo lugar del header (ver `.header-meta`) y
+  // solo se deshabilitan -- opacos, sin poder interactuar -- cuando no
+  // aplican (ver .pill-select:disabled en el CSS).
+  const esPersonalizado = filtroPeriodoActivo === 'personalizado';
+  if (selAnio) selAnio.disabled = !esPersonalizado;
+  if (selMes) selMes.disabled = !esPersonalizado;
 }
 
 function aplicarPreset(tipo) {
@@ -2678,6 +2799,21 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   btnSubir.addEventListener('click', () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  // Requisito 2026-09-08 puntos 8/10: "Ver detalle" de las tarjetas KPI
+  // (ver kpiDetalle() en renderDashboard()). Delegado en document en vez
+  // de atado a cada botón porque #kpiGrid se reconstruye por completo
+  // (innerHTML) en cada render -- un listener puesto directo sobre un
+  // botón puntual moriría con él en el próximo filtro de período.
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.kpi-detalle-btn');
+    if (!btn) return;
+    const detalle = document.getElementById(btn.dataset.detalleTarget);
+    if (!detalle) return;
+    const yaAbierto = !detalle.hidden;
+    detalle.hidden = yaAbierto;
+    btn.setAttribute('aria-expanded', String(!yaAbierto));
   });
 });
 </script>
