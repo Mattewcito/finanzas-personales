@@ -309,7 +309,22 @@
      una regla de tamaño por breakpoint como antes hacía falta con
      font-size. El color lo hereda de `color` en `.icon-badge` (ver abajo,
      tintado por accent-*) -- los emoji de catIcon() siguen usando `.icon`
-     normalmente, sin verse afectados por esta regla (no son <svg>). */
+     normalmente, sin verse afectados por esta regla (no son <svg>).
+     Bug real (reporte usuario 2026-09-08, "íconos torcidos"): un
+     `width/height: 56%` en el <svg> se resuelve contra el tamaño de SU
+     contenedor directo (`.icon`) -- pero `.icon` es un <div> sin ancho/
+     alto propio dentro de un flex container con `align-items:center`
+     (no `stretch`), así que su caja terminaba siendo indeterminada. Un
+     porcentaje contra un tamaño indeterminado se trata como `auto`, y un
+     <svg> sin `width`/`height` propios cae al tamaño de reemplazo por
+     defecto del navegador (no cuadrado) -- el ícono se veía estirado/
+     descentrado, no realmente "girado", pero se percibía torcido. Ahora
+     `.icon` ocupa el 100% real de `.icon-badge` (que sí tiene medida fija
+     en px) antes de aplicarle el % al svg -- cadena de tamaños siempre
+     determinada, en los 3 contextos (hero/normal/compacto). */
+  .kpi .icon-badge .icon{
+    width:100%; height:100%; display:flex; align-items:center; justify-content:center;
+  }
   .kpi .icon-badge svg{ width: 56%; height: 56%; display:block; }
   .kpi .icon-badge{ color: rgba(255,255,255,0.82); }
   .kpi.accent-green .icon-badge{ background: rgba(39,217,168,0.18); color: var(--green); }
@@ -321,9 +336,9 @@
   .kpi.accent-green .value{ color: var(--green); }
   .kpi.accent-red .value{ color: var(--red); }
   .kpi.accent-purple .value{ color: var(--accent); }
-  .kpi .mini-rows{ margin-top: 8px; display:flex; flex-direction:column; gap:4px; }
-  .kpi .mini-rows .row{ display:flex; justify-content:space-between; font-size:12px; color:var(--text-dim); }
-  .kpi .mini-rows .row b{ color: var(--text); font-weight:600; }
+  .kpi .mini-rows{ margin-top: 8px; display:flex; flex-direction:column; gap:4px; max-width:320px; }
+  .kpi .mini-rows .row{ display:flex; justify-content:space-between; gap:16px; font-size:12px; color:var(--text-dim); }
+  .kpi .mini-rows .row b{ color: var(--text); font-weight:600; white-space:nowrap; }
   /* Requisito 2026-09-08 puntos 8 y 10: el texto metodológico ("no incluye
      deuda...", "excluye avances...") ocupaba espacio permanente en la
      tarjeta con lenguaje técnico que no es lo primero que alguien
@@ -339,13 +354,22 @@
   .kpi-detalle-btn:hover{ color:#fff; }
   .kpi-detalle-btn .chev{ font-size:9px; transition: transform .15s ease; display:inline-block; }
   .kpi-detalle-btn[aria-expanded="true"] .chev{ transform: rotate(180deg); }
+  /* Reporte usuario 2026-09-08 ("los detalles son básicos"): un
+     border-top + texto plano se leía como un afterthought, no como una
+     pieza diseñada -- ahora es una superficie propia (mismo lenguaje que
+     el resto de la app usa para "contenido anidado dentro de una
+     tarjeta", ver .chart-card/.kpi), con su propio fondo/borde/radio en
+     vez de una línea suelta. */
   .kpi-detalle{
-    margin-top:8px; padding-top:8px; border-top:1px solid var(--card-border);
-    font-size:12px; color:var(--text-dim); line-height:1.45;
+    margin-top:10px; padding:10px 12px;
+    background: rgba(255,255,255,0.035); border:1px solid var(--card-border);
+    border-radius: 10px;
+    font-size:12px; color:var(--text-dim); line-height:1.5;
   }
   .kpi-detalle[hidden]{ display:none; }
   .kpi-detalle p{ margin:0 0 6px; }
   .kpi-detalle p:last-child{ margin-bottom:0; }
+  .kpi-detalle .mini-rows{ margin-top:8px; padding-top:8px; border-top:1px solid var(--card-border); }
   .kpi.kpi-hero .kpi-detalle{ font-size:12.5px; }
   .kpi::after{
     content:''; position:absolute; right:-30px; top:-30px; width:100px; height:100px;
