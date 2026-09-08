@@ -38,5 +38,6 @@ Dos checkouts/entornos separados que comparten solo `data/finanzas.db`:
   cambio de backend por terminado.
 - Agentes de proyecto en `.claude/agents/`: `product-owner`,
   `backend-engineer`, `frontend-dataviz`, `devops-engineer`,
-  `test-engineer`, `qa-responsive`, `product-designer` -- ver
-  `PIPELINE.md` para el orden y qué produce/consume cada uno.
+  `test-engineer`, `qa-responsive`, `product-designer`,
+  `security-devops`, `marketing-brand` -- ver `PIPELINE.md` para el
+  orden y qué produce/consume cada uno.
