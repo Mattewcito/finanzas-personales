@@ -147,6 +147,66 @@ CREATE TABLE IF NOT EXISTS tarjetas_credito (
     actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 CREATE INDEX IF NOT EXISTS idx_tarjetas_credito_usuario ON tarjetas_credito(usuario_id);
+
+-- Presupuesto por 3 baldes (50/30/20), metas de ahorro (2026-09-08, ver
+-- requisitos/2026-09-08_presupuesto-ahorro-deudas.md). Sin cifrado a
+-- propósito -- mismo criterio que tarjetas_credito: son montos y
+-- porcentajes, no credenciales (ver sección "Cifrado" del documento).
+--
+-- "presupuesto" es UNA fila por usuario (como correo_config), no una
+-- fila por balde: los 3 porcentajes de un mismo usuario se leen/escriben
+-- siempre juntos, así que separarlos en filas solo complicaría sin
+-- ganar nada. La AUSENCIA de fila significa "todavía sin configurar" --
+-- se sigue devolviendo 50/30/20 igual (ver obtener_presupuesto(), campo
+-- "configurado") para que el dashboard nunca reviente ni muestre NaN en
+-- una cuenta nueva, cumpliendo el caso borde del documento de requisitos.
+CREATE TABLE IF NOT EXISTS presupuesto (
+    usuario_id INTEGER PRIMARY KEY REFERENCES usuarios(id),
+    pct_necesidades REAL NOT NULL DEFAULT 50,
+    pct_gustos REAL NOT NULL DEFAULT 30,
+    pct_ahorro_deudas REAL NOT NULL DEFAULT 20,
+    actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+-- Mapeo categoría -> balde, por usuario (cada quien puede reasignar sus
+-- propias categorías sin tocar código ni afectar a otras cuentas). La
+-- categoría es texto libre (igual que movimientos.categoria -- no hay
+-- un catálogo cerrado, ver registrar.html/obtener_categorias()), así que
+-- la clave es (usuario_id, categoria), no un id de categoría. Se
+-- autopobla de forma perezosa e idempotente con un default razonable
+-- (ver CATEGORIA_BALDE_DEFAULT) la primera vez que se pide el mapeo de
+-- ese usuario (obtener_mapeo_categorias()) -- así "cada categoría
+-- existente ya viene asignada a un balde por defecto" se cumple sin
+-- que el usuario tenga que configurar nada.
+CREATE TABLE IF NOT EXISTS presupuesto_categorias (
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+    categoria TEXT NOT NULL,
+    balde TEXT NOT NULL,   -- 'necesidades' | 'gustos' | 'ahorro_deudas'
+    actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    PRIMARY KEY (usuario_id, categoria)
+);
+
+-- Metas de ahorro (mismo patrón que tarjetas_credito: crear, ver avance,
+-- archivar). El "avance" (ahorrado) NUNCA se guarda como un número
+-- aparte que haya que mantener sincronizado -- se calcula siempre al
+-- vuelo sumando los movimientos de la tabla `movimientos` que traen
+-- meta_ahorro_id=este id (ver _migrar_columna_meta_ahorro_id() más abajo
+-- y obtener_metas_ahorro()): el aporte a una meta ES un movimiento más,
+-- no un sistema paralelo de transferencias internas (ver documento de
+-- requisitos). "activa" es el soft-delete (archivar_meta_ahorro): una
+-- meta archivada conserva su historial de aportes, solo deja de
+-- ofrecerse como destino de aportes nuevos.
+CREATE TABLE IF NOT EXISTS metas_ahorro (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+    nombre TEXT NOT NULL,
+    monto_objetivo REAL NOT NULL,
+    fecha_objetivo TEXT,     -- opcional, 'AAAA-MM-DD'
+    activa INTEGER NOT NULL DEFAULT 1,
+    creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_metas_ahorro_usuario ON metas_ahorro(usuario_id);
 """
 
 # Catálogo de vistas que un admin puede ocultar/mostrar por usuario
@@ -190,6 +250,81 @@ VISTAS_DISPONIBLES = [
 
 # username no tiene restricción UNIQUE a nivel de base de datos, para
 # soportar configuraciones de cuentas fuera del caso estándar.
+
+# ----------------------------- Presupuesto por baldes (50/30/20) -----------------------------
+# Catálogo de baldes -- id (usado en la BD/API) + etiqueta en lenguaje
+# simple (para que el frontend no tenga que hardcodear el texto, mismo
+# criterio que VISTAS_DISPONIBLES de arriba). Cambiar el ORDEN de esta
+# lista no afecta nada guardado (la BD identifica cada balde por su id,
+# nunca por posición).
+BALDES_PRESUPUESTO = [
+    {"id": "necesidades", "label": "Necesidades"},
+    {"id": "gustos", "label": "Gustos"},
+    {"id": "ahorro_deudas", "label": "Ahorro/deudas"},
+]
+IDS_BALDES = {b["id"] for b in BALDES_PRESUPUESTO}
+
+# 50/30/20 del ingreso real, sugerido por el "Planeador financiero 2026"
+# que ya usaba el usuario (ver requisitos/2026-09-08_presupuesto-ahorro-
+# deudas.md) -- ya cargado por defecto, editable en cualquier momento
+# (ver guardar_presupuesto()).
+PRESUPUESTO_PCT_DEFAULT = {"necesidades": 50.0, "gustos": 30.0, "ahorro_deudas": 20.0}
+
+# Asignación default razonable de las categorías REALES del proyecto (ver
+# CAT_ICONS en dashboard/dashboard_finanzas.html, CATEGORIAS_POR_PALABRA_
+# CLAVE en leer_correo.py y CATEGORIA_KEYWORDS en tools/reconciliar_
+# extractos.py) a uno de los 3 baldes -- criterio usado, documentado acá
+# porque el requerimiento pidió explicar las que no son obvias:
+#   - Necesidades: lo recurrente/difícil de evitar en lo inmediato
+#     (comida, supermercado, servicios, salud, hogar, internet, celular,
+#     transporte, movilidad, educación).
+#   - Gustos: lo discrecional (restaurantes, entretenimiento, ropa,
+#     compras, suscripciones, tecnología).
+#   - Ahorro/deudas: todo lo directamente ligado a deuda de tarjeta
+#     (pago_tarjeta_credito, avance_credito, crédito -- comisiones/avances
+#     de tarjeta sin comercio asociado, ver reconciliar_extractos.py
+#     normalizar_card(), e intereses) más "ahorro" (categoría sugerida
+#     para cuando un aporte a una meta se registra a mano).
+#   - Ambiguas, resueltas con criterio conservador (default a
+#     "necesidades" -- explicado en el reporte, el usuario las puede
+#     reasignar libremente sin tocar código):
+#       * transferencias: puede ser un gasto real (arriendo compartido,
+#         mesada) o plata "de paso" -- sin forma de saberlo del texto del
+#         banco, se asume necesidad antes que gusto.
+#       * retiro (cajero): mismo motivo -- no hay forma de saber en qué
+#         se gastó el efectivo retirado.
+#       * mascotas: cuidado recurrente de un dependiente, se trata como
+#         necesidad, no como gusto ocasional.
+#       * otros / salario: "otros" es el catch-all de lo no reconocido
+#         (mismo criterio conservador); "salario" es ingreso, nunca gasto,
+#         así que en la práctica esta asignación no afecta ningún cálculo
+#         de "real gastado" por balde.
+#   - Se incluyen ambas variantes de acento/sin-acento que existen de
+#     verdad en el código (ej. "tecnología"/"tecnologia",
+#     "educación"/"educacion", "crédito"/"credito") porque son literales
+#     de texto exactos guardados en movimientos.categoria -- un mapeo
+#     solo con acento dejaría sin asignar a la mitad de las filas reales.
+CATEGORIA_BALDE_DEFAULT = {
+    # Necesidades
+    "comida": "necesidades", "supermercado": "necesidades", "servicios": "necesidades",
+    "salud": "necesidades", "educación": "necesidades", "educacion": "necesidades",
+    "hogar": "necesidades", "internet": "necesidades", "celular": "necesidades",
+    "transporte": "necesidades", "movilidad": "necesidades", "transferencias": "necesidades",
+    "mascotas": "necesidades", "retiro": "necesidades", "otros": "necesidades", "salario": "necesidades",
+    # Gustos
+    "restaurantes": "gustos", "entretenimiento": "gustos", "ropa": "gustos", "compras": "gustos",
+    "suscripciones": "gustos", "tecnología": "gustos", "tecnologia": "gustos",
+    # Ahorro/deudas
+    "pago_tarjeta_credito": "ahorro_deudas", "avance_credito": "ahorro_deudas",
+    "crédito": "ahorro_deudas", "credito": "ahorro_deudas", "intereses": "ahorro_deudas",
+    "ahorro": "ahorro_deudas",
+}
+# Fallback para una categoría 100% personalizada (texto libre que el
+# usuario escribió a mano en el formulario de registro, ver registrar.html
+# y obtener_categorias()) que no coincide con ninguna de las de arriba --
+# mismo criterio conservador ("necesidades" antes que "gustos") que las
+# categorías ambiguas de la lista.
+CATEGORIA_BALDE_FALLBACK = "necesidades"
 
 VISTA_DEUDA_SQL = """
 CREATE VIEW IF NOT EXISTS v_deuda_ledger AS
@@ -289,6 +424,22 @@ def _migrar_columna_tarjeta_id(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrar_columna_meta_ahorro_id(conn: sqlite3.Connection) -> None:
+    """Asocia un movimiento con la meta de ahorro que ese aporte alimenta
+    (2026-09-08, ver requisitos/2026-09-08_presupuesto-ahorro-deudas.md)
+    -- el aporte a una meta ES un movimiento más (típicamente tipo='gasto',
+    plata que sale de la cuenta corriente hacia el ahorro), nunca un
+    sistema paralelo de transferencias internas. nullable, y NUNCA se
+    completa retroactivamente -- mismo criterio exacto que
+    _migrar_columna_tarjeta_id() (mismo tipo de columna, misma FK
+    'normal' sin ON DELETE CASCADE/SET NULL: con `PRAGMA foreign_keys =
+    ON`, SQLite rechaza con IntegrityError el borrado de una meta que
+    todavía tenga aportes asociados -- ver borrar_meta_ahorro())."""
+    _agregar_columna_si_falta(conn, "movimientos", "meta_ahorro_id", "INTEGER REFERENCES metas_ahorro(id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_movimientos_meta_ahorro ON movimientos(meta_ahorro_id)")
+    conn.commit()
+
+
 def _migrar_columna_cedula_correo_config(conn: sqlite3.Connection) -> None:
     """correo_config ya existía (2026-09-06) sin esta columna en cualquier
     BD real donde ya se hubiera guardado alguna configuración -- CREATE
@@ -323,6 +474,7 @@ def crear_esquema(conn: sqlite3.Connection) -> None:
     _migrar_columna_usuario_id(conn)
     _migrar_columna_referencia_bancaria(conn)
     _migrar_columna_tarjeta_id(conn)  # después de ESQUEMA_SQL: necesita que tarjetas_credito ya exista (FK)
+    _migrar_columna_meta_ahorro_id(conn)  # después de ESQUEMA_SQL: necesita que metas_ahorro ya exista (FK)
     _migrar_columna_cedula_correo_config(conn)
     _migrar_cifrado_correo_config(conn)
     # DROP + recrear la vista: si ya existía de antes de agregar usuario_id
@@ -508,8 +660,12 @@ def obtener_movimientos(conn: sqlite3.Connection, usuario_id: int | None = None)
     # documento asume explícitamente que ya viaja acá, "no hace falta un
     # endpoint de lectura nuevo") -- sin este campo el selector de
     # tarjeta del modal de edición no podría saber cuál venía asignada.
+    # meta_ahorro_id (2026-09-08, ver
+    # requisitos/2026-09-08_presupuesto-ahorro-deudas.md): mismo criterio
+    # -- viaja acá para que el frontend pueda mostrar "este movimiento es
+    # un aporte a <meta>" sin un endpoint de lectura aparte.
     sql = """SELECT id, fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, es_deuda,
-                    origen, referencia_bancaria, creado_en, tarjeta_id
+                    origen, referencia_bancaria, creado_en, tarjeta_id, meta_ahorro_id
              FROM movimientos"""
     params = ()
     if usuario_id is not None:
@@ -961,6 +1117,316 @@ def obtener_tarjetas_con_deuda(conn: sqlite3.Connection, usuario_id: int) -> dic
     return {"activas": activas, "sin_asignar": sin_asignar}
 
 
+# ----------------------------- Presupuesto por baldes / metas de ahorro (2026-09-08) -----------------------------
+# Ver requisitos/2026-09-08_presupuesto-ahorro-deudas.md para el diseño
+# completo. Sin cifrado a propósito (montos/porcentajes, no credenciales
+# -- misma justificación que tarjetas_credito). Todo filtrado por
+# usuario_id EXPLÍCITO; las rutas (routes/presupuesto.py) siempre pasan
+# viendo_id(), nunca session["usuario_id"] a secas -- presupuesto/
+# categoria_balde/metas_ahorro son CONTENIDO de la cuenta que se esté
+# viendo (igual que tarjetas/movimientos/perfil financiero), no
+# autoservicio ligado a la identidad de quien inició sesión.
+
+def obtener_presupuesto(conn: sqlite3.Connection, usuario_id: int) -> dict:
+    """Los 3 porcentajes de usuario_id. Si todavía no configuró nada
+    (ninguna fila guardada), devuelve el default 50/30/20
+    (PRESUPUESTO_PCT_DEFAULT) con "configurado"=False -- así el
+    dashboard puede mostrar "presupuestado" desde el primer momento
+    (cumple "50/30/20 ya cargado por defecto") sin romperse ni mostrar
+    NaN en una cuenta nueva, y a la vez el frontend sabe si mostrar la
+    invitación a "todavía no configuraste esto, tocalo para ajustarlo".
+    "suma_pct" viaja siempre calculado -- ver guardar_presupuesto() para
+    por qué no se bloquea que sea distinto de 100 (se avisa, no se
+    impide)."""
+    r = conn.execute("SELECT * FROM presupuesto WHERE usuario_id = ?", (usuario_id,)).fetchone()
+    if r:
+        d = dict(r)
+        d["configurado"] = True
+    else:
+        d = {
+            "usuario_id": usuario_id,
+            "pct_necesidades": PRESUPUESTO_PCT_DEFAULT["necesidades"],
+            "pct_gustos": PRESUPUESTO_PCT_DEFAULT["gustos"],
+            "pct_ahorro_deudas": PRESUPUESTO_PCT_DEFAULT["ahorro_deudas"],
+            "actualizado_en": None,
+            "configurado": False,
+        }
+    d["suma_pct"] = round(d["pct_necesidades"] + d["pct_gustos"] + d["pct_ahorro_deudas"], 2)
+    return d
+
+
+def guardar_presupuesto(conn: sqlite3.Connection, usuario_id: int, pct_necesidades, pct_gustos, pct_ahorro_deudas) -> dict:
+    """Crea o actualiza (una fila por usuario_id, mismo patrón UPSERT que
+    guardar_correo_config()) los 3 porcentajes de usuario_id. Cada uno
+    tiene que ser un número >= 0 (un porcentaje negativo no tiene sentido
+    financiero) -- eso SÍ se rechaza con ValueError. Que los 3 sumen
+    exactamente 100 NO se exige acá: el documento de requisitos pide
+    "avisar", no bloquear ("Algo a cuidar entre todos") -- el aviso
+    (comparar el "suma_pct" del resultado contra 100) es responsabilidad
+    de quien llama (la ruta / eventualmente el frontend), no de esta
+    función. Devuelve el presupuesto ya guardado (mismo shape que
+    obtener_presupuesto())."""
+    valores = {"necesidades": pct_necesidades, "gustos": pct_gustos, "ahorro_deudas": pct_ahorro_deudas}
+    for balde, v in valores.items():
+        if v is None or (isinstance(v, str) and not v.strip()):
+            raise ValueError(f"Falta el porcentaje de {balde}.")
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            raise ValueError(f"El porcentaje de {balde} no es un número válido.")
+        if v < 0:
+            raise ValueError(f"El porcentaje de {balde} no puede ser negativo.")
+        valores[balde] = v
+
+    conn.execute(
+        """
+        INSERT INTO presupuesto (usuario_id, pct_necesidades, pct_gustos, pct_ahorro_deudas, actualizado_en)
+        VALUES (?, ?, ?, ?, datetime('now', 'localtime'))
+        ON CONFLICT(usuario_id) DO UPDATE SET
+            pct_necesidades = excluded.pct_necesidades,
+            pct_gustos = excluded.pct_gustos,
+            pct_ahorro_deudas = excluded.pct_ahorro_deudas,
+            actualizado_en = excluded.actualizado_en
+        """,
+        (usuario_id, valores["necesidades"], valores["gustos"], valores["ahorro_deudas"]),
+    )
+    conn.commit()
+    return obtener_presupuesto(conn, usuario_id)
+
+
+def obtener_mapeo_categorias(conn: sqlite3.Connection, usuario_id: int) -> dict[str, str]:
+    """{categoria: balde} de TODAS las categorías que usuario_id ya tiene
+    en sus propios movimientos, más cualquiera que ya tuviera una
+    asignación explícita guardada de antes (por si un movimiento se borró
+    después de asignar su categoría a un balde -- la asignación no se
+    pierde con él). Autopobla en la BD, de forma perezosa e idempotente
+    (INSERT OR IGNORE: nunca pisa una asignación que el usuario ya haya
+    elegido a mano), la fila que falte con el default razonable de
+    CATEGORIA_BALDE_DEFAULT (o CATEGORIA_BALDE_FALLBACK si es una
+    categoría 100% personalizada) -- así "cada categoría existente ya
+    viene asignada a un balde por defecto" se cumple sin que el usuario
+    tenga que configurar nada, y sin duplicar el default en dos lugares
+    (acá y en el schema)."""
+    usadas = obtener_categorias(conn, usuario_id)
+    ya_asignadas = {
+        r["categoria"] for r in conn.execute(
+            "SELECT categoria FROM presupuesto_categorias WHERE usuario_id = ?", (usuario_id,)
+        )
+    }
+    faltantes = [c for c in usadas if c not in ya_asignadas]
+    if faltantes:
+        conn.executemany(
+            "INSERT OR IGNORE INTO presupuesto_categorias (usuario_id, categoria, balde) VALUES (?, ?, ?)",
+            [(usuario_id, c, CATEGORIA_BALDE_DEFAULT.get(c, CATEGORIA_BALDE_FALLBACK)) for c in faltantes],
+        )
+        conn.commit()
+    return {
+        r["categoria"]: r["balde"]
+        for r in conn.execute(
+            "SELECT categoria, balde FROM presupuesto_categorias WHERE usuario_id = ? ORDER BY categoria",
+            (usuario_id,),
+        )
+    }
+
+
+def asignar_categoria_balde(conn: sqlite3.Connection, usuario_id: int, categoria: str, balde: str) -> None:
+    """Reasigna (o asigna por primera vez) UNA categoría de usuario_id a
+    un balde -- UPSERT, mismo patrón que guardar_correo_config(). `balde`
+    tiene que ser uno de los 3 ids válidos (IDS_BALDES); cualquier otro
+    valor se rechaza con ValueError -- nunca se guarda un balde
+    inventado que después el frontend no sepa cómo mostrar."""
+    categoria = (categoria or "").strip()
+    if not categoria:
+        raise ValueError("Falta la categoría.")
+    if balde not in IDS_BALDES:
+        ids_validos = ", ".join(b["id"] for b in BALDES_PRESUPUESTO)
+        raise ValueError(f"Balde inválido -- tiene que ser uno de: {ids_validos}.")
+    conn.execute(
+        """
+        INSERT INTO presupuesto_categorias (usuario_id, categoria, balde, actualizado_en)
+        VALUES (?, ?, ?, datetime('now', 'localtime'))
+        ON CONFLICT(usuario_id, categoria) DO UPDATE SET
+            balde = excluded.balde,
+            actualizado_en = excluded.actualizado_en
+        """,
+        (usuario_id, categoria, balde),
+    )
+    conn.commit()
+
+
+# ----------------------------- Metas de ahorro (2026-09-08) -----------------------------
+# Mismo patrón que tarjetas_credito: crear_meta_ahorro/obtener_metas_ahorro/
+# obtener_meta_ahorro/actualizar_meta_ahorro/archivar_meta_ahorro/
+# borrar_meta_ahorro. El "avance" (ahorrado) nunca se guarda como un
+# número aparte -- se calcula siempre sumando movimientos.monto de las
+# filas que traen meta_ahorro_id=esta meta (ver _migrar_columna_meta_
+# ahorro_id()): el aporte a una meta ES un movimiento más, no un sistema
+# paralelo. Filtrado por moneda='COP' -- mismo criterio que
+# obtener_tarjetas_con_deuda()/v_deuda_ledger (montos en otras monedas no
+# se mezclan en el mismo acumulado).
+
+def crear_meta_ahorro(conn: sqlite3.Connection, usuario_id: int, nombre: str, monto_objetivo: float,
+                       fecha_objetivo: str | None = None) -> int:
+    """monto_objetivo es obligatorio y > 0 (validado acá, no solo en la
+    UI -- mismo criterio que crear_tarjeta() con cupo_total).
+    fecha_objetivo es opcional; si viene, tiene que ser una fecha ISO
+    válida (AAAA-MM-DD)."""
+    nombre = (nombre or "").strip()
+    if not nombre:
+        raise ValueError("Falta el nombre de la meta.")
+    if monto_objetivo is None or monto_objetivo <= 0:
+        raise ValueError("El monto objetivo tiene que ser mayor a 0.")
+    fecha_objetivo = (fecha_objetivo or "").strip() or None
+    if fecha_objetivo:
+        try:
+            datetime.date.fromisoformat(fecha_objetivo)
+        except ValueError:
+            raise ValueError("La fecha objetivo no es una fecha válida (formato AAAA-MM-DD).")
+    cur = conn.execute(
+        "INSERT INTO metas_ahorro (usuario_id, nombre, monto_objetivo, fecha_objetivo) VALUES (?, ?, ?, ?)",
+        (usuario_id, nombre, monto_objetivo, fecha_objetivo),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def _ahorrado_por_meta(conn: sqlite3.Connection, usuario_id: int) -> dict[int, float]:
+    """{meta_ahorro_id: ahorrado} de TODAS las metas de usuario_id de una
+    sola pasada -- lo usa obtener_metas_ahorro() para no hacer una
+    consulta de agregación por meta (mismo patrón que
+    obtener_tarjetas_con_deuda() con deuda_por_tarjeta)."""
+    filas = conn.execute(
+        """SELECT meta_ahorro_id, SUM(monto) AS ahorrado
+           FROM movimientos
+           WHERE usuario_id = ? AND meta_ahorro_id IS NOT NULL AND moneda = 'COP'
+           GROUP BY meta_ahorro_id""",
+        (usuario_id,),
+    ).fetchall()
+    return {f["meta_ahorro_id"]: (f["ahorrado"] or 0.0) for f in filas}
+
+
+def _con_avance(meta: dict, ahorrado: float) -> dict:
+    """Agrega ahorrado/restante/porcentaje a una fila de metas_ahorro ya
+    convertida a dict. "restante" se trunca a 0 (a diferencia de
+    cupo_disponible en obtener_tarjetas_con_deuda(), que a propósito NO
+    se trunca): ahí un número negativo es una señal de alerta real
+    (te pasaste del cupo); acá, superar la meta es bueno, no una deuda
+    -- no tiene sentido mostrar "restante: -50.000". "porcentaje" SÍ
+    puede superar 100 (no se trunca) para que se pueda mostrar "¡meta
+    superada!" con el número real."""
+    meta = dict(meta)
+    meta["ahorrado"] = ahorrado
+    meta["restante"] = max(meta["monto_objetivo"] - ahorrado, 0.0)
+    meta["porcentaje"] = round((ahorrado / meta["monto_objetivo"] * 100), 2) if meta["monto_objetivo"] else 0.0
+    return meta
+
+
+def obtener_metas_ahorro(conn: sqlite3.Connection, usuario_id: int, solo_activas: bool = False) -> list[dict]:
+    """Todas las metas (o solo las activas) de usuario_id, con su avance
+    ya calculado -- nunca de otro usuario, `usuario_id` siempre explícito
+    en el WHERE."""
+    sql = "SELECT * FROM metas_ahorro WHERE usuario_id = ?"
+    params = [usuario_id]
+    if solo_activas:
+        sql += " AND activa = 1"
+    sql += " ORDER BY activa DESC, id"
+
+    ahorrado_por_meta = _ahorrado_por_meta(conn, usuario_id)
+    out = []
+    for r in conn.execute(sql, params).fetchall():
+        d = dict(r)
+        d["activa"] = bool(d["activa"])
+        out.append(_con_avance(d, ahorrado_por_meta.get(d["id"], 0.0)))
+    return out
+
+
+def obtener_meta_ahorro(conn: sqlite3.Connection, usuario_id: int, meta_id: int) -> dict | None:
+    """None si no existe O si existe pero es de otro usuario -- mismo
+    criterio de aislamiento que obtener_tarjeta()."""
+    r = conn.execute(
+        "SELECT * FROM metas_ahorro WHERE id = ? AND usuario_id = ?", (meta_id, usuario_id)
+    ).fetchone()
+    if not r:
+        return None
+    d = dict(r)
+    d["activa"] = bool(d["activa"])
+    ahorrado = conn.execute(
+        "SELECT COALESCE(SUM(monto), 0) AS ahorrado FROM movimientos "
+        "WHERE usuario_id = ? AND meta_ahorro_id = ? AND moneda = 'COP'",
+        (usuario_id, meta_id),
+    ).fetchone()["ahorrado"]
+    return _con_avance(d, ahorrado)
+
+
+def actualizar_meta_ahorro(conn: sqlite3.Connection, usuario_id: int, meta_id: int, nombre: str | None = None,
+                            monto_objetivo: float | None = None, fecha_objetivo: str | None = None) -> bool:
+    """Actualiza solo los campos presentes (None = no tocar), mismo
+    criterio que actualizar_tarjeta(). Un string vacío en fecha_objetivo
+    SÍ es una instrucción explícita de "quitar la fecha" (queda opcional
+    de nuevo) -- para no tocarla, simplemente no se manda esa clave.
+    Devuelve False si la meta no existe o no es de usuario_id."""
+    if obtener_meta_ahorro(conn, usuario_id, meta_id) is None:
+        return False
+
+    campos, valores = [], []
+    if nombre is not None:
+        nombre = nombre.strip()
+        if not nombre:
+            raise ValueError("El nombre no puede quedar vacío.")
+        campos.append("nombre = ?"); valores.append(nombre)
+    if monto_objetivo is not None:
+        if monto_objetivo <= 0:
+            raise ValueError("El monto objetivo tiene que ser mayor a 0.")
+        campos.append("monto_objetivo = ?"); valores.append(monto_objetivo)
+    if fecha_objetivo is not None:
+        fecha_objetivo = fecha_objetivo.strip() or None
+        if fecha_objetivo:
+            try:
+                datetime.date.fromisoformat(fecha_objetivo)
+            except ValueError:
+                raise ValueError("La fecha objetivo no es una fecha válida (formato AAAA-MM-DD).")
+        campos.append("fecha_objetivo = ?"); valores.append(fecha_objetivo)
+
+    if campos:
+        campos.append("actualizado_en = datetime('now', 'localtime')")
+        valores.extend([meta_id, usuario_id])
+        conn.execute(f"UPDATE metas_ahorro SET {', '.join(campos)} WHERE id = ? AND usuario_id = ?", valores)
+        conn.commit()
+    return True
+
+
+def archivar_meta_ahorro(conn: sqlite3.Connection, usuario_id: int, meta_id: int) -> bool:
+    """Soft delete: deja de listarse entre las 'activas' (selectores de
+    "aportar a esta meta" en Registrar movimiento) pero conserva intacto
+    el historial de aportes que ya tenía asociados. False si no existe o
+    no es de usuario_id."""
+    cur = conn.execute(
+        "UPDATE metas_ahorro SET activa = 0, actualizado_en = datetime('now', 'localtime') "
+        "WHERE id = ? AND usuario_id = ?",
+        (meta_id, usuario_id),
+    )
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def borrar_meta_ahorro(conn: sqlite3.Connection, usuario_id: int, meta_id: int) -> tuple[bool, str | None]:
+    """Borrado DEFINITIVO -- solo permitido si la meta nunca tuvo ningún
+    aporte (movimiento con meta_ahorro_id=esta meta) asociado. Mismo
+    mecanismo que borrar_tarjeta(): meta_ahorro_id es una FK "normal", así
+    que con `PRAGMA foreign_keys = ON` SQLite mismo rechaza el DELETE con
+    IntegrityError si hay aportes que la referencian -- alcanza con
+    capturarlo acá. Devuelve (ok, mensaje_de_error)."""
+    if obtener_meta_ahorro(conn, usuario_id, meta_id) is None:
+        return False, "Esa meta no existe."
+    try:
+        conn.execute("DELETE FROM metas_ahorro WHERE id = ? AND usuario_id = ?", (meta_id, usuario_id))
+        conn.commit()
+        return True, None
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return False, "Esa meta tiene aportes (movimientos) asociados -- archivala en vez de borrarla."
+
+
 # ----------------------------- Inserción con dedup (usada por cualquier fuente de ingesta) -----------------------------
 
 def _palabras(*textos: str) -> set[str]:
@@ -1093,9 +1559,17 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
         e["usuario_id"] = usuario_id
         if not e.get("tarjeta_id"):
             e["tarjeta_id"] = _resolver_tarjeta_por_ultimos4(conn, usuario_id, e.get("ultimos4"))
+        # meta_ahorro_id: a diferencia de tarjeta_id, no hay forma de
+        # resolverlo automáticamente por texto (no hay un patrón bancario
+        # equivalente a "últimos4") -- solo llega explícito cuando el
+        # movimiento se registró a mano eligiendo una meta (ver
+        # routes/dashboard.py::api_registrar_movimiento). setdefault en
+        # vez de sobreescribir: si ya viene en el dict (ese caso), se
+        # respeta tal cual.
+        e.setdefault("meta_ahorro_id", None)
     cur.executemany(
-        """INSERT INTO movimientos (fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, es_deuda, origen, usuario_id, tarjeta_id)
-           VALUES (:fecha, :tipo, :categoria, :moneda, :monto, :descripcion, :entidad, :medio_pago, :es_deuda, :origen, :usuario_id, :tarjeta_id)""",
+        """INSERT INTO movimientos (fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, es_deuda, origen, usuario_id, tarjeta_id, meta_ahorro_id)
+           VALUES (:fecha, :tipo, :categoria, :moneda, :monto, :descripcion, :entidad, :medio_pago, :es_deuda, :origen, :usuario_id, :tarjeta_id, :meta_ahorro_id)""",
         nuevos,
     )
     conn.commit()

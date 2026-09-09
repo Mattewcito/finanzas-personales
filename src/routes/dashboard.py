@@ -74,12 +74,32 @@ def api_dashboard_data():
     {"activas": [...], "sin_asignar": <float>}. Si el usuario tiene 0
     tarjetas registradas, "activas" viaja como lista vacía y "deuda" se
     ve exactamente igual que antes de esta feature (el agregado global
-    en "ledger_deuda" no cambia en nada)."""
+    en "ledger_deuda" no cambia en nada).
+
+    "presupuesto"/"categoria_balde"/"metas_ahorro" (2026-09-08, ver
+    requisitos/2026-09-08_presupuesto-ahorro-deudas.md): el período
+    filtrado NO se calcula acá -- igual que el resto de esta ruta
+    (movimientos/ledger_deuda/tarjetas), viaja el histórico completo y
+    es el frontend quien ya filtra "movimientos" por el período elegido
+    (ver dashboard_finanzas.html::renderDashboard()); con
+    "categoria_balde" (mapeo categoría->balde) y "presupuesto" (los 3
+    porcentajes) el propio frontend puede recalcular presupuestado/real/
+    diferencia por balde para CUALQUIER período sin pedir nada más al
+    servidor. "metas_ahorro" sí es siempre acumulado histórico (el
+    avance hacia una meta no tiene sentido "por período"). Si la cuenta
+    vista nunca configuró presupuesto ni tiene categorías/metas propias
+    todavía, estas 3 claves igual vienen con una forma válida (defaults
+    50/30/20, mapeo vacío, lista vacía) -- nunca None/NaN, cumple el
+    caso borde "cuenta nueva sin presupuesto configurado todavía" del
+    documento de requisitos."""
     with db.conexion() as conn:
         movimientos = db.obtener_movimientos(conn, usuario_id=viendo_id())
         ledger_deuda = db.obtener_ledger_deuda(conn, usuario_id=viendo_id())
         vistas_ocultas_viendo = db.vistas_ocultas_de(conn, viendo_id())
         tarjetas = db.obtener_tarjetas_con_deuda(conn, usuario_id=viendo_id())
+        presupuesto = db.obtener_presupuesto(conn, usuario_id=viendo_id())
+        categoria_balde = db.obtener_mapeo_categorias(conn, usuario_id=viendo_id())
+        metas_ahorro = db.obtener_metas_ahorro(conn, usuario_id=viendo_id())
 
     perfil = None
     if "perfil_financiero" not in vistas_ocultas_viendo:
@@ -90,6 +110,9 @@ def api_dashboard_data():
         ledger_deuda=ledger_deuda,
         perfil=perfil,
         tarjetas=tarjetas,
+        presupuesto=presupuesto,
+        categoria_balde=categoria_balde,
+        metas_ahorro=metas_ahorro,
         generated_at=datetime.datetime.now().isoformat(timespec="seconds"),
         vistas_ocultas=sorted(vistas_ocultas_viendo),
     )
@@ -122,6 +145,7 @@ def api_registrar_movimiento():
     moneda = request.form.get("moneda", "COP").strip()
     entidad = request.form.get("entidad", "").strip() or "Manual"
     tarjeta_id_raw = request.form.get("tarjeta_id", "").strip()
+    meta_ahorro_id_raw = request.form.get("meta_ahorro_id", "").strip()
 
     if not fecha or not descripcion:
         return jsonify(ok=False, error="Falta fecha o descripción."), 400
@@ -152,6 +176,22 @@ def api_registrar_movimiento():
             if not tarjeta or not tarjeta["activa"]:
                 return jsonify(ok=False, error="Esa tarjeta no existe o no está activa."), 400
             movimiento["tarjeta_id"] = tarjeta_id
+        # meta_ahorro_id es OPCIONAL -- mismo criterio exacto que
+        # tarjeta_id de arriba (2026-09-08, ver
+        # requisitos/2026-09-08_presupuesto-ahorro-deudas.md): si se
+        # manda, tiene que pertenecer a una meta ACTIVA de viendo_id().
+        # Este es el mecanismo completo de "el aporte a una meta se
+        # registra como un movimiento más" -- no hay un endpoint aparte
+        # de "aportar", es este mismo formulario con una meta elegida.
+        if meta_ahorro_id_raw:
+            try:
+                meta_ahorro_id = int(meta_ahorro_id_raw)
+            except ValueError:
+                return jsonify(ok=False, error="meta_ahorro_id inválido."), 400
+            meta = db.obtener_meta_ahorro(conn, usuario_id=viendo_id(), meta_id=meta_ahorro_id)
+            if not meta or not meta["activa"]:
+                return jsonify(ok=False, error="Esa meta de ahorro no existe o no está activa."), 400
+            movimiento["meta_ahorro_id"] = meta_ahorro_id
         # "app_manual" (no "manual") -- TODA la lógica de conciliación de
         # insertar_movimientos() (y los tests que la cubren) compara
         # contra el literal exacto "app_manual" para decidir qué fila

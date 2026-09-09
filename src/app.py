@@ -12,6 +12,7 @@ archivo gigante):
   - routes/correo.py    -> configurar la lectura automática de correo (Fase 1) de la propia cuenta
   - routes/admin_vistas.py -> panel admin: qué secciones del menú puede ver cada usuario
   - routes/tarjetas.py  -> CRUD de tarjetas de crédito propias (cupo/deuda por tarjeta)
+  - routes/presupuesto.py -> presupuesto por 3 baldes, mapeo categoría->balde, metas de ahorro
 
 Uso:
     py app.py
@@ -38,6 +39,10 @@ Rutas (por blueprint, ver el archivo de cada uno para el detalle):
   /admin/vistas                            -> routes/admin_vistas.py
   /api/tarjetas, /api/tarjetas/crear,
   /api/tarjetas/<id>/editar|archivar|borrar -> routes/tarjetas.py
+  /api/presupuesto, /api/presupuesto/guardar,
+  /api/presupuesto/categoria/asignar,
+  /api/metas-ahorro, /api/metas-ahorro/crear,
+  /api/metas-ahorro/<id>/editar|archivar|borrar -> routes/presupuesto.py
   /health                                  -> este archivo (sin login, la usa el pipeline de despliegue)
 """
 
@@ -60,6 +65,7 @@ from routes.usuarios import usuarios_bp
 from routes.correo import correo_bp
 from routes.admin_vistas import admin_vistas_bp
 from routes.tarjetas import tarjetas_bp
+from routes.presupuesto import presupuesto_bp
 
 app = Flask(__name__)
 
@@ -86,6 +92,7 @@ app.register_blueprint(usuarios_bp)
 app.register_blueprint(correo_bp)
 app.register_blueprint(admin_vistas_bp)
 app.register_blueprint(tarjetas_bp)
+app.register_blueprint(presupuesto_bp)
 
 
 @app.route("/health")

@@ -340,13 +340,21 @@ def test_dashboard_data_redirige_a_login_sin_sesion(client):
     assert "/login" in resp.headers["Location"]
 
 
-def test_dashboard_data_con_sesion_devuelve_json_con_las_seis_claves(client):
+def test_dashboard_data_con_sesion_devuelve_json_con_las_nueve_claves(client):
     """Desde que se agregó "vistas ocultas por usuario" al dashboard, la
     respuesta también incluye "vistas_ocultas" (lista de sub-vistas
     ocultas para viendo_id(), ver routes/dashboard.py::api_dashboard_data).
     Desde tarjetas de crédito con cupo (2026-09-07, ver
     requisitos/2026-09-07_tarjetas-credito-cupo.md) se agregó "tarjetas"
-    ({"activas": [...], "sin_asignar": <float>}) -- son 6 claves, no 5."""
+    ({"activas": [...], "sin_asignar": <float>}). Desde presupuesto por
+    baldes / metas de ahorro (2026-09-08, ver
+    requisitos/2026-09-08_presupuesto-ahorro-deudas.md) se agregaron
+    "presupuesto", "categoria_balde" y "metas_ahorro" -- son 9 claves,
+    no 6. Para una cuenta que nunca configuró nada de esto (como
+    admin_test acá, recién logueada y sin movimientos todavía), las 3
+    claves nuevas igual vienen con una forma válida en vez de None/NaN
+    (ver el caso borde "cuenta nueva sin presupuesto configurado
+    todavía" del documento de requisitos)."""
     login(client, "admin_test", "clave-admin-123")
     resp = client.get("/api/dashboard-data")
 
@@ -354,9 +362,16 @@ def test_dashboard_data_con_sesion_devuelve_json_con_las_seis_claves(client):
     body = resp.get_json()
     assert set(body.keys()) == {
         "movimientos", "ledger_deuda", "perfil", "generated_at", "vistas_ocultas", "tarjetas",
+        "presupuesto", "categoria_balde", "metas_ahorro",
     }
     assert body["vistas_ocultas"] == []
     assert body["tarjetas"] == {"activas": [], "sin_asignar": 0.0}
+    assert body["presupuesto"]["configurado"] is False
+    assert body["presupuesto"]["pct_necesidades"] == 50.0
+    assert body["presupuesto"]["pct_gustos"] == 30.0
+    assert body["presupuesto"]["pct_ahorro_deudas"] == 20.0
+    assert body["categoria_balde"] == {}
+    assert body["metas_ahorro"] == []
 
 
 def test_dashboard_data_usuario_sin_movimientos_devuelve_listas_vacias_sin_reventar(client):
