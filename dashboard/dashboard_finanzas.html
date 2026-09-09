@@ -61,6 +61,20 @@
     --red: #fb7185;         /* gastos / negativo */
     --gold: #fbbf24;        /* insights / highlights */
 
+    /* Presupuesto por baldes -- identidad (2026-09-08, ver qa_reports/
+       2026-09-08/marketing_paleta_presupuesto.md secciones 3 y 7). Color de
+       IDENTIDAD de cada balde (fijo, nunca cambia con el estado) -- el
+       balde "Ahorro/deudas" reusa --accent-2 tal cual (celeste, ya
+       significa "elemento secundario de confianza" en este dashboard) en
+       vez de sumar una tercera variable nueva, tal como recomienda el
+       informe. El ESTADO (vas bien/atención/te pasaste) de cada balde no
+       suma variables nuevas -- reusa --green/--gold/--red, igual que ya
+       hacen las tarjetas de crédito (.nivel-amber/.nivel-rojo). */
+    --balde-necesidades: #5f8ff7;   /* azul -- lo esencial/no negociable */
+    --balde-gustos: #e26bf5;        /* magenta -- discrecional/personal, sin alarma */
+    --balde-necesidades-bg: rgba(95,143,247,0.16);
+    --balde-gustos-bg: rgba(226,107,245,0.16);
+
     --radius: 16px;
     --radius-sm: 10px;
     --shadow: 0 8px 30px rgba(0,0,0,0.35);
@@ -705,6 +719,177 @@
   }
 
   /* ===========================================================
+     5c) PRESUPUESTO POR BALDES (2026-09-08)
+     Ver requisitos/2026-09-08_presupuesto-ahorro-deudas.md y
+     qa_reports/2026-09-08/marketing_paleta_presupuesto.md (paleta,
+     modelo identidad/estado). Reusa el mismo lenguaje visual que
+     .tarjeta-card (icon-badge, barra, cifras con fila.negativo/positivo)
+     por consistencia -- no es una superficie de diseño nueva.
+     =========================================================== */
+  /* Ícono del título de sección: mismo fix de tamaño que .icon-badge
+     (bug real 2026-09-08, "íconos torcidos" -- ver comentario largo más
+     arriba, junto a .kpi .icon-badge svg): el <svg> se dimensiona en %
+     contra ESTE contenedor, que tiene una medida propia fija en px
+     (18x18), nunca contra un ancestro sin tamaño determinado. */
+  .section-title .section-icon{
+    width:18px; height:18px; flex-shrink:0; color: var(--accent-2);
+    display:inline-flex; align-items:center; justify-content:center;
+  }
+  .section-title .section-icon svg{ width:100%; height:100%; display:block; }
+
+  .aviso-amber{
+    display:flex; align-items:center; gap:10px;
+    padding:12px 16px; margin:4px 0 14px;
+    background: rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.35);
+    border-radius: var(--radius-sm); color: var(--text); font-size:13px;
+  }
+  .aviso-amber svg{ width:18px; height:18px; flex-shrink:0; color: var(--gold); }
+  .aviso-amber b{ color: var(--gold); }
+
+  .balde-grid{ display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 4px; }
+  @media (max-width: 900px){ .balde-grid{ grid-template-columns: 1fr; } }
+
+  .balde-card{
+    background: var(--card-solid); border:1px solid var(--card-border); border-top: 3px solid transparent;
+    border-radius: var(--radius-sm); padding: 16px; min-width:0;
+  }
+  .balde-card.identidad-necesidades{ border-top-color: var(--balde-necesidades); }
+  .balde-card.identidad-gustos{ border-top-color: var(--balde-gustos); }
+  .balde-card.identidad-ahorro_deudas{ border-top-color: var(--accent-2); }
+
+  .balde-card-head{ display:flex; align-items:center; gap:10px; }
+  /* Mismo criterio de tamaño propio que .icon-badge/.section-icon de
+     arriba -- 38x38 fijo, el svg de adentro se resuelve en % contra ESTE
+     contenedor, nunca contra un padre sin medida. */
+  .balde-card-icon{
+    width:38px; height:38px; border-radius:10px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .balde-card-icon svg{ width:56%; height:56%; display:block; }
+  .balde-card.identidad-necesidades .balde-card-icon{ background: var(--balde-necesidades-bg); color: var(--balde-necesidades); }
+  .balde-card.identidad-gustos .balde-card-icon{ background: var(--balde-gustos-bg); color: var(--balde-gustos); }
+  .balde-card.identidad-ahorro_deudas .balde-card-icon{ background: rgba(56,189,248,0.16); color: var(--accent-2); }
+
+  .balde-card-nombre{ font-size:14px; font-weight:700; color: var(--text); }
+  .balde-card-pct{ font-size:11px; color: var(--text-dim); margin-top:1px; }
+
+  /* Estado (accesibilidad -- checklist #5 del informe de paleta): SIEMPRE
+     ícono + texto, nunca solo el color del badge. */
+  .balde-card-estado{
+    margin-left:auto; flex-shrink:0; font-size:10.5px; font-weight:800; padding:4px 9px;
+    border-radius:999px; display:inline-flex; align-items:center; gap:4px; white-space:nowrap;
+  }
+  .balde-card-estado svg{ width:12px; height:12px; flex-shrink:0; }
+  .balde-card.estado-verde .balde-card-estado{ background: rgba(39,217,168,0.15); color: var(--green); }
+  .balde-card.estado-amber .balde-card-estado{ background: rgba(251,191,36,0.2); color: var(--gold); }
+  .balde-card.estado-rojo .balde-card-estado{ background: rgba(251,113,133,0.2); color: var(--red); }
+
+  .balde-barra{ height:8px; border-radius:999px; background: var(--bg-soft); overflow:hidden; margin: 12px 0; }
+  .balde-barra > span{ display:block; height:100%; border-radius:999px; background: var(--green); }
+  .balde-card.estado-amber .balde-barra > span{ background: var(--gold); }
+  .balde-card.estado-rojo .balde-barra > span{ background: var(--red); }
+
+  .balde-cifras{ display:flex; flex-direction:column; gap:6px; }
+  .balde-cifras .fila{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:12px; color:var(--text-dim); }
+  .balde-cifras .fila b{ color: var(--text); font-size:13px; font-weight:700; font-variant-numeric: tabular-nums; text-align:right; }
+  .balde-cifras .fila.negativo b{ color: var(--red); }
+  .balde-cifras .fila.positivo b{ color: var(--green); }
+
+  @media (max-width: 560px){
+    .balde-card{ padding:12px; }
+    .balde-cifras .fila{ font-size:10.5px; }
+    .balde-cifras .fila b{ font-size:12px; }
+  }
+
+  /* ===========================================================
+     5d) METAS DE AHORRO (2026-09-08)
+     Avance: celeste en progreso, verde al 100% -- ver sección 4 del
+     informe de paleta. "Meta alcanzada" SIEMPRE lleva el badge con
+     ícono + texto (checklist accesibilidad #5): nunca solo el cambio
+     de color celeste -> verde de la barra.
+     =========================================================== */
+  .metas-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 4px; }
+  .metas-grid:empty{ display:none; }
+
+  .meta-card{
+    background: var(--card-solid); border:1px solid var(--card-border); border-radius: var(--radius-sm);
+    padding: 16px; min-width:0;
+  }
+  .meta-card.alcanzada{ border-color: rgba(39,217,168,0.45); }
+
+  .meta-card-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+  .meta-card-nombre{ font-size:14px; font-weight:700; color: var(--text); word-break: break-word; }
+  .meta-card-fecha{ font-size:11px; color: var(--text-dim); margin-top:2px; }
+  .meta-card-pct{ flex-shrink:0; font-size:12.5px; font-weight:800; color: var(--accent-2); }
+  .meta-card.alcanzada .meta-card-pct{ color: var(--green); }
+
+  .meta-barra{ height:8px; border-radius:999px; background: var(--bg-soft); overflow:hidden; margin: 12px 0; }
+  .meta-barra > span{ display:block; height:100%; border-radius:999px; background: var(--accent-2); }
+  .meta-card.alcanzada .meta-barra > span{ background: var(--green); }
+
+  .meta-cifras{ display:flex; justify-content:space-between; gap:10px; font-size:12px; color: var(--text-dim); }
+  .meta-cifras b{ color: var(--text); font-weight:700; font-variant-numeric: tabular-nums; }
+
+  .meta-card-alcanzada-badge{
+    margin-top:10px; display:inline-flex; align-items:center; gap:5px;
+    font-size:11px; font-weight:800; color: var(--green);
+    background: rgba(39,217,168,0.15); padding:4px 9px; border-radius:999px;
+  }
+  .meta-card-alcanzada-badge svg{ width:12px; height:12px; }
+
+  .meta-card-acciones{ margin-top:12px; display:flex; gap:14px; }
+  .meta-card-acciones button{
+    background:none; border:none; padding:0; cursor:pointer; font-family:inherit;
+    font-size:11.5px; font-weight:600; color: var(--accent-2);
+  }
+  .meta-card-acciones button:hover{ color:#fff; }
+
+  /* ===========================================================
+     5e) BOTONES SECUNDARIOS/PRIMARIOS Y FORMULARIOS EN MODAL (2026-09-08)
+     Usados por "Configurar presupuesto", "Reasignar categorías" y
+     "Nueva/editar meta de ahorro" -- reutilizan .modal-grafico-* (ver
+     arriba) para verse igual al resto de los modales ya existentes.
+     =========================================================== */
+  .acciones-presupuesto{ display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+  .btn-secundario{
+    background: var(--card-solid); border:1px solid var(--card-border); color: var(--text);
+    font-family:inherit; font-size:12.5px; font-weight:600; padding:9px 16px; border-radius:999px; cursor:pointer;
+  }
+  .btn-secundario:hover{ border-color: var(--accent); }
+  .btn-primario{
+    background: var(--accent); border:1px solid var(--accent); color:#fff;
+    font-family:inherit; font-size:12.5px; font-weight:700; padding:9px 16px; border-radius:999px; cursor:pointer;
+  }
+  .btn-primario:hover{ background:#6d5ef0; }
+  .btn-primario:disabled{ opacity:.55; cursor:not-allowed; }
+
+  .form-row{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+  .form-row label{ font-size:12px; font-weight:600; color: var(--text-dim); }
+  .form-row input, .form-row select{
+    background: var(--bg-soft); border:1px solid var(--card-border); border-radius:8px; color: var(--text);
+    padding:9px 12px; font-family:inherit; font-size:13px; width:100%;
+  }
+  .form-row input:focus, .form-row select:focus{ outline:none; border-color: var(--accent); }
+  .form-error{ font-size:12px; color: var(--red); margin: -6px 0 12px; }
+  .form-error[hidden]{ display:none; }
+  .form-suma-pct{ font-size:12px; color: var(--text-dim); margin: -6px 0 14px; }
+
+  .categoria-balde-lista{ display:flex; flex-direction:column; }
+  .categoria-balde-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:9px 0; border-bottom:1px solid var(--card-border);
+  }
+  .categoria-balde-row:last-child{ border-bottom:none; }
+  .categoria-balde-row .cat-nombre{
+    font-size:13px; color: var(--text); text-transform:capitalize;
+    display:flex; align-items:center; gap:6px; min-width:0;
+  }
+  .categoria-balde-row select{
+    background: var(--bg-soft); border:1px solid var(--card-border); border-radius:8px; color: var(--text);
+    padding:6px 10px; font-family:inherit; font-size:12px; flex-shrink:0;
+  }
+
+  /* ===========================================================
      6) INSIGHTS
      =========================================================== */
   .insights-grid{
@@ -947,6 +1132,47 @@
   <div class="kpi-grid" id="kpiGrid"></div>
 
   <!-- ============================================================
+       PRESUPUESTO POR BALDES (50/30/20) -- 2026-09-08
+       Ver requisitos/2026-09-08_presupuesto-ahorro-deudas.md. Depende del
+       filtro de período (mismo mecanismo que el resto del dashboard --
+       renderPresupuesto() se llama desde adentro de renderDashboard()
+       con el DATA ya filtrado). No es una sub-vista ocultable por admin
+       (no está en db_finanzas.VISTAS_DISPONIBLES) -- por eso no pasa por
+       ocultarSubvistas() como perfil/deuda/analisis/insights/movimientos.
+       ============================================================ -->
+  <div class="section-title" id="presupuesto">
+    <h2><span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5.2"></circle><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"></circle></svg></span> Presupuesto por baldes</h2>
+    <div class="line"></div>
+    <span class="tag">Necesidades / Gustos / Ahorro-deudas</span>
+  </div>
+  <div id="presupuestoInvite"></div>
+  <div id="presupuestoAvisoSuma"></div>
+  <div class="balde-grid" id="baldeGrid"></div>
+  <div class="acciones-presupuesto">
+    <button type="button" class="btn-secundario" id="btnConfigurarPresupuesto">Configurar presupuesto</button>
+    <button type="button" class="btn-secundario" id="btnEditarCategorias">Reasignar categorías</button>
+  </div>
+
+  <!-- ============================================================
+       METAS DE AHORRO -- 2026-09-08
+       A diferencia de "Presupuesto" de arriba, NO depende del filtro de
+       período (el avance hacia una meta es siempre acumulado histórico,
+       ver docstring de /api/dashboard-data) -- se renderiza una sola vez
+       (renderMetas()) y se vuelve a llamar solo después de crear/editar/
+       archivar una meta, nunca en cada cambio de período.
+       ============================================================ -->
+  <div class="section-title" id="metasAhorro">
+    <h2><span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg></span> Metas de ahorro</h2>
+    <div class="line"></div>
+    <span class="tag" id="metasAhorroCount"></span>
+  </div>
+  <div class="form-error" id="metasAhorroError" hidden></div>
+  <div class="metas-grid" id="metasGrid"></div>
+  <div class="acciones-presupuesto">
+    <button type="button" class="btn-secundario" id="btnNuevaMeta">Nueva meta de ahorro</button>
+  </div>
+
+  <!-- ============================================================
        PERFIL FINANCIERO PERSONALIZADO
        ============================================================ -->
   <div class="section-title" id="perfil"><h2>🧭 Tu perfil financiero</h2><div class="line"></div><span class="tag">generado a partir de todo tu historial</span></div>
@@ -1120,6 +1346,8 @@
 
 <nav class="side-nav" id="sideNav">
   <a href="#kpiGrid" data-section="kpiGrid">Resumen</a>
+  <a href="#presupuesto" data-section="presupuesto">Presupuesto</a>
+  <a href="#metasAhorro" data-section="metasAhorro">Metas de ahorro</a>
   <a href="#perfil" data-section="perfil">Tu perfil</a>
   <a href="#deuda" data-section="deuda">Tarjetas y deuda</a>
   <a href="#analisis" data-section="analisis">Análisis visual</a>
@@ -1171,6 +1399,19 @@ async function iniciarDashboard() {
   // por si algún día esta clave faltara en la respuesta (cuenta vieja,
   // caché de red, etc.) -- nunca un TypeError leyendo .activas de undefined.
   const TARJETAS = datosApi.tarjetas || { activas: [], sin_asignar: 0 };
+
+  // Presupuesto por baldes / metas de ahorro (2026-09-08, ver
+  // requisitos/2026-09-08_presupuesto-ahorro-deudas.md). `let`, no
+  // `const`: los 3 se reasignan enteros con la respuesta de
+  // guardar/asignar/crear/editar/archivar (nunca se mutan in-place) cada
+  // vez que el usuario cambia algo desde los modales de esta sección --
+  // mismo criterio que CATEGORIA_BALDE más abajo. Con respaldo por si
+  // alguna de las 3 claves faltara en la respuesta, igual que TARJETAS.
+  let PRESUPUESTO = datosApi.presupuesto || {
+    pct_necesidades: 50, pct_gustos: 30, pct_ahorro_deudas: 20, configurado: false, suma_pct: 100,
+  };
+  let CATEGORIA_BALDE = datosApi.categoria_balde || {};
+  let METAS_AHORRO = Array.isArray(datosApi.metas_ahorro) ? datosApi.metas_ahorro : [];
 
   // Sub-secciones del dashboard que un admin ocultó para esta cuenta
   // (ver "Ocultar vistas" -- routes/admin_vistas.py). Se esconden
@@ -1365,6 +1606,40 @@ const ICONS_KPI = {
   bag:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg>',
 };
 
+// Íconos de IDENTIDAD de cada balde (2026-09-08) -- mismo lenguaje SVG de
+// trazo que ICONS_KPI (nunca emoji nuevos, ver checklist de accesibilidad
+// del informe de paleta, sección 5: "cada balde necesita, además del
+// color, un ícono distinto"). "gustos" reutiliza EXACTAMENTE el mismo
+// path que ICONS_KPI.bag (ya en uso y ya probado en este archivo, ver
+// "Compras a crédito" en kpiGridDeuda) -- el informe sugiere "estrella o
+// bolsa"; se elige "bolsa" para reusar un ícono ya verificado en vez de
+// sumar un path nuevo sin poder previsualizarlo antes del QA visual.
+const ICONS_BALDE = {
+  necesidades:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M9 21v-6h6v6"></path></svg>',
+  gustos:        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg>',
+  ahorro_deudas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>',
+};
+
+// Catálogo de baldes -- MISMO id/orden/label que db_finanzas.BALDES_PRESUPUESTO.
+// No viaja en /api/dashboard-data (esa ruta solo manda presupuesto/
+// categoria_balde/metas_ahorro, ver su docstring) -- si el catálogo de
+// baldes cambiara alguna vez en el backend, este array hardcodeado
+// también tendría que actualizarse (igual que CAT_ICONS ya está
+// hardcodeado del lado del cliente para las categorías).
+const BALDES = [
+  { id: 'necesidades',   label: 'Necesidades' },
+  { id: 'gustos',        label: 'Gustos' },
+  { id: 'ahorro_deudas', label: 'Ahorro/deudas' },
+];
+
+// Umbral de "atención" (ámbar) de cada balde: 80% de lo presupuestado --
+// mismo umbral y mismo criterio que ya usan las tarjetas de crédito
+// (nivel-amber >=80%, ver renderTarjetas() más abajo) para no introducir
+// un segundo número "mágico" distinto en el mismo dashboard. Documentado
+// acá porque el informe de paleta (sección 3.2) deja el valor exacto a
+// criterio de frontend-dataviz.
+const UMBRAL_ATENCION_BALDE = 0.8;
+
 const CAT_ICONS = {
   salario:'💼', transferencias:'🔁', suscripciones:'📱', restaurantes:'🍽️', comida:'🍔',
   'crédito':'💳', transporte:'🚌', entretenimiento:'🎬', compras:'🛍️', retiro:'🏧',
@@ -1526,6 +1801,362 @@ window.cambiarPaginaTodosMovimientos = function (delta) {
   renderTodosMovimientos(DATA_ACTUAL);
 };
 
+/* =================================================================
+   PRESUPUESTO POR BALDES (2026-09-08)
+   -----------------------------------------------------------------
+   Ver requisitos/2026-09-08_presupuesto-ahorro-deudas.md. renderPresupuesto()
+   se llama desde ADENTRO de renderDashboard() (más abajo), con el
+   gastoPorCategoria y el totalIngresosReales YA calculados para el
+   período filtrado -- así "presupuestado vs. real" reacciona al mismo
+   filtro de período que el resto del dashboard, sin volver a iterar
+   movimientos (reusa el Map ya agregado por categoría -- perf con miles
+   de movimientos: O(categorías), no O(movimientos), ver checklist #2).
+   TOTAL_INGRESOS_REALES_ACTUAL es el mismo patrón "espejo a nivel de
+   módulo" que ya usan DATA_ACTUAL/GASTO_POR_CATEGORIA_ACTUAL: lo
+   necesitan los modales de configuración (más abajo) para volver a
+   pintar los 3 baldes después de guardar, sin tener que recorrer todo
+   renderDashboard() de nuevo (que además destruye/recrea los 9 gráficos
+   de Chart.js -- innecesario para un cambio que no los toca).
+================================================================= */
+let TOTAL_INGRESOS_REALES_ACTUAL = 0;
+
+function baldeDeCategoria(categoria) {
+  const balde = CATEGORIA_BALDE[categoria];
+  // Mismo fallback conservador que CATEGORIA_BALDE_FALLBACK en
+  // db_finanzas.py: una categoría sin mapeo (o con un balde inválido,
+  // por si el mapeo llegara corrupto) cae en "necesidades", nunca se
+  // pierde silenciosamente del total.
+  return (balde && BALDES.some(b => b.id === balde)) ? balde : 'necesidades';
+}
+
+function calcularRealPorBalde(gastoPorCategoria) {
+  const real = { necesidades: 0, gustos: 0, ahorro_deudas: 0 };
+  for (const [cat, monto] of gastoPorCategoria) {
+    real[baldeDeCategoria(cat)] += monto;
+  }
+  return real;
+}
+
+// Estado de CADA balde (identidad vs. estado -- sección 3 del informe de
+// paleta): "real > presupuestado" es sobregasto real (rojo) sin importar
+// qué tan cerca del umbral esté; si no se pasó, se compara contra
+// UMBRAL_ATENCION_BALDE (definido arriba, junto a BALDES). Con
+// presupuestado=0 (un balde en 0%) y algo de gasto real, ya cae en el
+// primer if (rojo) -- nunca una división por cero.
+function estadoBalde(real, presupuestado) {
+  if (real > presupuestado) return 'rojo';
+  if (presupuestado > 0 && (real / presupuestado) >= UMBRAL_ATENCION_BALDE) return 'amber';
+  return 'verde';
+}
+
+function renderPresupuesto(gastoPorCategoria, totalIngresosReales) {
+  TOTAL_INGRESOS_REALES_ACTUAL = totalIngresosReales;
+  const grid = document.getElementById('baldeGrid');
+  if (!grid) return; // por las dudas -- esta sección no es ocultable hoy, pero el guard es gratis
+
+  const realPorBalde = calcularRealPorBalde(gastoPorCategoria);
+
+  // Advertencia (no bloqueante -- ver "Algo a cuidar entre todos" del
+  // documento de requisitos) si los 3 porcentajes no suman 100. Con
+  // ícono + texto (checklist de accesibilidad), nunca solo un borde de
+  // color.
+  const avisoEl = document.getElementById('presupuestoAvisoSuma');
+  if (avisoEl) {
+    const suma = PRESUPUESTO.suma_pct;
+    if (Math.abs(suma - 100) > 0.01) {
+      const diff = Math.round((100 - suma) * 100) / 100;
+      avisoEl.innerHTML = `<div class="aviso-amber">${ICONS_KPI.warning}<span>Tus 3 porcentajes suman <b>${fmtPct(suma)}</b>, no 100% -- ${diff > 0 ? `queda <b>${fmtPct(diff)}</b> de tu ingreso sin asignar a ningún balde` : `te estás pasando por <b>${fmtPct(Math.abs(diff))}</b>`}. Podés ajustarlo en "Configurar presupuesto".</span></div>`;
+    } else {
+      avisoEl.innerHTML = '';
+    }
+  }
+
+  // Invitación discreta (mismo lenguaje que "Registrá tus tarjetas..." de
+  // renderTarjetas()) para una cuenta que nunca configuró nada -- los
+  // valores sugeridos (50/30/20) ya se están mostrando igual, así que
+  // esto es una invitación, no un estado vacío/bloqueante.
+  const inviteEl = document.getElementById('presupuestoInvite');
+  if (inviteEl) {
+    inviteEl.innerHTML = !PRESUPUESTO.configurado
+      ? `<div class="empty-state">Todavía no configuraste tu presupuesto -- estos son los porcentajes sugeridos (50/30/20). Tocá "Configurar presupuesto" para ajustarlo a tu situación.</div>`
+      : '';
+  }
+
+  grid.innerHTML = BALDES.map(b => {
+    const pct = PRESUPUESTO[`pct_${b.id}`] ?? 0;
+    const presupuestado = (pct / 100) * totalIngresosReales;
+    const real = realPorBalde[b.id] || 0;
+    const diferencia = presupuestado - real;
+    const estado = estadoBalde(real, presupuestado);
+    const pctBarra = presupuestado > 0 ? Math.min((real / presupuestado) * 100, 100) : (real > 0 ? 100 : 0);
+    const ESTADO_TEXTO = { verde: 'Vas bien', amber: 'Atención', rojo: 'Te pasaste' };
+    const ESTADO_ICON = { verde: ICONS_KPI.check, amber: ICONS_KPI.warning, rojo: ICONS_KPI.warning };
+    return `
+    <div class="balde-card identidad-${b.id} estado-${estado}">
+      <div class="balde-card-head">
+        <div class="balde-card-icon">${ICONS_BALDE[b.id]}</div>
+        <div>
+          <div class="balde-card-nombre">${b.label}</div>
+          <div class="balde-card-pct">${fmtPct(pct)} de tu ingreso</div>
+        </div>
+        <span class="balde-card-estado" title="${real > presupuestado ? 'Gastaste más de lo presupuestado en este balde' : (estado === 'amber' ? 'Ya usaste ' + UMBRAL_ATENCION_BALDE * 100 + '% o más de lo presupuestado' : 'Estás dentro de lo presupuestado')}">${ESTADO_ICON[estado]} ${ESTADO_TEXTO[estado]}</span>
+      </div>
+      <div class="balde-barra"><span style="width:${pctBarra}%"></span></div>
+      <div class="balde-cifras">
+        <div class="fila"><span>Presupuestado</span><b>${fmtCOP(presupuestado)}</b></div>
+        <div class="fila"><span>Real gastado</span><b>${fmtCOP(real)}</b></div>
+        <div class="fila ${diferencia < 0 ? 'negativo' : 'positivo'}"><span>Diferencia</span><b>${diferencia < 0 ? '-' : '+'} ${fmtCOP(Math.abs(diferencia))}</b></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* =================================================================
+   METAS DE AHORRO (2026-09-08)
+   -----------------------------------------------------------------
+   A diferencia de renderPresupuesto(), NO depende del filtro de período
+   (el avance hacia una meta es siempre acumulado histórico, ver
+   docstring de /api/dashboard-data) -- se renderiza UNA vez acá abajo
+   (fuera de renderDashboard()) y se vuelve a llamar solo después de
+   crear/editar/archivar una meta (recargarMetas()), mismo criterio que
+   renderTarjetas()/renderPerfilFinanciero() para datos que no cambian
+   con año/mes.
+================================================================= */
+function renderMetas() {
+  const grid = document.getElementById('metasGrid');
+  if (!grid) return;
+  const countEl = document.getElementById('metasAhorroCount');
+  const activas = METAS_AHORRO.filter(m => m.activa);
+
+  if (countEl) countEl.textContent = `${activas.length} activa${activas.length === 1 ? '' : 's'}`;
+
+  if (!METAS_AHORRO.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">Todavía no creaste ninguna meta de ahorro. Creá la primera con "Nueva meta de ahorro" para ver tu avance real hacia ella.</div>';
+    return;
+  }
+  if (!activas.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">Todas tus metas están archivadas. Creá una nueva cuando quieras.</div>';
+    return;
+  }
+
+  grid.innerHTML = activas.map(m => {
+    const alcanzada = m.porcentaje >= 100;
+    const pctBarra = Math.min(m.porcentaje, 100);
+    return `
+    <div class="meta-card ${alcanzada ? 'alcanzada' : ''}">
+      <div class="meta-card-head">
+        <div>
+          <div class="meta-card-nombre">${m.nombre}</div>
+          ${m.fecha_objetivo ? `<div class="meta-card-fecha">Meta para ${fmtDate(m.fecha_objetivo)}</div>` : ''}
+        </div>
+        <span class="meta-card-pct">${fmtPct(Math.min(m.porcentaje, 999))}</span>
+      </div>
+      <div class="meta-barra"><span style="width:${pctBarra}%"></span></div>
+      <div class="meta-cifras">
+        <span>Ahorrado: <b>${fmtCOP(m.ahorrado)}</b></span>
+        <span>Faltan: <b>${fmtCOP(m.restante)}</b></span>
+      </div>
+      ${alcanzada
+        ? `<div class="meta-card-alcanzada-badge">${ICONS_KPI.check} Meta alcanzada</div>`
+        : ''}
+      <div class="meta-card-acciones">
+        <button type="button" onclick="abrirModalMeta(${m.id})">Editar</button>
+        <button type="button" onclick="archivarMeta(${m.id})">Archivar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+renderMetas();
+
+async function recargarMetas() {
+  try {
+    const resp = await fetch('/api/metas-ahorro');
+    const json = await resp.json();
+    if (json.ok) METAS_AHORRO = json.metas;
+  } catch (err) {
+    console.error('Error recargando metas de ahorro:', err);
+  }
+  renderMetas();
+}
+
+/* =================================================================
+   FORMULARIOS: guardar presupuesto / reasignar categoría / crear-editar-
+   archivar meta de ahorro -- todos POST con FormData (mismo contrato que
+   routes/presupuesto.py, "todo POST, acción en la URL", igual que
+   tarjetas/correo). Ninguno recarga la página: cada uno actualiza su
+   mirror en memoria (PRESUPUESTO/CATEGORIA_BALDE/METAS_AHORRO) y vuelve a
+   pintar solo lo que cambió.
+================================================================= */
+async function postForm(url, datos) {
+  const body = new URLSearchParams();
+  for (const [k, v] of Object.entries(datos)) {
+    if (v !== undefined && v !== null) body.set(k, String(v));
+  }
+  try {
+    const resp = await fetch(url, { method: 'POST', body });
+    return await resp.json();
+  } catch (err) {
+    return { ok: false, error: 'No se pudo conectar con el servidor.' };
+  }
+}
+
+// --- Configurar presupuesto ---------------------------------------
+function abrirModalPresupuesto() {
+  document.getElementById('formPresupuestoError').hidden = true;
+  document.getElementById('inputPctNecesidades').value = PRESUPUESTO.pct_necesidades;
+  document.getElementById('inputPctGustos').value = PRESUPUESTO.pct_gustos;
+  document.getElementById('inputPctAhorroDeudas').value = PRESUPUESTO.pct_ahorro_deudas;
+  actualizarSumaPctModal();
+  document.getElementById('modalPresupuesto').classList.add('open');
+}
+function cerrarModalPresupuesto() {
+  document.getElementById('modalPresupuesto').classList.remove('open');
+}
+function actualizarSumaPctModal() {
+  const n = parseFloat(document.getElementById('inputPctNecesidades').value) || 0;
+  const g = parseFloat(document.getElementById('inputPctGustos').value) || 0;
+  const a = parseFloat(document.getElementById('inputPctAhorroDeudas').value) || 0;
+  const suma = Math.round((n + g + a) * 100) / 100;
+  const el = document.getElementById('formPresupuestoSuma');
+  el.innerHTML = Math.abs(suma - 100) > 0.01
+    ? `Suma actual: <b style="color:var(--gold)">${suma}%</b> -- lo ideal es 100%, pero podés guardar igual.`
+    : `Suma actual: <b style="color:var(--green)">${suma}%</b>`;
+}
+['inputPctNecesidades', 'inputPctGustos', 'inputPctAhorroDeudas'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', actualizarSumaPctModal);
+});
+document.getElementById('formPresupuesto')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('formPresupuestoError');
+  errEl.hidden = true;
+  const resultado = await postForm('/api/presupuesto/guardar', {
+    pct_necesidades: document.getElementById('inputPctNecesidades').value,
+    pct_gustos: document.getElementById('inputPctGustos').value,
+    pct_ahorro_deudas: document.getElementById('inputPctAhorroDeudas').value,
+  });
+  if (!resultado.ok) {
+    errEl.textContent = resultado.error || 'No se pudo guardar el presupuesto.';
+    errEl.hidden = false;
+    return;
+  }
+  PRESUPUESTO = resultado.presupuesto;
+  cerrarModalPresupuesto();
+  renderPresupuesto(GASTO_POR_CATEGORIA_ACTUAL, TOTAL_INGRESOS_REALES_ACTUAL);
+});
+
+// --- Reasignar categorías -------------------------------------------
+function abrirModalCategorias() {
+  const lista = document.getElementById('categoriaBaldeLista');
+  const categorias = Object.keys(CATEGORIA_BALDE).sort();
+  lista.innerHTML = categorias.length
+    ? categorias.map(cat => `
+      <div class="categoria-balde-row">
+        <span class="cat-nombre">${catIcon(cat)} ${cat}</span>
+        <select data-categoria="${cat}" onchange="cambiarBaldeCategoria(this)" aria-label="Balde de la categoría ${cat}">
+          ${BALDES.map(b => `<option value="${b.id}" ${CATEGORIA_BALDE[cat] === b.id ? 'selected' : ''}>${b.label}</option>`).join('')}
+        </select>
+      </div>`).join('')
+    : '<div class="empty-state">Todavía no tenés categorías registradas.</div>';
+  document.getElementById('modalCategorias').classList.add('open');
+}
+function cerrarModalCategorias() {
+  document.getElementById('modalCategorias').classList.remove('open');
+}
+async function cambiarBaldeCategoria(selectEl) {
+  const categoria = selectEl.dataset.categoria;
+  const balde = selectEl.value;
+  const anterior = CATEGORIA_BALDE[categoria];
+  selectEl.disabled = true;
+  const resultado = await postForm('/api/presupuesto/categoria/asignar', { categoria, balde });
+  selectEl.disabled = false;
+  if (!resultado.ok) {
+    selectEl.value = anterior; // revertir -- el select no puede quedar mostrando algo que no se guardó
+    console.error('Error reasignando categoría:', resultado.error);
+    return;
+  }
+  CATEGORIA_BALDE = resultado.categoria_balde;
+  renderPresupuesto(GASTO_POR_CATEGORIA_ACTUAL, TOTAL_INGRESOS_REALES_ACTUAL);
+}
+
+// --- Crear / editar / archivar meta de ahorro -----------------------
+function abrirModalMeta(id) {
+  document.getElementById('formMetaError').hidden = true;
+  const meta = id ? METAS_AHORRO.find(m => m.id === id) : null;
+  document.getElementById('modalMetaTitulo').textContent = meta ? 'Editar meta de ahorro' : 'Nueva meta de ahorro';
+  document.getElementById('btnGuardarMeta').textContent = meta ? 'Guardar cambios' : 'Crear meta';
+  document.getElementById('inputMetaId').value = meta ? meta.id : '';
+  document.getElementById('inputMetaNombre').value = meta ? meta.nombre : '';
+  document.getElementById('inputMetaMonto').value = meta ? meta.monto_objetivo : '';
+  document.getElementById('inputMetaFecha').value = meta && meta.fecha_objetivo ? meta.fecha_objetivo : '';
+  document.getElementById('modalMeta').classList.add('open');
+}
+function cerrarModalMeta() {
+  document.getElementById('modalMeta').classList.remove('open');
+}
+document.getElementById('formMeta')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('formMetaError');
+  errEl.hidden = true;
+  const id = document.getElementById('inputMetaId').value;
+  const btn = document.getElementById('btnGuardarMeta');
+  btn.disabled = true;
+  const resultado = await postForm(id ? `/api/metas-ahorro/${id}/editar` : '/api/metas-ahorro/crear', {
+    nombre: document.getElementById('inputMetaNombre').value.trim(),
+    monto_objetivo: document.getElementById('inputMetaMonto').value,
+    fecha_objetivo: document.getElementById('inputMetaFecha').value,
+  });
+  btn.disabled = false;
+  if (!resultado.ok) {
+    errEl.textContent = resultado.error || 'No se pudo guardar la meta.';
+    errEl.hidden = false;
+    return;
+  }
+  cerrarModalMeta();
+  await recargarMetas();
+});
+async function archivarMeta(id) {
+  const meta = METAS_AHORRO.find(m => m.id === id);
+  if (!confirm(`¿Archivar "${meta ? meta.nombre : 'esta meta'}"? Vas a conservar el historial de aportes, pero ya no vas a poder aportarle más ni la vas a ver entre tus metas activas.`)) return;
+  const errEl = document.getElementById('metasAhorroError');
+  if (errEl) errEl.hidden = true;
+  const resultado = await postForm(`/api/metas-ahorro/${id}/archivar`, {});
+  if (!resultado.ok) {
+    if (errEl) { errEl.textContent = resultado.error || 'No se pudo archivar la meta.'; errEl.hidden = false; }
+    return;
+  }
+  await recargarMetas();
+}
+
+// onclick="" inline (filas de meta) y onchange="" inline (select de
+// categoría) se resuelven en el scope global -- mismo motivo que
+// abrirModalGrafico/etc. más abajo, hay que exponerlos a mano.
+window.abrirModalMeta = abrirModalMeta;
+window.cerrarModalMeta = cerrarModalMeta;
+window.archivarMeta = archivarMeta;
+window.cambiarBaldeCategoria = cambiarBaldeCategoria;
+window.cerrarModalPresupuesto = cerrarModalPresupuesto;
+window.cerrarModalCategorias = cerrarModalCategorias;
+
+document.getElementById('btnConfigurarPresupuesto')?.addEventListener('click', abrirModalPresupuesto);
+document.getElementById('btnEditarCategorias')?.addEventListener('click', abrirModalCategorias);
+document.getElementById('btnNuevaMeta')?.addEventListener('click', () => abrirModalMeta());
+
+// Cerrar al hacer click afuera de la tarjeta del modal (fondo) -- mismo
+// patrón que modalGrafico/modalInsight, ver más abajo. Esta página vive
+// dentro de un <iframe> same-origin (ver templates/dashboard.html), pero
+// eso solo importa para listeners puestos en el documento PADRE; este
+// listener vive en el propio documento del iframe (este archivo), así
+// que alcanza sin ningún enganche especial a contentDocument.
+document.getElementById('modalPresupuesto')?.addEventListener('click', (e) => {
+  if (e.target.id === 'modalPresupuesto') cerrarModalPresupuesto();
+});
+document.getElementById('modalCategorias')?.addEventListener('click', (e) => {
+  if (e.target.id === 'modalCategorias') cerrarModalCategorias();
+});
+document.getElementById('modalMeta')?.addEventListener('click', (e) => {
+  if (e.target.id === 'modalMeta') cerrarModalMeta();
+});
+
 function renderDashboard(DATA, DEUDA_TARJETAS) {
 
 // "Todos los movimientos" (switch): vuelve a página 1 en cada cambio de
@@ -1664,6 +2295,20 @@ if (!DATA.length) {
   // que con una sola moneda, no queda un gráfico de dona vacío/roto.
   const _chartMonedaCardVacio = document.getElementById('chartMonedaCard'); // null si "analisis" está oculta
   if (_chartMonedaCardVacio) _chartMonedaCardVacio.hidden = true;
+  // Presupuesto por baldes (2026-09-08): sin movimientos en el período no
+  // hay "real" que calcular -- en vez de mostrar los 3 baldes en $0 (que
+  // se leería como "sin gastos, todo perfecto" en vez de "no hay datos"),
+  // un estado vacío explícito, mismo criterio que el resto de esta rama.
+  // Metas de ahorro NO se toca acá -- es histórico acumulado, no depende
+  // del período filtrado (ver renderMetas()).
+  const _baldeGridVacio = document.getElementById('baldeGrid');
+  if (_baldeGridVacio) _baldeGridVacio.innerHTML =
+    '<div class="empty-state" style="grid-column:1/-1;">No hay movimientos en este período para calcular tu presupuesto.</div>';
+  const _avisoSumaVacio = document.getElementById('presupuestoAvisoSuma');
+  if (_avisoSumaVacio) _avisoSumaVacio.innerHTML = '';
+  const _inviteVacio = document.getElementById('presupuestoInvite');
+  if (_inviteVacio) _inviteVacio.innerHTML = '';
+  TOTAL_INGRESOS_REALES_ACTUAL = 0;
   GASTO_POR_CATEGORIA_ACTUAL = []; // que el modal del ranking tampoco muestre datos de un período anterior
   INSIGHTS_ACTUAL = []; // ídem, para el modal de insight
   // Ninguno de los crearGrafico() de más abajo llega a correr en este
@@ -1764,6 +2409,15 @@ function sortMapDesc(map){
 // Gasto por categoría (COP)
 const gastoPorCategoria = sortMapDesc(groupSum(gastosCOP, r=>r.categoria));
 GASTO_POR_CATEGORIA_ACTUAL = gastoPorCategoria; // para el modal del ranking completo, fuera de esta función
+
+// Presupuesto por baldes (2026-09-08): reusa gastoPorCategoria (ya
+// agregado arriba) y totalIngresosReales (ya calculado más arriba, mismo
+// número que usan las tarjetas KPI "Dinero que entró"/"Dinero disponible")
+// -- "presupuestado" de cada balde es pct/100 * totalIngresosReales, "real"
+// es la suma de gastoPorCategoria mapeada por categoria_balde. Ver
+// renderPresupuesto() para el detalle completo.
+renderPresupuesto(gastoPorCategoria, totalIngresosReales);
+
 // Categoría con mayor gasto (con respaldo por si el período filtrado no tiene ningún gasto)
 const [catTop, catTopMonto] = gastoPorCategoria[0] || ['sin datos', 0];
 // Promedio mensual de gasto REAL de caja (COP): total gasto real / nº de meses distintos presentes en los datos
@@ -2750,7 +3404,10 @@ document.getElementById('modalInsight').addEventListener('click', (e) => {
   if (e.target.id === 'modalInsight') cerrarModalInsight();
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { cerrarModalGrafico(); cerrarModalInsight(); }
+  if (e.key === 'Escape') {
+    cerrarModalGrafico(); cerrarModalInsight();
+    cerrarModalPresupuesto(); cerrarModalCategorias(); cerrarModalMeta();
+  }
 });
 
 // abrirModalGrafico/abrirModalLeaderboard/cerrarModalGrafico/abrirModalInsight/
@@ -2873,6 +3530,91 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
     <div class="modal-grafico-body">
       <p id="modalInsightTexto" style="margin:0; font-size:13.5px; line-height:1.6; color:var(--text-dim);"></p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MODAL "CONFIGURAR PRESUPUESTO" (ver JS: abrirModalPresupuesto) --
+     mismas clases modal-grafico-* que los modales de arriba.
+     ============================================================ -->
+<div class="modal-grafico-overlay" id="modalPresupuesto">
+  <div class="modal-grafico-card" style="width: min(460px, 100%);">
+    <div class="modal-grafico-header">
+      <h3>Configurar presupuesto</h3>
+      <button type="button" class="modal-grafico-cerrar" onclick="cerrarModalPresupuesto()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-grafico-body">
+      <p class="desc" style="margin:0 0 14px;">Definí qué % de tu ingreso real destinás a cada balde. Lo ideal es que sumen 100%, pero podés guardar igual si no da -- te avisamos en el dashboard.</p>
+      <form id="formPresupuesto">
+        <div class="form-row">
+          <label for="inputPctNecesidades">Necesidades (%)</label>
+          <input type="number" id="inputPctNecesidades" min="0" step="0.1" required>
+        </div>
+        <div class="form-row">
+          <label for="inputPctGustos">Gustos (%)</label>
+          <input type="number" id="inputPctGustos" min="0" step="0.1" required>
+        </div>
+        <div class="form-row">
+          <label for="inputPctAhorroDeudas">Ahorro/deudas (%)</label>
+          <input type="number" id="inputPctAhorroDeudas" min="0" step="0.1" required>
+        </div>
+        <div class="form-suma-pct" id="formPresupuestoSuma"></div>
+        <div class="form-error" id="formPresupuestoError" hidden></div>
+        <button type="submit" class="btn-primario">Guardar presupuesto</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MODAL "REASIGNAR CATEGORÍAS" (ver JS: abrirModalCategorias) --
+     un <select> por categoría, se guarda al instante (criterio de
+     aceptación: "sin tocar código ni pedirnos ayuda").
+     ============================================================ -->
+<div class="modal-grafico-overlay" id="modalCategorias">
+  <div class="modal-grafico-card" style="width: min(520px, 100%);">
+    <div class="modal-grafico-header">
+      <h3>Reasignar categorías a un balde</h3>
+      <button type="button" class="modal-grafico-cerrar" onclick="cerrarModalCategorias()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-grafico-body">
+      <p class="desc" style="margin:0 0 6px;">Cada categoría ya viene asignada a un balde razonable. Cambiala si no te calza -- se guarda al instante, sin tocar nada más.</p>
+      <div class="categoria-balde-lista" id="categoriaBaldeLista"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MODAL "NUEVA / EDITAR META DE AHORRO" (ver JS: abrirModalMeta) --
+     mismo formulario para crear y editar (el título/botón cambian según
+     si venís de "Nueva meta de ahorro" o de "Editar" en una meta ya
+     existente, ver abrirModalMeta()).
+     ============================================================ -->
+<div class="modal-grafico-overlay" id="modalMeta">
+  <div class="modal-grafico-card" style="width: min(440px, 100%);">
+    <div class="modal-grafico-header">
+      <h3 id="modalMetaTitulo">Nueva meta de ahorro</h3>
+      <button type="button" class="modal-grafico-cerrar" onclick="cerrarModalMeta()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-grafico-body">
+      <form id="formMeta">
+        <input type="hidden" id="inputMetaId">
+        <div class="form-row">
+          <label for="inputMetaNombre">Nombre</label>
+          <input type="text" id="inputMetaNombre" maxlength="80" required placeholder="Ej. Vacaciones, Fondo de emergencia">
+        </div>
+        <div class="form-row">
+          <label for="inputMetaMonto">Monto objetivo (COP)</label>
+          <input type="number" id="inputMetaMonto" min="1" step="1" required>
+        </div>
+        <div class="form-row">
+          <label for="inputMetaFecha">Fecha objetivo (opcional)</label>
+          <input type="date" id="inputMetaFecha">
+        </div>
+        <div class="form-error" id="formMetaError" hidden></div>
+        <button type="submit" class="btn-primario" id="btnGuardarMeta">Crear meta</button>
+      </form>
     </div>
   </div>
 </div>
