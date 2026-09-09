@@ -1,0 +1,11 @@
+# Dependencias SOLO para el agente qa-responsive (.claude/agents/qa-responsive.md).
+# Deliberadamente separado de requirements.txt: Playwright descarga un
+# binario de navegador (~150-300MB con `playwright install chromium`)
+# que no tiene ningún motivo para viajar en la imagen Docker de la app
+# (ni dev ni prod) -- esto se instala una sola vez en la máquina donde
+# corre este agente, no en el contenedor.
+#
+# Setup (una sola vez):
+#   pip install -r requirements-qa.txt
+#   playwright install chromium
+playwright>=1.47

@@ -12,15 +12,42 @@
 
   CÓMO CORRERLO (una sola vez):
     Abrí PowerShell como Administrador y corré:
-        cd "C:\Finanzas personales\scripts"
+        cd "<esta carpeta>\scripts"
         .\instalar_runner_cicd.ps1
 
   Requiere que "gh" (GitHub CLI) ya esté autenticado (lo está desde antes).
+  gh.exe se detecta solo; si el runner no está en C:\actions-runner,
+  indicá la carpeta real:
+        .\instalar_runner_cicd.ps1 -RunnerDir 'C:\ruta\al\runner'
 #>
 
+param(
+    [string]$GhPath,
+    [string]$RunnerDir = "C:\actions-runner"
+)
+
 $ErrorActionPreference = "Stop"
-$gh = "C:\Program Files\GitHub CLI\gh.exe"
-$runnerDir = "C:\actions-runner"
+
+if (-not $GhPath) {
+    $cmd = Get-Command gh.exe -ErrorAction SilentlyContinue
+    if ($cmd) {
+        $GhPath = $cmd.Source
+    } else {
+        $fallback = "C:\Program Files\GitHub CLI\gh.exe"
+        if (Test-Path $fallback) { $GhPath = $fallback }
+    }
+}
+if (-not $GhPath -or -not (Test-Path $GhPath)) {
+    Write-Host "No encontre gh.exe (GitHub CLI) automaticamente. Corre indicando la ruta:" -ForegroundColor Red
+    Write-Host "  .\instalar_runner_cicd.ps1 -GhPath 'C:\ruta\a\gh.exe'" -ForegroundColor Yellow
+    exit 1
+}
+if (-not (Test-Path $RunnerDir)) {
+    Write-Host "No encontre el runner instalado en $RunnerDir. Si lo instalaste en otra carpeta, corre:" -ForegroundColor Red
+    Write-Host "  .\instalar_runner_cicd.ps1 -RunnerDir 'C:\ruta\al\runner'" -ForegroundColor Yellow
+    exit 1
+}
+$gh = $GhPath
 
 Write-Host "Generando un token de registro nuevo..." -ForegroundColor Cyan
 $token = & $gh api -X POST repos/Mattewcito/finanzas-personales/actions/runners/registration-token --jq ".token"

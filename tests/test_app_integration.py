@@ -18,8 +18,11 @@ prueba (bug de regresión real, detectado y corregido el 2026-09-05: ver
 tests/test_actualizar_dashboard.py para el detalle del aislamiento).
 """
 import pytest
+from flask import session
+
 import db_finanzas as db
 import actualizar_dashboard as ad
+from auth import inyectar_globales
 
 
 @pytest.fixture
@@ -88,6 +91,31 @@ def test_admin_si_puede_cambiar_de_perfil(client, app_ctx):
     login(client, "admin_test", "clave-admin-123")
     resp = client.post("/cambiar-vista", data={"usuario_id": user_id})
     assert resp.status_code == 302
+
+
+def test_inyectar_globales_deja_al_admin_logueado_primero_aunque_no_sea_el_de_menor_id(client, app_ctx):
+    """usuarios_disponibles debe traer SIEMPRE primero la cuenta del
+    admin logueado (session['usuario_id']), sin importar su orden de
+    creación en la BD -- acá el admin logueado es el tercer usuario
+    creado (el de mayor id), para que un `sort` que ordenara por id (en
+    vez de anclar al propio) haga fallar el test."""
+    flaskapp, admin_id, user_id = app_ctx
+    conn = db.conectar()
+    otro_admin_id = db.crear_usuario(conn, "admin2_test", "clave-admin2-000", "admin", "Admin Dos")
+    conn.close()
+    assert otro_admin_id > user_id > admin_id  # nace en tercer lugar, con el id más alto
+
+    with flaskapp.app.test_request_context():
+        session["usuario_id"] = otro_admin_id
+        session["rol"] = "admin"
+        session["nombre"] = "Admin Dos"
+        session["viendo_id"] = otro_admin_id
+        ctx = inyectar_globales()
+
+    ids_en_orden = [u["id"] for u in ctx["usuarios_disponibles"]]
+    assert ids_en_orden[0] == otro_admin_id
+    # el resto conserva su orden relativo original (por id ascendente)
+    assert ids_en_orden[1:] == [admin_id, user_id]
 
 
 def test_datos_quedan_aislados_entre_usuarios(client, app_ctx):
@@ -312,13 +340,38 @@ def test_dashboard_data_redirige_a_login_sin_sesion(client):
     assert "/login" in resp.headers["Location"]
 
 
-def test_dashboard_data_con_sesion_devuelve_json_con_las_cuatro_claves(client):
+def test_dashboard_data_con_sesion_devuelve_json_con_las_nueve_claves(client):
+    """Desde que se agregó "vistas ocultas por usuario" al dashboard, la
+    respuesta también incluye "vistas_ocultas" (lista de sub-vistas
+    ocultas para viendo_id(), ver routes/dashboard.py::api_dashboard_data).
+    Desde tarjetas de crédito con cupo (2026-09-07, ver
+    requisitos/2026-09-07_tarjetas-credito-cupo.md) se agregó "tarjetas"
+    ({"activas": [...], "sin_asignar": <float>}). Desde presupuesto por
+    baldes / metas de ahorro (2026-09-08, ver
+    requisitos/2026-09-08_presupuesto-ahorro-deudas.md) se agregaron
+    "presupuesto", "categoria_balde" y "metas_ahorro" -- son 9 claves,
+    no 6. Para una cuenta que nunca configuró nada de esto (como
+    admin_test acá, recién logueada y sin movimientos todavía), las 3
+    claves nuevas igual vienen con una forma válida en vez de None/NaN
+    (ver el caso borde "cuenta nueva sin presupuesto configurado
+    todavía" del documento de requisitos)."""
     login(client, "admin_test", "clave-admin-123")
     resp = client.get("/api/dashboard-data")
 
     assert resp.status_code == 200
     body = resp.get_json()
-    assert set(body.keys()) == {"movimientos", "ledger_deuda", "perfil", "generated_at"}
+    assert set(body.keys()) == {
+        "movimientos", "ledger_deuda", "perfil", "generated_at", "vistas_ocultas", "tarjetas",
+        "presupuesto", "categoria_balde", "metas_ahorro",
+    }
+    assert body["vistas_ocultas"] == []
+    assert body["tarjetas"] == {"activas": [], "sin_asignar": 0.0}
+    assert body["presupuesto"]["configurado"] is False
+    assert body["presupuesto"]["pct_necesidades"] == 50.0
+    assert body["presupuesto"]["pct_gustos"] == 30.0
+    assert body["presupuesto"]["pct_ahorro_deudas"] == 20.0
+    assert body["categoria_balde"] == {}
+    assert body["metas_ahorro"] == []
 
 
 def test_dashboard_data_usuario_sin_movimientos_devuelve_listas_vacias_sin_reventar(client):

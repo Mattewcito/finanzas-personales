@@ -43,13 +43,37 @@
     --card-hover: #171e30;
     --text: #eef1f8;
     --text-dim: #8d96ab;
-    --text-faint: #5b6379;
+    /* 2026-09-07: subido de #5b6379 (contraste real 2.93:1 / 3.15:1, por
+       debajo del mínimo WCAG AA de 4.5:1 para texto normal) a #949cb2.
+       Medido con la fórmula de luminancia relativa del propio WCAG contra
+       los dos fondos donde se usa: 6.4:1 contra rgb(19,25,40) (tarjeta,
+       .sub) y 6.88:1 contra rgb(13,17,27) (página, .aviso/.last-updated/
+       th) -- ambos superan 4.5:1 con margen. Sigue siendo visualmente más
+       tenue que --text (rgb(238,241,248), casi blanco), así que la
+       jerarquía tipográfica entre texto principal y secundario no se
+       pierde. Una sola variable, los 4 usos (.sub, .aviso, .last-updated,
+       th) heredan el cambio automáticamente. */
+    --text-faint: #949cb2;
 
     --accent: #7c6cfb;      /* violeta primario */
     --accent-2: #38bdf8;    /* celeste secundario */
     --green: #27d9a8;       /* ingresos / positivo */
     --red: #fb7185;         /* gastos / negativo */
     --gold: #fbbf24;        /* insights / highlights */
+
+    /* Presupuesto por baldes -- identidad (2026-09-08, ver qa_reports/
+       2026-09-08/marketing_paleta_presupuesto.md secciones 3 y 7). Color de
+       IDENTIDAD de cada balde (fijo, nunca cambia con el estado) -- el
+       balde "Ahorro/deudas" reusa --accent-2 tal cual (celeste, ya
+       significa "elemento secundario de confianza" en este dashboard) en
+       vez de sumar una tercera variable nueva, tal como recomienda el
+       informe. El ESTADO (vas bien/atención/te pasaste) de cada balde no
+       suma variables nuevas -- reusa --green/--gold/--red, igual que ya
+       hacen las tarjetas de crédito (.nivel-amber/.nivel-rojo). */
+    --balde-necesidades: #5f8ff7;   /* azul -- lo esencial/no negociable */
+    --balde-gustos: #e26bf5;        /* magenta -- discrecional/personal, sin alarma */
+    --balde-necesidades-bg: rgba(95,143,247,0.16);
+    --balde-gustos-bg: rgba(226,107,245,0.16);
 
     --radius: 16px;
     --radius-sm: 10px;
@@ -69,7 +93,19 @@
     line-height: 1.45;
   }
 
-  .wrap{ max-width: 1360px; margin: 0 auto; padding: 28px 24px 80px; }
+  /* min-width:0 es el fix real del overflow horizontal en mobile/tablet
+     (QA 2026-09-06, ver qa_reports/2026-09-06_review_dashboard/ux_review.md):
+     .wrap es flex item de .page-layout, y por default un flex item tiene
+     min-width:auto (= el min-content de TODO lo que tiene adentro). Como
+     adentro hay grids con columnas 1fr (.kpi-grid, .charts-grid), el
+     min-content que el navegador calcula para esos grids en un contexto
+     de ancho indefinido termina siendo el ancho SIN WRAPPEAR del texto
+     más largo (ej. el "sub" de una KPI), no el de la palabra más larga
+     como debería -- eso mantenía a .wrap fijo en ~690px sin importar que
+     el viewport real fuera 375 o 542px. min-width:0 fuerza el ancho
+     automático mínimo a 0, dejando que .wrap se achique al espacio
+     disponible de verdad. */
+  .wrap{ max-width: 1360px; margin: 0 auto; padding: 28px 24px 80px; min-width: 0; }
 
   /* ===========================================================
      2) HEADER
@@ -86,14 +122,75 @@
   header.top .title-block p{
     margin:0; color: var(--text-dim); font-size: 13.5px;
   }
+  /* Requisito 2026-09-08 puntos 2/3: reemplaza el <div style="..."> inline
+     que tenía este bloque antes. margin-left:auto (no solo el
+     justify-content:space-between del padre) es lo que garantiza que
+     quede pegado a la derecha incluso cuando el header hace flex-wrap y
+     este bloque termina solo en su propia fila (ver comentario en el
+     HTML) -- sin esto, un único ítem en una fila nueva se va a la
+     izquierda, quedando "pegado" debajo del título/subtítulo. */
+  header.top .header-meta{
+    display:flex; flex-direction:column; align-items:flex-end; gap:10px;
+    margin-left:auto;
+  }
+  /* Mobile (requisito 2026-09-07, punto 4): el objetivo explícito es que
+     el gráfico compacto de "Ingresos vs. gastos" entre sin scroll en el
+     primer viewport -- el copy descriptivo del header y la fecha de
+     "última actualización" son los candidatos más seguros para no
+     mostrar acá (siguen 100% disponibles en tablet/desktop, y ningún
+     dato financiero se pierde, es solo copy/metadata). */
+  @media (max-width: 560px){
+    header.top .title-block p{ display:none; }
+    /* 16px -> 8px (bug qa-responsive 2026-09-07 #2): con el fix del bug #1
+       (.movimientos-info ya no usa white-space:nowrap, ver su comentario),
+       los presets Trimestral/Semestral wrappean a 2 líneas en vez de
+       desbordar horizontalmente -- eso suma ~20px de alto extra al header
+       SOLO con esos dos presets activos, que antes de este ajuste volvían
+       a empujar el gráfico compacto fuera de los 690px reales del iframe
+       (bug #1 y #2 interactúan: arreglar el overflow horizontal de uno
+       resucitaba el vertical del otro). Se recorta acá para cubrir ese
+       peor caso con margen. */
+    header.top{ margin-bottom: 8px; }
+    .last-updated{ display:none; }
+  }
   .badge-row{ display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
-  .last-updated{ font-size: 11px; color: var(--text-faint); white-space:nowrap; }
+  /* Hallazgo incidental (2026-09-07, mientras se medía el presupuesto
+     vertical del bug #2 de abajo): el atributo `hidden` que
+     actualizarUIPeriodoControl() alterna sobre #periodoSelectsWrap
+     (class="badge-row") NO estaba ocultando nada -- un `display:flex`
+     de un stylesheet de autor SIEMPRE le gana en la cascada a la regla
+     `[hidden]{display:none}` del stylesheet de user-agent, sin importar
+     especificidad (el origen "autor" pesa más que "user-agent" antes de
+     comparar especificidad). Resultado real: los selects de año/mes
+     quedaban SIEMPRE visibles, incluso con Trimestral/Semestral/Anual
+     activos -- lo que contradice el requisito ya aprobado ("Personalizado"
+     revela los selectores... y oculta el resto del tiempo", ver
+     requisitos/2026-09-07_mejoras-ux-dashboard-kpis.md línea ~99-100).
+     No es uno de los 3 bugs de esta ronda de QA, pero se corrige acá
+     mismo porque es de una línea, sin riesgo, y en el mismo archivo/
+     sección que ya se estaba tocando. */
+  .badge-row[hidden]{ display:none; }
+  /* Sin nowrap: en pantallas angostas este texto ("Última actualización
+     del dashboard: ...") es más largo que el viewport y, al no poder
+     wrappear, forzaba a toda la columna derecha del header (y por lo
+     tanto a .wrap) a excederse (QA 2026-09-06). En desktop no cambia
+     nada visualmente porque de sobra entra en una sola línea. */
+  .last-updated{ font-size: 11px; color: var(--text-faint); white-space:normal; text-align:right; }
   /* Texto de "movimientos cargados": informativo (sin fondo de botón/pill),
      pero más marcado que .last-updated -- es el dato dinámico que reacciona
-     al filtro de período, y debe notarse más que la fecha de actualización. */
+     al filtro de período, y debe notarse más que la fecha de actualización.
+     Sin nowrap (bug qa-responsive 2026-09-07 #1): los presets Trimestral
+     ("...en el trimestre actual (últimos 3 meses)") y Semestral (su
+     equivalente de 6 meses) generan un texto más largo que el viewport en
+     mobile -- con nowrap forzaba el overflow horizontal de TODA la página
+     (scrollWidth 461-471px vs 375px real), exactamente el mismo tipo de bug
+     que .last-updated/.pill ya resolvieron antes (ver sus comentarios acá
+     arriba) con el mismo tratamiento: permitir que el texto wrappee en vez
+     de desbordar. En desktop/tablet no cambia nada, entra de sobra en una
+     sola línea igual que antes. */
   .movimientos-info{
     font-size: 13.5px; font-weight:600; color: var(--text);
-    display:flex; align-items:center; gap:6px; white-space:nowrap;
+    display:flex; align-items:center; gap:6px; white-space:normal;
   }
   .movimientos-info .dot{ width:7px; height:7px; border-radius:50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
   /* Estado vacío / mensaje informativo destacable -- para que un "sin datos"
@@ -114,26 +211,70 @@
     background-repeat:no-repeat; background-position: right 10px center; background-size:13px;
   }
   .pill-select:hover{ border-color: var(--accent); }
-  /* Botones de vista (trimestral/semestral/anual) -- por ahora es solo
-     el mockup visual, mismo lenguaje visual que .pill-select pero como
-     botones en vez de desplegables. Sin lógica todavía. */
-  .view-toggle{ display:flex; gap:8px; margin-top:14px; }
+  /* Requisito 2026-09-08 punto 5: antes, fuera de "Personalizado", los
+     selects de año/mes se OCULTABAN (`hidden`) -- la interfaz "saltaba"
+     de estructura cada vez que se cambiaba de preset. Ahora quedan
+     siempre en el mismo lugar (ver `.header-meta` arriba) y solo se
+     deshabilitan -- opacos y sin poder interactuar -- cuando el preset
+     activo no es "Personalizado" (ver actualizarUIPeriodoControl() en el
+     JS, que ahora alterna `.disabled` en vez de `.hidden`). */
+  .pill-select:disabled{ opacity: .4; cursor: not-allowed; }
+  .pill-select:disabled:hover{ border-color: var(--card-border); }
+  /* Control unificado de período (requisito 2026-09-07): un solo bloque
+     con 4 opciones -- Trimestral/Semestral/Anual (filtran de verdad,
+     ver aplicarPreset() en el JS) + Personalizado (revela los selects
+     año/mes ya existentes). Vive FUERA del header de dos columnas a
+     propósito: así el orden interno (título -> botones -> selects
+     condicionales -> badge) no depende de cómo el header haga wrap en
+     cada breakpoint -- es un único bloque columna, mismo orden siempre. */
+  .periodo-control{
+    display:flex; flex-direction:column; gap:10px;
+    margin: 4px 0 24px;
+  }
+  .periodo-control-titulo{
+    font-size: 11px; text-transform:uppercase; letter-spacing:.05em;
+    font-weight:700; color: var(--text-dim);
+  }
+  /* Botones de período: Trimestral/Semestral/Anual/Personalizado, ya
+     con lógica real detrás (ver aplicarPreset()/activarPersonalizado()
+     en el JS) -- dejaron de ser decorativos. */
+  .view-toggle{ display:flex; gap:8px; flex-wrap:wrap; }
   .view-toggle button{
     background: var(--card-solid); border:1px solid var(--card-border);
     padding: 8px 16px; border-radius: 999px; font-size: 12.5px; color: var(--text-dim);
     font-family: inherit; cursor:pointer;
   }
+  /* Mobile (requisito punto 4, "arriba del pliegue"): más compacto para
+     que las 4 opciones entren en una sola fila (antes ocupaban 2, cada
+     una sumando ~40px de alto que el gráfico compacto necesita) -- sigue
+     siendo el mismo control, mismo orden, solo más chico. */
+  @media (max-width: 560px){
+    /* margin-bottom 16px -> 10px: mismo motivo que header.top de arriba
+       (bug qa-responsive 2026-09-07 #2, interacción con el fix del #1). */
+    .periodo-control{ gap: 6px; margin: 4px 0 10px; }
+    .view-toggle{ gap: 6px; }
+    .view-toggle button{ padding: 6px 10px; font-size: 11px; }
+  }
   .view-toggle button:hover{ border-color: var(--accent); color: var(--text); }
   .view-toggle button.active{
     background: rgba(124,108,251,0.14); border-color: var(--accent); color: var(--text); font-weight:600;
   }
+  /* flex-wrap + sin nowrap: el badge de rango de fechas ("Desde ... hasta
+     ...") es el único uso de .pill y en mobile es más largo que el
+     viewport -- sin esto, quedaba fijo en una sola línea y forzaba el
+     overflow horizontal de toda la página (QA 2026-09-06). En pantallas
+     anchas sigue viéndose en una sola línea porque entra de sobra. */
   .pill{
     background: var(--card-solid); border:1px solid var(--card-border);
     padding: 8px 14px; border-radius: 999px; font-size: 12.5px; color: var(--text-dim);
-    display:flex; align-items:center; gap:6px; white-space:nowrap;
+    display:flex; align-items:center; flex-wrap:wrap; gap:6px; white-space:normal;
   }
   .pill b{ color: var(--text); font-weight:600; }
   .pill .dot{ width:7px; height:7px; border-radius:50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
+  @media (max-width: 560px){
+    .pill{ padding: 6px 10px; font-size: 11px; }
+    .pill-select{ padding: 6px 26px 6px 12px; font-size: 11px; }
+  }
 
   /* ===========================================================
      3) KPI CARDS
@@ -145,7 +286,14 @@
     margin-bottom: 26px;
   }
   @media (max-width: 1100px){ .kpi-grid{ grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 560px){ .kpi-grid{ grid-template-columns: 1fr; } }
+  /* gap 14px -> 8px (bug qa-responsive 2026-09-07 #2): entre kpi-hero,
+     kpi-support-grid y el gráfico compacto hay 2 gaps de este tamaño --
+     junto con los otros recortes de este mismo bug (ver header.top y
+     .periodo-control más arriba, y .chart-card-compacto-ingersos/
+     .chart-holder.compact más abajo) es lo que hace que el gráfico
+     compacto entre completo incluso en el peor caso (preset Trimestral/
+     Semestral, con .movimientos-info en 2 líneas). */
+  @media (max-width: 560px){ .kpi-grid{ grid-template-columns: 1fr; gap: 8px; } }
 
   .kpi{
     background: linear-gradient(180deg, var(--card-solid), #10141f);
@@ -157,20 +305,172 @@
     transition: transform .15s ease, border-color .15s ease;
   }
   .kpi:hover{ transform: translateY(-2px); border-color: rgba(124,108,251,0.35); }
-  .kpi .icon{ font-size: 20px; opacity:.9; }
+  /* Ícono envuelto en badge circular (antes: .icon suelto a 20px, sin
+     fondo -- se veía chico y perdido junto al label). El badge reutiliza
+     el mismo criterio de color que ya existe para .value en las tarjetas
+     con accent (verde/rojo/violeta); las que no tienen accent hoy usan un
+     gris neutro consistente en vez de quedar sin fondo. */
+  .kpi .icon-badge{
+    width: 46px; height: 46px; border-radius: 50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    background: rgba(255,255,255,0.07);
+  }
+  .kpi .icon{ font-size: 30px; line-height:1; opacity:1; }
+  /* Requisito 2026-09-08 punto 6: los íconos fijos de estas tarjetas
+     (ver ICONS_KPI en el JS) ahora son SVG de trazo, no emoji -- se
+     dimensionan en % del propio `.icon-badge` así escalan solos en los 3
+     tamaños de badge que ya existían (hero/normal/compacto) sin necesitar
+     una regla de tamaño por breakpoint como antes hacía falta con
+     font-size. El color lo hereda de `color` en `.icon-badge` (ver abajo,
+     tintado por accent-*) -- los emoji de catIcon() siguen usando `.icon`
+     normalmente, sin verse afectados por esta regla (no son <svg>).
+     Bug real (reporte usuario 2026-09-08, "íconos torcidos"): un
+     `width/height: 56%` en el <svg> se resuelve contra el tamaño de SU
+     contenedor directo (`.icon`) -- pero `.icon` es un <div> sin ancho/
+     alto propio dentro de un flex container con `align-items:center`
+     (no `stretch`), así que su caja terminaba siendo indeterminada. Un
+     porcentaje contra un tamaño indeterminado se trata como `auto`, y un
+     <svg> sin `width`/`height` propios cae al tamaño de reemplazo por
+     defecto del navegador (no cuadrado) -- el ícono se veía estirado/
+     descentrado, no realmente "girado", pero se percibía torcido. Ahora
+     `.icon` ocupa el 100% real de `.icon-badge` (que sí tiene medida fija
+     en px) antes de aplicarle el % al svg -- cadena de tamaños siempre
+     determinada, en los 3 contextos (hero/normal/compacto). */
+  .kpi .icon-badge .icon{
+    width:100%; height:100%; display:flex; align-items:center; justify-content:center;
+  }
+  .kpi .icon-badge svg{ width: 56%; height: 56%; display:block; }
+  .kpi .icon-badge{ color: rgba(255,255,255,0.82); }
+  .kpi.accent-green .icon-badge{ background: rgba(39,217,168,0.18); color: var(--green); }
+  .kpi.accent-red .icon-badge{ background: rgba(251,113,133,0.18); color: var(--red); }
+  .kpi.accent-purple .icon-badge{ background: rgba(124,108,251,0.18); color: var(--accent); }
   .kpi .label{ color: var(--text-dim); font-size: 12.5px; margin-top:10px; font-weight:500; }
   .kpi .value{ font-size: 22px; font-weight: 800; margin-top: 4px; letter-spacing:-0.01em; }
   .kpi .sub{ color: var(--text-faint); font-size: 11.5px; margin-top: 6px; }
   .kpi.accent-green .value{ color: var(--green); }
   .kpi.accent-red .value{ color: var(--red); }
   .kpi.accent-purple .value{ color: var(--accent); }
-  .kpi .mini-rows{ margin-top: 8px; display:flex; flex-direction:column; gap:4px; }
-  .kpi .mini-rows .row{ display:flex; justify-content:space-between; font-size:12px; color:var(--text-dim); }
-  .kpi .mini-rows .row b{ color: var(--text); font-weight:600; }
+  .kpi .mini-rows{ margin-top: 8px; display:flex; flex-direction:column; gap:4px; max-width:320px; }
+  .kpi .mini-rows .row{ display:flex; justify-content:space-between; gap:16px; font-size:12px; color:var(--text-dim); }
+  .kpi .mini-rows .row b{ color: var(--text); font-weight:600; white-space:nowrap; }
+  /* Requisito 2026-09-08 puntos 8 y 10: el texto metodológico ("no incluye
+     deuda...", "excluye avances...") ocupaba espacio permanente en la
+     tarjeta con lenguaje técnico que no es lo primero que alguien
+     necesita ver -- ahora vive colapsado detrás de "Ver detalle" (mismo
+     patrón en las 4 tarjetas: hero + las 3 de apoyo), en texto simple.
+     `.kpi-detalle-btn` es un <button> sin estilo de botón a propósito
+     (parece un link) para no competir visualmente con el valor grande. */
+  .kpi-detalle-btn{
+    margin-top: 8px; background:none; border:none; padding:0; cursor:pointer;
+    font-family:inherit; font-size: 11.5px; font-weight:600; color: var(--accent-2);
+    display:inline-flex; align-items:center; gap:4px;
+  }
+  .kpi-detalle-btn:hover{ color:#fff; }
+  .kpi-detalle-btn .chev{ font-size:9px; transition: transform .15s ease; display:inline-block; }
+  .kpi-detalle-btn[aria-expanded="true"] .chev{ transform: rotate(180deg); }
+  /* Reporte usuario 2026-09-08 ("los detalles son básicos"): un
+     border-top + texto plano se leía como un afterthought, no como una
+     pieza diseñada -- ahora es una superficie propia (mismo lenguaje que
+     el resto de la app usa para "contenido anidado dentro de una
+     tarjeta", ver .chart-card/.kpi), con su propio fondo/borde/radio en
+     vez de una línea suelta. */
+  .kpi-detalle{
+    margin-top:10px; padding:10px 12px;
+    background: rgba(255,255,255,0.035); border:1px solid var(--card-border);
+    border-radius: 10px;
+    font-size:12px; color:var(--text-dim); line-height:1.5;
+  }
+  .kpi-detalle[hidden]{ display:none; }
+  .kpi-detalle p{ margin:0 0 6px; }
+  .kpi-detalle p:last-child{ margin-bottom:0; }
+  .kpi-detalle .mini-rows{ margin-top:8px; padding-top:8px; border-top:1px solid var(--card-border); }
+  .kpi.kpi-hero .kpi-detalle{ font-size:12.5px; }
   .kpi::after{
     content:''; position:absolute; right:-30px; top:-30px; width:100px; height:100px;
     background: radial-gradient(circle, rgba(124,108,251,0.15), transparent 70%);
   }
+
+  /* --- Jerarquía de tarjetas KPI (requisito 2026-09-07) ---------------
+     "Balance de caja real" pasa a ser la tarjeta destacada (hero): ancho
+     completo de la grilla, ≥1.8x el área de las tarjetas de apoyo, con
+     tamaño de fuente responsive (nunca fijo) para no reintroducir el
+     overflow horizontal de mobile ya resuelto (commits 6fc31ae/b65d23a)
+     con un balance negativo de muchos dígitos. */
+  .kpi.kpi-hero{
+    grid-column: 1 / -1;
+    padding: 24px 26px 22px;
+    min-height: 168px;
+    display:flex; flex-direction:column; justify-content:center;
+  }
+  .kpi.kpi-hero .icon-badge{ width: 56px; height:56px; }
+  .kpi.kpi-hero .label{ font-size: 14.5px; margin-top:14px; }
+  .kpi.kpi-hero .value{ font-size: 38px; margin-top: 6px; }
+  @media (max-width: 1100px){
+    .kpi.kpi-hero .value{ font-size: 32px; }
+  }
+  @media (max-width: 560px){
+    .kpi.kpi-hero{ padding: 14px 16px 14px; min-height: 0; }
+    .kpi.kpi-hero .icon-badge{ width: 40px; height:40px; }
+    .kpi.kpi-hero .label{ font-size: 12.5px; margin-top:8px; }
+    .kpi.kpi-hero .value{ font-size: 25px; margin-top:3px; } /* responsive a propósito: a este ancho un balance negativo de muchos dígitos (ej. -$12.345.678) no entraría a 38px sin desbordar */
+    /* Requisito 2026-09-08 punto 8: el texto metodológico que antes vivía
+       siempre visible en `.sub` (y que en mobile necesitaba un
+       line-clamp dedicado para no comerse el alto del gráfico compacto,
+       ver historial del commit anterior) ahora arranca COLAPSADO detrás
+       de "Ver detalle" en las 3 pantallas -- ya no hace falta recortarlo
+       acá, el presupuesto de alto de mobile ya está resuelto de raíz. */
+  }
+
+  /* Tarjetas de apoyo (Ingresos/Gasto real, + Deuda actual estimada si esa
+     sub-vista no está oculta -- ver deudaVisibleArriba en el JS): mismo
+     tamaño entre sí, más chicas que el balance -- grilla propia de hasta 3
+     columnas que NO depende de cuántas columnas tenga .kpi-grid en ese
+     breakpoint (a propósito: así se mantienen compactas y en fila también
+     en mobile, en vez de apilarse una debajo de otra y empujar el resto
+     del contenido "arriba del pliegue" fuera de la primera pantalla).
+     auto-fit + minmax (bug qa-responsive 2026-09-07 #3) en vez de un
+     repeat(3,1fr) fijo: con "deuda" oculta para la cuenta que se esté
+     viendo (admin > Ocultar vistas) esta grilla solo tiene 2 tarjetas, y
+     con un template fijo de 3 columnas quedaba un tercio de la fila vacío
+     (hueco de layout). Con auto-fit, el tercer track queda "empty" y
+     colapsa a 0 -- el espacio libre se reparte entre las 2 tarjetas
+     presentes (1fr en ambas), sin tocar nada del caso de 3 tarjetas: ahí
+     los 3 tracks quedan ocupados y el resultado es idéntico a
+     repeat(3,1fr) de antes (mismo ancho por tarjeta, en los 3
+     breakpoints). minmax(90px, 1fr): 90px es bien por debajo del ancho
+     real que le toca a cada tarjeta incluso en mobile (~109px con 3
+     tarjetas a 375px), así que nunca fuerza un salto de línea antes de
+     tiempo -- solo evita que, en una pantalla hipotéticamente más angosta
+     que las 3 soportadas, el auto-fit intente amontonar demasiadas
+     columnas. */
+  .kpi-support-grid{
+    grid-column: 1 / -1;
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+    gap: 12px;
+  }
+  @media (max-width: 560px){
+    .kpi-support-grid{ gap:6px; }
+    .kpi-support-grid .kpi{ padding: 10px 8px 8px; }
+    .kpi-support-grid .kpi .icon-badge{ width:26px; height:26px; }
+    .kpi-support-grid .kpi .label{ font-size:9.5px; margin-top:5px; }
+    .kpi-support-grid .kpi .value{ font-size:13px; margin-top:2px; }
+    /* Requisito 2026-09-08 punto 10: ya no hace falta ocultar "sub" en
+       mobile -- ese texto ahora arranca colapsado detrás de "Ver detalle"
+       en los 3 breakpoints (ver .kpi-detalle-btn en el CSS de más arriba),
+       nunca ocupa espacio hasta que alguien lo pide. */
+    .kpi-support-grid .kpi .kpi-detalle-btn{ font-size:10px; margin-top:4px; }
+  }
+
+  /* Fila secundaria (Transacciones/Categoría/Promedio/Entidad): mismos
+     datos que hoy, menor protagonismo visual -- ícono sin badge grande
+     (no entra un badge de 46px en una tarjeta de este tamaño sin generar
+     overflow, ver requisito punto 5, caso borde). */
+  .kpi.kpi-compact .icon-badge{ width: 30px; height: 30px; }
+  .kpi.kpi-compact .icon{ font-size: 17px; }
+  .kpi.kpi-compact .label{ font-size: 11px; margin-top:8px; }
+  .kpi.kpi-compact .value{ font-size: 16px; margin-top:3px; }
+  .kpi.kpi-compact .sub{ font-size: 10.5px; }
 
   /* ===========================================================
      4) SECTION HEADINGS
@@ -217,6 +517,16 @@
     border-radius: var(--radius);
     padding: 18px 18px 10px;
     box-shadow: var(--shadow);
+    /* Mismo fix que .wrap (ver comentario ahí): .chart-card es grid item
+       de .charts-grid (columnas 1fr), y sin min-width:0 su ancho mínimo
+       automático queda atado al <canvas> de Chart.js -- que Chart.js
+       dimensiona con un ancho en px fijo por inline style según el
+       ancho del contenedor EN EL MOMENTO de crear el gráfico. Si el
+       contenedor nace angosto (porque .wrap ya viene arreglado), el
+       canvas nace angosto también y no hay overflow; pero si algo
+       vuelve a agrandar el grid item por dentro, esto evita que ese
+       ancho fijo del canvas fuerce el layout hacia afuera. */
+    min-width: 0;
   }
   .chart-card.full{ grid-column: 1 / -1; }
   .chart-card h3{
@@ -226,6 +536,36 @@
   .chart-card .desc{ margin:0 0 12px; font-size: 11.5px; color: var(--text-faint); }
   .chart-holder{ position: relative; height: 260px; }
   .chart-holder.tall{ height: 300px; }
+  /* Gráfico compacto de "Ingresos vs. gastos" arriba del pliegue (requisito
+     2026-09-07, punto 4) -- mismo <canvas>/Chart.js, altura reducida a
+     propósito para que quepa sin scroll junto al resto de la zona de KPIs.
+     Bug qa-responsive 2026-09-07 #2: en mobile (375px) la tarjeta completa
+     (h3 + este holder + padding) no entraba en los 690px reales del
+     iframe (100vh - 60px de header - 62px de la barra inferior, ver
+     templates/dashboard.html) -- sobraban entre ~25 y ~40px según el
+     contenido dinámico (más o menos deuda/movimientos cambia el alto del
+     resto de tarjetas de arriba). Se compensa achicando ESTA tarjeta un
+     poco más en mobile (ver .chart-card-compacto-ingresos más abajo) en
+     vez de tocar kpi-hero/kpi-support-grid, que ya entraban bien. */
+  .chart-holder.compact{ height: 130px; }
+  @media (max-width: 560px){ .chart-holder.compact{ height: 72px; } }
+
+  /* Tarjeta que envuelve el gráfico compacto de arriba -- el padding y el
+     tamaño del h3 vivían como style="" inline; se movieron acá para poder
+     recortarlos más en mobile (bug qa-responsive 2026-09-07 #2) sin pelear
+     contra la especificidad de un inline style. En tablet/desktop el
+     padding/tamaño son EXACTAMENTE los mismos que ya tenía (no cambia nada
+     ahí, ya entraba completo). El tag "vista compacta" se oculta en mobile
+     -- ya entraba en una sola línea, pero ocultarlo (en vez de solo
+     achicar la fuente) deja el h3 con una sola caja de texto simple y
+     evita cualquier reflow raro con font-size muy chico + emoji. */
+  .chart-card-compacto-ingresos{ padding: 12px 16px 8px; }
+  .chart-card-compacto-ingresos h3{ font-size: 12.5px; }
+  @media (max-width: 560px){
+    .chart-card-compacto-ingresos{ padding: 6px 12px 4px; }
+    .chart-card-compacto-ingresos h3{ font-size: 10.5px; margin-bottom: 0; line-height: 1.3; }
+    .chart-card-compacto-ingresos h3 .tag{ display: none; }
+  }
 
   /* Gráficos expandibles: click en la tarjeta para verla en grande con
      una tabla de detalle debajo (ver modal más abajo). */
@@ -239,6 +579,19 @@
     opacity: 0; transition: opacity .15s ease; pointer-events: none;
   }
   .chart-card.expandible:hover::after{ opacity: 1; }
+
+  /* Insights: mismo lenguaje visual que las tarjetas de gráfico
+     expandibles -- solo título por defecto (menos texto de entrada),
+     click abre el detalle completo en un modal (ver JS: abrirModalInsight). */
+  .insight.expandible{ cursor: pointer; position:relative; transition: transform .15s ease, box-shadow .15s ease; }
+  .insight.expandible:hover{ transform: translateY(-2px); box-shadow: 0 10px 26px rgba(0,0,0,0.28); }
+  .insight.expandible::after{
+    content: '👁️ Ver detalle'; position: absolute; top: 14px; right: 16px;
+    font-size: 10.5px; color: var(--text-dim); background: var(--card-hover);
+    padding: 3px 9px; border-radius: 999px; border: 1px solid var(--card-border);
+    opacity: 0; transition: opacity .15s ease; pointer-events: none;
+  }
+  .insight.expandible:hover::after{ opacity: 1; }
 
   /* Modal de gráfico expandido */
   .modal-grafico-overlay{
@@ -277,6 +630,12 @@
     padding: 9px 12px; display:flex; gap:8px; align-items:flex-start;
   }
   .perfil-card .aviso{ margin: 4px 0 0; font-size: 10.5px; color: var(--text-faint); }
+  .perfil-card .consejos li.oculto{ display:none; }
+  .perfil-card .ver-mas-consejos{
+    align-self:flex-start; margin-top:2px; background:none; border:none; cursor:pointer;
+    font-size:11.5px; color: var(--accent-2); font-weight:600; font-family:inherit; padding:0;
+  }
+  .perfil-card .ver-mas-consejos:hover{ text-decoration:underline; }
 
   /* Leaderboard (Top categorías) */
   .leaderboard{ display:flex; flex-direction:column; gap:10px; margin-top: 6px; }
@@ -294,6 +653,241 @@
   .lb-top .amt{ color: var(--text-dim); font-variant-numeric: tabular-nums; }
   .lb-bar{ height:7px; border-radius:999px; background: var(--bg-soft); overflow:hidden; }
   .lb-bar > span{ display:block; height:100%; border-radius:999px; }
+
+  /* ===========================================================
+     5b) TARJETAS DE CRÉDITO CON CUPO (2026-09-07)
+     Ver requisitos/2026-09-07_tarjetas-credito-cupo.md. Reusa el mismo
+     lenguaje visual que .kpi (icon-badge, accent-*, tipografía) en vez
+     de inventar un estilo nuevo -- mismo criterio de consistencia que
+     ya estableció el track UX paralelo (commit 3417d28). Los 3 niveles
+     de alerta (normal/ámbar ≥80%/rojo ≥95%) usan las mismas variables
+     --gold/--red que ya existen para insights/gastos, no colores nuevos.
+     =========================================================== */
+  .tarjetas-grid{
+    display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 4px;
+  }
+  .tarjetas-grid:empty{ display:none; margin:0; } /* 0 tarjetas + sin deuda sin asignar: no queda un hueco vacío */
+  @media (max-width: 1100px){ .tarjetas-grid{ grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px){ .tarjetas-grid{ grid-template-columns: 1fr; } }
+
+  .tarjeta-card{
+    background: var(--card-solid); border:1px solid var(--card-border); border-radius: var(--radius-sm);
+    padding: 16px; min-width:0; /* min-width:0 -- mismo fix de overflow que .kpi (ver nota de .wrap arriba) */
+  }
+  .tarjeta-card.nivel-amber{ border-color: rgba(251,191,36,0.45); }
+  .tarjeta-card.nivel-rojo{ border-color: rgba(251,113,133,0.55); }
+  .tarjeta-card.sin-asignar{ border-style:dashed; }
+
+  .tarjeta-card-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+  .tarjeta-card-titulo{ min-width:0; }
+  .tarjeta-card-nombre{ display:block; font-size:14px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tarjeta-card-meta{ display:block; font-size:11.5px; color:var(--text-dim); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  /* Fix qa_reports/2026-09-07/ux_review_tarjetas_credito.md 🟠#2: el
+     nowrap+ellipsis de arriba está pensado para la línea corta de las
+     tarjetas normales ("Entidad · Terminada en XXXX"), no para la frase
+     más larga del bloque "Sin tarjeta asignada" ("No es un error -- es
+     deuda real todavía sin clasificar por tarjeta"), que se truncaba en
+     mobile/tablet ocultando el "por qué". Este bloque no compite por
+     espacio con un badge de % a la derecha como las tarjetas normales
+     (no tiene .tarjeta-card-pct), así que puede hacer wrap sin problema. */
+  .tarjeta-card-meta.tarjeta-card-meta-wrap{ white-space:normal; overflow:visible; text-overflow:clip; }
+  .tarjeta-card-pct{
+    flex-shrink:0; font-size:11.5px; font-weight:800; padding:3px 9px; border-radius:999px;
+    background: rgba(39,217,168,0.15); color: var(--green);
+  }
+  .tarjeta-card.nivel-amber .tarjeta-card-pct{ background: rgba(251,191,36,0.2); color: var(--gold); }
+  .tarjeta-card.nivel-rojo .tarjeta-card-pct{ background: rgba(251,113,133,0.2); color: var(--red); }
+
+  .tarjeta-barra{ height:8px; border-radius:999px; background: var(--bg-soft); overflow:hidden; margin: 12px 0; }
+  .tarjeta-barra > span{ display:block; height:100%; border-radius:999px; background: var(--green); }
+  .tarjeta-card.nivel-amber .tarjeta-barra > span{ background: var(--gold); }
+  .tarjeta-card.nivel-rojo .tarjeta-barra > span{ background: var(--red); }
+
+  .tarjeta-cifras{ display:flex; flex-direction:column; gap:6px; }
+  .tarjeta-cifras .fila{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:12px; color:var(--text-dim); }
+  .tarjeta-cifras .fila b{
+    color: var(--text); font-size:13.5px; font-weight:700; font-variant-numeric: tabular-nums;
+    text-align:right; word-break: break-word; /* cupo disponible negativo (más dígitos que el positivo) nunca se corta -- mismo riesgo que 6fc31ae/b65d23a */
+  }
+  .tarjeta-cifras .fila.negativo b{ color: var(--red); }
+  .tarjeta-cifras .fila.positivo b{ color: var(--green); }
+
+  @media (max-width: 560px){
+    .tarjeta-card{ padding:12px; }
+    .tarjeta-cifras .fila{ font-size:10.5px; }
+    .tarjeta-cifras .fila b{ font-size:12px; }
+  }
+
+  /* ===========================================================
+     5c) PRESUPUESTO POR BALDES (2026-09-08)
+     Ver requisitos/2026-09-08_presupuesto-ahorro-deudas.md y
+     qa_reports/2026-09-08/marketing_paleta_presupuesto.md (paleta,
+     modelo identidad/estado). Reusa el mismo lenguaje visual que
+     .tarjeta-card (icon-badge, barra, cifras con fila.negativo/positivo)
+     por consistencia -- no es una superficie de diseño nueva.
+     =========================================================== */
+  /* Ícono del título de sección: mismo fix de tamaño que .icon-badge
+     (bug real 2026-09-08, "íconos torcidos" -- ver comentario largo más
+     arriba, junto a .kpi .icon-badge svg): el <svg> se dimensiona en %
+     contra ESTE contenedor, que tiene una medida propia fija en px
+     (18x18), nunca contra un ancestro sin tamaño determinado. */
+  .section-title .section-icon{
+    width:18px; height:18px; flex-shrink:0; color: var(--accent-2);
+    display:inline-flex; align-items:center; justify-content:center;
+  }
+  .section-title .section-icon svg{ width:100%; height:100%; display:block; }
+
+  .aviso-amber{
+    display:flex; align-items:center; gap:10px;
+    padding:12px 16px; margin:4px 0 14px;
+    background: rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.35);
+    border-radius: var(--radius-sm); color: var(--text); font-size:13px;
+  }
+  .aviso-amber svg{ width:18px; height:18px; flex-shrink:0; color: var(--gold); }
+  .aviso-amber b{ color: var(--gold); }
+
+  .balde-grid{ display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 4px; }
+  @media (max-width: 900px){ .balde-grid{ grid-template-columns: 1fr; } }
+
+  .balde-card{
+    background: var(--card-solid); border:1px solid var(--card-border); border-top: 3px solid transparent;
+    border-radius: var(--radius-sm); padding: 16px; min-width:0;
+  }
+  .balde-card.identidad-necesidades{ border-top-color: var(--balde-necesidades); }
+  .balde-card.identidad-gustos{ border-top-color: var(--balde-gustos); }
+  .balde-card.identidad-ahorro_deudas{ border-top-color: var(--accent-2); }
+
+  .balde-card-head{ display:flex; align-items:center; gap:10px; }
+  /* Mismo criterio de tamaño propio que .icon-badge/.section-icon de
+     arriba -- 38x38 fijo, el svg de adentro se resuelve en % contra ESTE
+     contenedor, nunca contra un padre sin medida. */
+  .balde-card-icon{
+    width:38px; height:38px; border-radius:10px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .balde-card-icon svg{ width:56%; height:56%; display:block; }
+  .balde-card.identidad-necesidades .balde-card-icon{ background: var(--balde-necesidades-bg); color: var(--balde-necesidades); }
+  .balde-card.identidad-gustos .balde-card-icon{ background: var(--balde-gustos-bg); color: var(--balde-gustos); }
+  .balde-card.identidad-ahorro_deudas .balde-card-icon{ background: rgba(56,189,248,0.16); color: var(--accent-2); }
+
+  .balde-card-nombre{ font-size:14px; font-weight:700; color: var(--text); }
+  .balde-card-pct{ font-size:11px; color: var(--text-dim); margin-top:1px; }
+
+  /* Estado (accesibilidad -- checklist #5 del informe de paleta): SIEMPRE
+     ícono + texto, nunca solo el color del badge. */
+  .balde-card-estado{
+    margin-left:auto; flex-shrink:0; font-size:10.5px; font-weight:800; padding:4px 9px;
+    border-radius:999px; display:inline-flex; align-items:center; gap:4px; white-space:nowrap;
+  }
+  .balde-card-estado svg{ width:12px; height:12px; flex-shrink:0; }
+  .balde-card.estado-verde .balde-card-estado{ background: rgba(39,217,168,0.15); color: var(--green); }
+  .balde-card.estado-amber .balde-card-estado{ background: rgba(251,191,36,0.2); color: var(--gold); }
+  .balde-card.estado-rojo .balde-card-estado{ background: rgba(251,113,133,0.2); color: var(--red); }
+
+  .balde-barra{ height:8px; border-radius:999px; background: var(--bg-soft); overflow:hidden; margin: 12px 0; }
+  .balde-barra > span{ display:block; height:100%; border-radius:999px; background: var(--green); }
+  .balde-card.estado-amber .balde-barra > span{ background: var(--gold); }
+  .balde-card.estado-rojo .balde-barra > span{ background: var(--red); }
+
+  .balde-cifras{ display:flex; flex-direction:column; gap:6px; }
+  .balde-cifras .fila{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:12px; color:var(--text-dim); }
+  .balde-cifras .fila b{ color: var(--text); font-size:13px; font-weight:700; font-variant-numeric: tabular-nums; text-align:right; }
+  .balde-cifras .fila.negativo b{ color: var(--red); }
+  .balde-cifras .fila.positivo b{ color: var(--green); }
+
+  @media (max-width: 560px){
+    .balde-card{ padding:12px; }
+    .balde-cifras .fila{ font-size:10.5px; }
+    .balde-cifras .fila b{ font-size:12px; }
+  }
+
+  /* ===========================================================
+     5d) METAS DE AHORRO (2026-09-08)
+     Avance: celeste en progreso, verde al 100% -- ver sección 4 del
+     informe de paleta. "Meta alcanzada" SIEMPRE lleva el badge con
+     ícono + texto (checklist accesibilidad #5): nunca solo el cambio
+     de color celeste -> verde de la barra.
+     =========================================================== */
+  .metas-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 4px; }
+  .metas-grid:empty{ display:none; }
+
+  .meta-card{
+    background: var(--card-solid); border:1px solid var(--card-border); border-radius: var(--radius-sm);
+    padding: 16px; min-width:0;
+  }
+  .meta-card.alcanzada{ border-color: rgba(39,217,168,0.45); }
+
+  .meta-card-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+  .meta-card-nombre{ font-size:14px; font-weight:700; color: var(--text); word-break: break-word; }
+  .meta-card-fecha{ font-size:11px; color: var(--text-dim); margin-top:2px; }
+  .meta-card-pct{ flex-shrink:0; font-size:12.5px; font-weight:800; color: var(--accent-2); }
+  .meta-card.alcanzada .meta-card-pct{ color: var(--green); }
+
+  .meta-barra{ height:8px; border-radius:999px; background: var(--bg-soft); overflow:hidden; margin: 12px 0; }
+  .meta-barra > span{ display:block; height:100%; border-radius:999px; background: var(--accent-2); }
+  .meta-card.alcanzada .meta-barra > span{ background: var(--green); }
+
+  .meta-cifras{ display:flex; justify-content:space-between; gap:10px; font-size:12px; color: var(--text-dim); }
+  .meta-cifras b{ color: var(--text); font-weight:700; font-variant-numeric: tabular-nums; }
+
+  .meta-card-alcanzada-badge{
+    margin-top:10px; display:inline-flex; align-items:center; gap:5px;
+    font-size:11px; font-weight:800; color: var(--green);
+    background: rgba(39,217,168,0.15); padding:4px 9px; border-radius:999px;
+  }
+  .meta-card-alcanzada-badge svg{ width:12px; height:12px; }
+
+  .meta-card-acciones{ margin-top:12px; display:flex; gap:14px; }
+  .meta-card-acciones button{
+    background:none; border:none; padding:0; cursor:pointer; font-family:inherit;
+    font-size:11.5px; font-weight:600; color: var(--accent-2);
+  }
+  .meta-card-acciones button:hover{ color:#fff; }
+
+  /* ===========================================================
+     5e) BOTONES SECUNDARIOS/PRIMARIOS Y FORMULARIOS EN MODAL (2026-09-08)
+     Usados por "Configurar presupuesto", "Reasignar categorías" y
+     "Nueva/editar meta de ahorro" -- reutilizan .modal-grafico-* (ver
+     arriba) para verse igual al resto de los modales ya existentes.
+     =========================================================== */
+  .acciones-presupuesto{ display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+  .btn-secundario{
+    background: var(--card-solid); border:1px solid var(--card-border); color: var(--text);
+    font-family:inherit; font-size:12.5px; font-weight:600; padding:9px 16px; border-radius:999px; cursor:pointer;
+  }
+  .btn-secundario:hover{ border-color: var(--accent); }
+  .btn-primario{
+    background: var(--accent); border:1px solid var(--accent); color:#fff;
+    font-family:inherit; font-size:12.5px; font-weight:700; padding:9px 16px; border-radius:999px; cursor:pointer;
+  }
+  .btn-primario:hover{ background:#6d5ef0; }
+  .btn-primario:disabled{ opacity:.55; cursor:not-allowed; }
+
+  .form-row{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+  .form-row label{ font-size:12px; font-weight:600; color: var(--text-dim); }
+  .form-row input, .form-row select{
+    background: var(--bg-soft); border:1px solid var(--card-border); border-radius:8px; color: var(--text);
+    padding:9px 12px; font-family:inherit; font-size:13px; width:100%;
+  }
+  .form-row input:focus, .form-row select:focus{ outline:none; border-color: var(--accent); }
+  .form-error{ font-size:12px; color: var(--red); margin: -6px 0 12px; }
+  .form-error[hidden]{ display:none; }
+  .form-suma-pct{ font-size:12px; color: var(--text-dim); margin: -6px 0 14px; }
+
+  .categoria-balde-lista{ display:flex; flex-direction:column; }
+  .categoria-balde-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:9px 0; border-bottom:1px solid var(--card-border);
+  }
+  .categoria-balde-row:last-child{ border-bottom:none; }
+  .categoria-balde-row .cat-nombre{
+    font-size:13px; color: var(--text); text-transform:capitalize;
+    display:flex; align-items:center; gap:6px; min-width:0;
+  }
+  .categoria-balde-row select{
+    background: var(--bg-soft); border:1px solid var(--card-border); border-radius:8px; color: var(--text);
+    padding:6px 10px; font-family:inherit; font-size:12px; flex-shrink:0;
+  }
 
   /* ===========================================================
      6) INSIGHTS
@@ -341,6 +935,26 @@
   tbody tr:last-child td{ border-bottom:none; }
   tbody tr:hover{ background: var(--card-hover); }
   td.num{ text-align:right; font-variant-numeric: tabular-nums; font-weight:600; }
+  /* MONTO (última columna de estas tablas -- "Saldo deuda" en la pestaña
+     de deuda) es el dato más importante de una tabla de movimientos
+     financieros. En mobile (375px) la tabla excede el viewport
+     (min-width:640px de arriba) y sin esto quedaba fuera de pantalla,
+     alcanzable solo haciendo scroll horizontal DENTRO de la tabla, sin
+     ningún indicador de que había más contenido a la derecha (bug real,
+     QA 2026-09-06/07). position:sticky la clava al borde derecho del
+     contenedor con scroll -- así queda siempre visible sin scrollear --
+     con un fondo sólido propio (si no, las columnas del medio se
+     transparentan por debajo al scrollear) y una sombra a la izquierda
+     que de paso funciona como el indicador explícito de que hay más
+     columnas detrás (Descripción/Entidad) para quien sí quiera verlas. */
+  .table-scroll table th:last-child,
+  .table-scroll table td:last-child{
+    position: sticky; right: 0;
+    box-shadow: -8px 0 8px -8px rgba(0,0,0,0.55);
+  }
+  .table-scroll table th:last-child{ background: var(--bg-soft); }
+  .table-scroll table td:last-child{ background: var(--card-solid); }
+  .table-scroll table tbody tr:hover td:last-child{ background: var(--card-hover); }
   .tag-tipo{ font-size: 10.5px; padding: 3px 8px; border-radius:999px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; }
   .tag-tipo.ingreso{ background: rgba(39,217,168,0.15); color: var(--green); }
   .tag-tipo.gasto{ background: rgba(251,113,133,0.15); color: var(--red); }
@@ -455,25 +1069,60 @@
   <header class="top">
     <div class="title-block">
       <h1>💰 Dashboard Financiero Personal</h1>
-      <p>Análisis automático de movimientos — generado desde <b style="color:var(--text-dim)">finanzas.db</b>, sincronizada con el Excel, el correo y los extractos que cargues</p>
-      <!-- Vista previa visual únicamente -- todavía sin lógica de agrupación
-           (los botones no hacen nada aún, es solo para ver cómo quedan). -->
-      <div class="view-toggle">
-        <button type="button">Trimestral</button>
-        <button type="button">Semestral</button>
-        <button type="button">Anual</button>
-      </div>
+      <!-- Requisito 2026-09-08 punto 1: el texto anterior ("Análisis
+           automático de movimientos -- generado desde finanzas.db,
+           sincronizada con el Excel, el correo y los extractos que
+           cargues") era lenguaje de implementación -- nombraba la base de
+           datos y las fuentes de sincronización, cero valor para quien
+           solo quiere saber cómo está su plata. Se reemplaza por un
+           resumen real y dinámico del período filtrado (ver
+           renderDashboard(), variable headerResumenEl más abajo) --
+           arranca vacío para no mostrar un placeholder mientras carga. -->
+      <p id="headerResumen"></p>
     </div>
-    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:10px;">
-      <div class="badge-row" id="rangoTotalBadge"></div>
-      <div class="badge-row">
-        <select id="filtroAnio" class="pill-select"></select>
-        <select id="filtroMes" class="pill-select"></select>
-      </div>
+    <!-- Requisito 2026-09-08 puntos 2 y 3: antes este era un <div
+         style="..."> inline sin nombre -- cuando el header no entraba en
+         una sola fila (textos largos de "movimientos cargados", ej. los
+         presets Trimestral/Semestral) el flex-wrap de <header> lo mandaba
+         a su propia fila SIN mantener la alineación a la derecha (un
+         único ítem en una fila con justify-content:space-between se va a
+         la izquierda, no a la derecha) -- se veía "pegado" debajo del
+         título en vez de prolijo en la esquina superior derecha.
+         `.header-meta` con margin-left:auto (ver CSS) lo resuelve incluso
+         en ese caso. Además ahora vive acá el selector de año/mes (antes
+         en `.periodo-control`, ocupando una fila ancha propia que le
+         quitaba espacio y protagonismo a los KPIs de abajo) -- mismo
+         <select> de siempre, mismo id, solo se reubicó el markup. -->
+    <div class="header-meta">
       <div class="movimientos-info" id="movimientosInfo"></div>
+      <div class="badge-row" id="periodoSelectsWrap">
+        <select id="filtroAnio" class="pill-select" aria-label="Año"></select>
+        <select id="filtroMes" class="pill-select" aria-label="Mes"></select>
+      </div>
       <div class="last-updated" id="lastUpdated"></div>
     </div>
   </header>
+
+  <!-- ============================================================
+       CONTROL UNIFICADO DE PERÍODO (requisito 2026-09-07, punto 1)
+       -----------------------------------------------------------------
+       Un único bloque -- título -> botones -> badge de rango. El selector
+       año/mes (antes acá también, como fila propia) se movió al header
+       (`.header-meta`, ver arriba -- requisito 2026-09-08 punto 3).
+       Trimestral/Semestral/Anual filtran de verdad todo el dashboard
+       (ver aplicarPreset() en el JS, reutiliza renderDashboard()); antes
+       eran decorativos.
+       ============================================================ -->
+  <section class="periodo-control" id="periodoControl" aria-label="Filtro de período del dashboard">
+    <span class="periodo-control-titulo">Período</span>
+    <div class="view-toggle" id="periodoBotones">
+      <button type="button" data-periodo="trimestral">Trimestral</button>
+      <button type="button" data-periodo="semestral">Semestral</button>
+      <button type="button" data-periodo="anual">Anual</button>
+      <button type="button" data-periodo="personalizado" class="active">Personalizado</button>
+    </div>
+    <div class="badge-row" id="rangoTotalBadge"></div>
+  </section>
 
   <div class="empty-state" id="cargandoDashboard">⏳ Cargando tu dashboard...</div>
 
@@ -481,6 +1130,47 @@
        KPIs — métricas principales
        ============================================================ -->
   <div class="kpi-grid" id="kpiGrid"></div>
+
+  <!-- ============================================================
+       PRESUPUESTO POR BALDES (50/30/20) -- 2026-09-08
+       Ver requisitos/2026-09-08_presupuesto-ahorro-deudas.md. Depende del
+       filtro de período (mismo mecanismo que el resto del dashboard --
+       renderPresupuesto() se llama desde adentro de renderDashboard()
+       con el DATA ya filtrado). No es una sub-vista ocultable por admin
+       (no está en db_finanzas.VISTAS_DISPONIBLES) -- por eso no pasa por
+       ocultarSubvistas() como perfil/deuda/analisis/insights/movimientos.
+       ============================================================ -->
+  <div class="section-title" id="presupuesto">
+    <h2><span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5.2"></circle><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"></circle></svg></span> Presupuesto por baldes</h2>
+    <div class="line"></div>
+    <span class="tag">Necesidades / Gustos / Ahorro-deudas</span>
+  </div>
+  <div id="presupuestoInvite"></div>
+  <div id="presupuestoAvisoSuma"></div>
+  <div class="balde-grid" id="baldeGrid"></div>
+  <div class="acciones-presupuesto">
+    <button type="button" class="btn-secundario" id="btnConfigurarPresupuesto">Configurar presupuesto</button>
+    <button type="button" class="btn-secundario" id="btnEditarCategorias">Reasignar categorías</button>
+  </div>
+
+  <!-- ============================================================
+       METAS DE AHORRO -- 2026-09-08
+       A diferencia de "Presupuesto" de arriba, NO depende del filtro de
+       período (el avance hacia una meta es siempre acumulado histórico,
+       ver docstring de /api/dashboard-data) -- se renderiza una sola vez
+       (renderMetas()) y se vuelve a llamar solo después de crear/editar/
+       archivar una meta, nunca en cada cambio de período.
+       ============================================================ -->
+  <div class="section-title" id="metasAhorro">
+    <h2><span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg></span> Metas de ahorro</h2>
+    <div class="line"></div>
+    <span class="tag" id="metasAhorroCount"></span>
+  </div>
+  <div class="form-error" id="metasAhorroError" hidden></div>
+  <div class="metas-grid" id="metasGrid"></div>
+  <div class="acciones-presupuesto">
+    <button type="button" class="btn-secundario" id="btnNuevaMeta">Nueva meta de ahorro</button>
+  </div>
 
   <!-- ============================================================
        PERFIL FINANCIERO PERSONALIZADO
@@ -494,7 +1184,16 @@
   <div class="section-title" id="deuda"><h2>💳 Tarjetas de crédito y deuda</h2><div class="line"></div><span class="tag">clasificación automática por texto</span></div>
   <p id="resumenDeuda" style="margin:-6px 0 14px; font-size:12.5px; color:var(--text-dim); max-width:820px;"></p>
   <div class="kpi-grid" id="kpiGridDeuda"></div>
-  <div class="charts-grid" style="margin-top:16px;">
+  <!-- Desglose por tarjeta (2026-09-07, ver
+       requisitos/2026-09-07_tarjetas-credito-cupo.md): NO depende del
+       filtro de período (mismo criterio que "Deuda actual estimada",
+       una foto del presente) -- se llena una sola vez en
+       renderTarjetas(), fuera de renderDashboard(). Vacío por default;
+       si "deuda" está oculta para esta cuenta, ocultarSubvistas() borra
+       este div del DOM antes de que renderTarjetas() intente usarlo
+       (guard `if (!el) return` ahí, mismo patrón que renderPerfilFinanciero()). -->
+  <div class="tarjetas-grid" id="tarjetasGrid"></div>
+  <div class="charts-grid" id="deudaChartsGrid" style="margin-top:16px;">
     <div class="chart-card full expandible" onclick="abrirModalGrafico('chartDeudaEvolucion','📈 Evolución de la deuda en tarjetas de crédito')">
       <h3>📈 Evolución de la deuda en tarjetas de crédito</h3>
       <p class="desc">Saldo acumulado estimado (compras a crédito + avances − pagos a la tarjeta), movimiento a movimiento.</p>
@@ -507,7 +1206,7 @@
        ============================================================ -->
   <div class="section-title" id="analisis"><h2>📊 Análisis visual</h2><div class="line"></div><span class="tag">8 gráficos</span></div>
 
-  <div class="charts-grid">
+  <div class="charts-grid" id="analisisChartsGrid">
 
     <div class="chart-card full expandible" onclick="abrirModalGrafico('chartCategorias','🏷️ Gastos por categoría')">
       <h3>🏷️ Gastos por categoría</h3>
@@ -521,7 +1220,7 @@
       <div class="chart-holder"><canvas id="chartIngresosGastos"></canvas></div>
     </div>
 
-    <div class="chart-card expandible" onclick="abrirModalGrafico('chartMoneda','💱 Distribución por moneda')">
+    <div class="chart-card expandible" id="chartMonedaCard" onclick="abrirModalGrafico('chartMoneda','💱 Distribución por moneda')">
       <h3>💱 Distribución por moneda</h3>
       <p class="desc">Cantidad de movimientos según la moneda utilizada.</p>
       <div class="chart-holder"><canvas id="chartMoneda"></canvas></div>
@@ -647,6 +1346,8 @@
 
 <nav class="side-nav" id="sideNav">
   <a href="#kpiGrid" data-section="kpiGrid">Resumen</a>
+  <a href="#presupuesto" data-section="presupuesto">Presupuesto</a>
+  <a href="#metasAhorro" data-section="metasAhorro">Metas de ahorro</a>
   <a href="#perfil" data-section="perfil">Tu perfil</a>
   <a href="#deuda" data-section="deuda">Tarjetas y deuda</a>
   <a href="#analisis" data-section="analisis">Análisis visual</a>
@@ -689,6 +1390,62 @@ async function iniciarDashboard() {
   const DEUDA_TARJETAS = datosApi.ledger_deuda;
   const GENERATED_AT = datosApi.generated_at;
   const PERFIL_FINANCIERO = datosApi.perfil;
+  // Desglose por tarjeta (2026-09-07, ver
+  // requisitos/2026-09-07_tarjetas-credito-cupo.md): {activas:[...], sin_asignar}.
+  // NO depende del filtro de período -- obtener_tarjetas_con_deuda() en el
+  // backend agrega sobre TODOS los movimientos, igual que "Deuda actual
+  // estimada" (deudaActual, más abajo) toma el último punto de
+  // DEUDA_COMPLETA sin importar qué período esté filtrado. Con respaldo
+  // por si algún día esta clave faltara en la respuesta (cuenta vieja,
+  // caché de red, etc.) -- nunca un TypeError leyendo .activas de undefined.
+  const TARJETAS = datosApi.tarjetas || { activas: [], sin_asignar: 0 };
+
+  // Presupuesto por baldes / metas de ahorro (2026-09-08, ver
+  // requisitos/2026-09-08_presupuesto-ahorro-deudas.md). `let`, no
+  // `const`: los 3 se reasignan enteros con la respuesta de
+  // guardar/asignar/crear/editar/archivar (nunca se mutan in-place) cada
+  // vez que el usuario cambia algo desde los modales de esta sección --
+  // mismo criterio que CATEGORIA_BALDE más abajo. Con respaldo por si
+  // alguna de las 3 claves faltara en la respuesta, igual que TARJETAS.
+  let PRESUPUESTO = datosApi.presupuesto || {
+    pct_necesidades: 50, pct_gustos: 30, pct_ahorro_deudas: 20, configurado: false, suma_pct: 100,
+  };
+  let CATEGORIA_BALDE = datosApi.categoria_balde || {};
+  let METAS_AHORRO = Array.isArray(datosApi.metas_ahorro) ? datosApi.metas_ahorro : [];
+
+  // Sub-secciones del dashboard que un admin ocultó para esta cuenta
+  // (ver "Ocultar vistas" -- routes/admin_vistas.py). Se esconden
+  // acá, del lado del cliente, porque dashboard_finanzas.html es un
+  // archivo estático (no hay forma de filtrarlas desde el servidor
+  // antes de mandarlo). Cada sección tiene un título (.section-title)
+  // y un bloque de contenido con id propio, más un link opcional en el
+  // menú lateral (side-nav) que también hay que sacar.
+  // Nivel de módulo (no solo dentro del IIFE) porque la tarjeta
+  // "Deuda actual estimada" duplicada en la grilla superior de KPIs
+  // (requisito 2026-09-07, punto 3) necesita este mismo criterio de
+  // visibilidad más abajo, dentro de renderDashboard() -- sin esto
+  // quedaría huérfana mostrando un dato de una sección que el resto
+  // de "Tarjetas de crédito y deuda" tiene oculta para esta cuenta.
+  const VISTAS_OCULTAS = new Set(datosApi.vistas_ocultas || []);
+
+  (function ocultarSubvistas() {
+    // "contenido" es siempre una LISTA de ids -- la mayoría de las
+    // secciones tienen un solo bloque, pero deuda/analisis/movimientos
+    // tienen varios (KPIs, charts-grid, tablas) que hay que remover todos.
+    const SECCIONES = {
+      perfil_financiero: { titulo: 'perfil', contenido: ['perfilFinancieroCard'] },
+      deuda: { titulo: 'deuda', contenido: ['resumenDeuda', 'kpiGridDeuda', 'tarjetasGrid', 'deudaChartsGrid'] },
+      analisis: { titulo: 'analisis', contenido: ['analisisChartsGrid'] },
+      insights: { titulo: 'insights', contenido: ['insightsGrid'] },
+      movimientos: { titulo: 'movimientos', contenido: ['todosMovimientosCard', 'cincoVistasCard'] },
+    };
+    for (const [vista, ids] of Object.entries(SECCIONES)) {
+      if (!VISTAS_OCULTAS.has(vista)) continue;
+      document.getElementById(ids.titulo)?.remove();
+      ids.contenido.forEach(id => document.getElementById(id)?.remove());
+      document.querySelector(`.side-nav a[data-section="${ids.titulo}"]`)?.remove();
+    }
+  })();
 
   // DATA/DEUDA_TARJETAS de arriba son el histórico COMPLETO. El filtro de
   // período (más abajo) llama a renderDashboard() con subconjuntos de
@@ -722,21 +1479,171 @@ document.getElementById('lastUpdated').textContent = `Última actualización del
 ================================================================= */
 (function renderPerfilFinanciero() {
   const el = document.getElementById('perfilFinancieroCard');
+  if (!el) return; // sección oculta para esta cuenta -- ver ocultarSubvistas() más arriba
   const perfil = PERFIL_FINANCIERO || {};
   const consejos = Array.isArray(perfil.consejos) ? perfil.consejos : [];
+  const VISIBLES_DE_ENTRADA = 2; // el resto queda oculto atrás de "ver más" -- para no saturar de texto
 
   el.innerHTML = `
     <div class="arquetipo">🧭 ${perfil.arquetipo || 'Sin datos suficientes'}</div>
     <p class="descripcion">${perfil.descripcion || ''}</p>
-    ${consejos.length ? `<ul class="consejos">${consejos.map(c => `<li>💡 ${c}</li>`).join('')}</ul>` : ''}
-    <p class="aviso">Perfil generado automáticamente por reglas sobre tu historial completo (no es asesoría financiera profesional) — se actualiza solo cuando se regenera el dashboard.</p>
+    ${consejos.length ? `<ul class="consejos">${consejos.map((c, i) =>
+        `<li class="${i >= VISIBLES_DE_ENTRADA ? 'oculto' : ''}">💡 ${c}</li>`).join('')}</ul>` : ''}
+    ${consejos.length > VISIBLES_DE_ENTRADA
+        ? `<button type="button" class="ver-mas-consejos" id="btnVerMasConsejos">Ver ${consejos.length - VISIBLES_DE_ENTRADA} consejo(s) más ▾</button>`
+        : ''}
+    <p class="aviso">Generado por reglas sobre tu historial — no es asesoría financiera profesional.</p>
   `;
+
+  const btnVerMas = document.getElementById('btnVerMasConsejos');
+  if (btnVerMas) {
+    btnVerMas.addEventListener('click', () => {
+      el.querySelectorAll('.consejos li.oculto').forEach(li => li.classList.remove('oculto'));
+      btnVerMas.remove();
+    });
+  }
 })();
+
+/* =================================================================
+   TARJETAS DE CRÉDITO CON CUPO (2026-09-07) — igual que el perfil
+   financiero de arriba, es una foto del presente (no depende del
+   filtro de período), así que se renderiza una sola vez acá, no
+   dentro de renderDashboard(). Ver requisitos/2026-09-07_tarjetas-
+   credito-cupo.md para el diseño completo aprobado.
+================================================================= */
+(function renderTarjetas() {
+  const el = document.getElementById('tarjetasGrid'); // null si "deuda" está oculta para esta cuenta -- ver ocultarSubvistas() más arriba
+  if (!el) return;
+
+  const activas = Array.isArray(TARJETAS.activas) ? TARJETAS.activas : [];
+  const sinAsignar = TARJETAS.sin_asignar || 0;
+
+  if (!activas.length) {
+    // 0 tarjetas registradas: la sección se ve EXACTAMENTE igual que antes
+    // de esta feature (el agregado global en kpiGridDeuda/el gráfico de
+    // evolución no cambian en nada) -- lo único que se agrega es una
+    // invitación discreta a registrar una tarjeta, y solo si de verdad hay
+    // algo que ganar con eso (deuda de tarjeta ya detectada pero sin
+    // clasificar por tarjeta). Si no hay ninguna deuda de tarjeta, no se
+    // agrega nada -- ':empty' en el CSS de arriba evita que quede un
+    // hueco vacío en el layout.
+    el.innerHTML = sinAsignar > 0
+      ? `<div class="empty-state" style="grid-column:1/-1;">💳 Registrá tus tarjetas en <a href="/tarjetas" target="_top" style="color:var(--accent-2); font-weight:600;">Mis tarjetas</a> para ver cupo disponible y % de uso por tarjeta.</div>`
+      : '';
+    return;
+  }
+
+  // Umbrales de alerta (propuestos en el requisito, ajuste visual final
+  // de product-designer): ámbar ≥80%, rojo ≥95%. >=95 también cubre
+  // >100% (cupo superado) -- incluido gasto por debajo de 0 (cupo_total
+  // mal cargado) queda protegido con Math.max(0, ...) más abajo.
+  const nivel = (pct) => pct >= 95 ? 'nivel-rojo' : (pct >= 80 ? 'nivel-amber' : '');
+
+  const cardsHTML = activas.map(t => {
+    const pct = Math.max(0, t.porcentaje_uso || 0);
+    const metaTexto = [t.entidad, t.ultimos4 ? `Terminada en ${t.ultimos4}` : null].filter(Boolean).join(' · ') || 'Tarjeta de crédito';
+    return `
+    <div class="tarjeta-card ${nivel(pct)}" title="${t.nombre}">
+      <div class="tarjeta-card-head">
+        <div class="tarjeta-card-titulo">
+          <span class="tarjeta-card-nombre">${t.nombre}</span>
+          <span class="tarjeta-card-meta">${metaTexto}</span>
+        </div>
+        <span class="tarjeta-card-pct">${fmtPct(pct)}</span>
+      </div>
+      <div class="tarjeta-barra"><span style="width:${Math.min(pct, 100)}%"></span></div>
+      <div class="tarjeta-cifras">
+        <div class="fila"><span>Cupo total</span><b>${fmtCOP(t.cupo_total)}</b></div>
+        <div class="fila"><span>Deuda actual</span><b>${fmtCOP(t.deuda_actual)}</b></div>
+        <div class="fila ${t.cupo_disponible < 0 ? 'negativo' : 'positivo'}"><span>Cupo disponible</span><b>${fmtCOP(t.cupo_disponible)}</b></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // "Sin tarjeta asignada" -- bloque APARTE con su propio total (nunca
+  // mezclado silenciosamente dentro del número de una tarjeta real), solo
+  // si hay algo que mostrar (requisito: "si es > 0"). Incluye tanto
+  // movimientos realmente sin tarjeta como los de cualquier tarjeta ya
+  // archivada (ver el docstring de obtener_tarjetas_con_deuda() en
+  // db_finanzas.py para por qué se define así).
+  const sinAsignarHTML = sinAsignar > 0 ? `
+    <div class="tarjeta-card sin-asignar" title="Deuda de tarjeta sin vincular a ninguna tarjeta registrada">
+      <div class="tarjeta-card-head">
+        <div class="tarjeta-card-titulo">
+          <span class="tarjeta-card-nombre">🗂️ Sin tarjeta asignada</span>
+          <span class="tarjeta-card-meta tarjeta-card-meta-wrap">No es un error -- es deuda real todavía sin clasificar por tarjeta</span>
+        </div>
+      </div>
+      <div class="tarjeta-cifras" style="margin-top:12px;">
+        <div class="fila"><span>Deuda sin asignar</span><b>${fmtCOP(sinAsignar)}</b></div>
+      </div>
+    </div>` : '';
+
+  el.innerHTML = cardsHTML + sinAsignarHTML;
+})();
+
+// Requisito 2026-09-08 punto 6: los íconos de las tarjetas KPI (antes
+// emoji sueltos -- ✅📥📤💳 etc.) se ven "genéricos" y su tamaño real
+// varía según la fuente/SO de quien mira el dashboard (un emoji no es un
+// asset con medidas fijas). Se reemplazan por el MISMO lenguaje visual
+// que ya usa el menú lateral (SVG de trazo, stroke-width 1.8, currentColor
+// -- ver base.html): consistente entre navegadores, y el color lo hereda
+// de `.icon-badge` (ver CSS, ya tintado por accent-verde/rojo/violeta).
+// Los emoji de CAT_ICONS (más abajo) NO se tocan a propósito -- son
+// decenas de categorías, cada emoji ya funciona como distintivo visual
+// rápido por categoría, y reconstruir todos como SVG no es proporcional
+// al resto de esta ronda de cambios.
+const ICONS_KPI = {
+  check:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9 12l2 2 4-4"></path></svg>',
+  warning:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>',
+  arrowDown:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v7"></path><path d="M9 12l3 3 3-3"></path></svg>',
+  arrowUp:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 16V9"></path><path d="M9 12l3-3 3 3"></path></svg>',
+  card:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg>',
+  list:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>',
+  calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4"></path><path d="M8 2v4"></path><path d="M3 10h18"></path></svg>',
+  bank:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M5 21V10l7-6 7 6v11"></path><path d="M9 21v-7h6v7"></path></svg>',
+  exchange: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3l4 4-4 4"></path><path d="M20 7H8"></path><path d="M8 21l-4-4 4-4"></path><path d="M4 17h12"></path></svg>',
+  bag:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg>',
+};
+
+// Íconos de IDENTIDAD de cada balde (2026-09-08) -- mismo lenguaje SVG de
+// trazo que ICONS_KPI (nunca emoji nuevos, ver checklist de accesibilidad
+// del informe de paleta, sección 5: "cada balde necesita, además del
+// color, un ícono distinto"). "gustos" reutiliza EXACTAMENTE el mismo
+// path que ICONS_KPI.bag (ya en uso y ya probado en este archivo, ver
+// "Compras a crédito" en kpiGridDeuda) -- el informe sugiere "estrella o
+// bolsa"; se elige "bolsa" para reusar un ícono ya verificado en vez de
+// sumar un path nuevo sin poder previsualizarlo antes del QA visual.
+const ICONS_BALDE = {
+  necesidades:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M9 21v-6h6v6"></path></svg>',
+  gustos:        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg>',
+  ahorro_deudas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>',
+};
+
+// Catálogo de baldes -- MISMO id/orden/label que db_finanzas.BALDES_PRESUPUESTO.
+// No viaja en /api/dashboard-data (esa ruta solo manda presupuesto/
+// categoria_balde/metas_ahorro, ver su docstring) -- si el catálogo de
+// baldes cambiara alguna vez en el backend, este array hardcodeado
+// también tendría que actualizarse (igual que CAT_ICONS ya está
+// hardcodeado del lado del cliente para las categorías).
+const BALDES = [
+  { id: 'necesidades',   label: 'Necesidades' },
+  { id: 'gustos',        label: 'Gustos' },
+  { id: 'ahorro_deudas', label: 'Ahorro/deudas' },
+];
+
+// Umbral de "atención" (ámbar) de cada balde: 80% de lo presupuestado --
+// mismo umbral y mismo criterio que ya usan las tarjetas de crédito
+// (nivel-amber >=80%, ver renderTarjetas() más abajo) para no introducir
+// un segundo número "mágico" distinto en el mismo dashboard. Documentado
+// acá porque el informe de paleta (sección 3.2) deja el valor exacto a
+// criterio de frontend-dataviz.
+const UMBRAL_ATENCION_BALDE = 0.8;
 
 const CAT_ICONS = {
   salario:'💼', transferencias:'🔁', suscripciones:'📱', restaurantes:'🍽️', comida:'🍔',
   'crédito':'💳', transporte:'🚌', entretenimiento:'🎬', compras:'🛍️', retiro:'🏧',
-  'tecnología':'💻', ropa:'👕', supermercado:'🛒', otros:'❔', movilidad:'🛴',
+  'tecnología':'💻', ropa:'👕', supermercado:'🛒', otros:'📦', movilidad:'🛴',
   celular:'📶', servicios:'🧾', internet:'🌐', salud:'🏥', 'educación':'🎓', hogar:'🏠',
   avance_credito:'💰', pago_tarjeta_credito:'💳'
 };
@@ -777,6 +1684,13 @@ const GRAFICOS_REGISTRY = {};
 // actualizada en cada render para poder leerla.
 let GASTO_POR_CATEGORIA_ACTUAL = [];
 
+// Insights automáticos (ver más abajo): cada tarjeta muestra solo el
+// título por defecto (menos texto de entrada) y el detalle completo se
+// abre en el modal de insight -- que se llama con un ÍNDICE desde el
+// onclick inline, así que necesita esta copia en el scope global,
+// mismo patrón que GASTO_POR_CATEGORIA_ACTUAL de arriba.
+let INSIGHTS_ACTUAL = [];
+
 // Estado de "Todos los movimientos" (switch en la sección Movimientos):
 // vive afuera de renderDashboard() para sobrevivir entre renders -- si
 // está prendido y cambiás de filtro, tiene que seguir prendido y
@@ -786,9 +1700,42 @@ let todosMovActivo = false;
 let todosMovPagina = 1;
 let DATA_ACTUAL = []; // el DATA (ya filtrado) del último renderDashboard() -- lo usa el switch al prenderse
 
+// Control unificado de período (requisito 2026-09-07, punto 1): qué botón
+// está activo ahora mismo -- 'personalizado' es el default, equivalente al
+// comportamiento actual al cargar la página (año/mes en "todos", histórico
+// completo). Vive afuera de renderDashboard() porque el bloque de badge/
+// texto de más abajo, DENTRO de renderDashboard(), necesita leerlo en cada
+// render para saber si calcular el rango a partir de los selects (modo
+// personalizado) o de la definición fija del preset activo.
+let filtroPeriodoActivo = 'personalizado';
+
+// Definiciones FIJAS de cada preset (fijadas por product-owner en el
+// requerimiento, no a discreción de quien implementa): "corrido hasta
+// hoy" -- incluye el mes calendario en curso completo hasta la fecha de
+// hoy, más N-1 meses calendario anteriores completos. calcularInicio()
+// recibe "hoy" (medianoche) y devuelve el primer día del mes de inicio;
+// el fin de los 3 rangos es siempre "hoy" (mismo criterio de corte que ya
+// usa el badge de rango en modo Personalizado).
+const PRESETS_PERIODO = {
+  trimestral: {
+    texto: 'en el trimestre actual (últimos 3 meses)',
+    calcularInicio: (hoy) => new Date(hoy.getFullYear(), hoy.getMonth() - 2, 1),
+  },
+  semestral: {
+    texto: 'en el semestre actual (últimos 6 meses)',
+    calcularInicio: (hoy) => new Date(hoy.getFullYear(), hoy.getMonth() - 5, 1),
+  },
+  anual: {
+    texto: 'en el año actual',
+    calcularInicio: (hoy) => new Date(hoy.getFullYear(), 0, 1),
+  },
+};
+
 function crearGrafico(canvasId, config) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return null; // sección "Análisis visual" / "Tarjetas y deuda" oculta para esta cuenta -- ver ocultarSubvistas()
   GRAFICOS_REGISTRY[canvasId] = config;
-  return new Chart(document.getElementById(canvasId), config);
+  return new Chart(canvas, config);
 }
 
 // Antes vivía adentro de renderDashboard() -- se movió acá (mismo
@@ -816,6 +1763,17 @@ function rowHTML(r, withTipo){
    renderDashboard() -- nunca el histórico completo.
 ================================================================= */
 function renderTodosMovimientos(DATA) {
+  // Toda la tarjeta "Todos los movimientos" vive dentro de la sección
+  // "movimientos" -- si un admin la ocultó para esta cuenta, ninguno de
+  // estos elementos existe (ver ocultarSubvistas()). En la práctica esta
+  // función solo se llama si todosMovActivo === true, y eso requiere el
+  // switch #toggleTodosMovimientos (también removido junto a la sección),
+  // pero el guard queda igual por las dudas.
+  const elCount = document.getElementById('todosMovimientosCount');
+  const elTbody = document.getElementById('tbodyTodosMovimientos');
+  const elPaginacion = document.getElementById('paginacionTodosMovimientos');
+  if (!elCount || !elTbody || !elPaginacion) return;
+
   const ordenados = [...DATA].map((r,i)=>({...r,_i:i})).sort((a,b)=> b.fecha.localeCompare(a.fecha) || b._i - a._i);
   const total = ordenados.length;
   const totalPaginas = Math.max(1, Math.ceil(total / TODOS_MOV_POR_PAGINA));
@@ -825,14 +1783,13 @@ function renderTodosMovimientos(DATA) {
   const desde = (todosMovPagina - 1) * TODOS_MOV_POR_PAGINA;
   const pagina = ordenados.slice(desde, desde + TODOS_MOV_POR_PAGINA);
 
-  document.getElementById('todosMovimientosCount').textContent =
-    `${total} movimiento${total === 1 ? '' : 's'}`;
+  elCount.textContent = `${total} movimiento${total === 1 ? '' : 's'}`;
 
-  document.getElementById('tbodyTodosMovimientos').innerHTML = total
+  elTbody.innerHTML = total
     ? pagina.map(r => rowHTML(r, true)).join('')
     : '<tr><td colspan="6" style="padding:14px;"><div class="empty-state" style="justify-content:center;">Sin movimientos en este período.</div></td></tr>';
 
-  document.getElementById('paginacionTodosMovimientos').innerHTML = `
+  elPaginacion.innerHTML = `
     <button type="button" onclick="cambiarPaginaTodosMovimientos(-1)" ${todosMovPagina <= 1 ? 'disabled' : ''}>‹ Anterior</button>
     <span class="pagina-actual">Página ${todosMovPagina} de ${totalPaginas}</span>
     <button type="button" onclick="cambiarPaginaTodosMovimientos(1)" ${todosMovPagina >= totalPaginas ? 'disabled' : ''}>Siguiente ›</button>
@@ -843,6 +1800,362 @@ window.cambiarPaginaTodosMovimientos = function (delta) {
   todosMovPagina += delta;
   renderTodosMovimientos(DATA_ACTUAL);
 };
+
+/* =================================================================
+   PRESUPUESTO POR BALDES (2026-09-08)
+   -----------------------------------------------------------------
+   Ver requisitos/2026-09-08_presupuesto-ahorro-deudas.md. renderPresupuesto()
+   se llama desde ADENTRO de renderDashboard() (más abajo), con el
+   gastoPorCategoria y el totalIngresosReales YA calculados para el
+   período filtrado -- así "presupuestado vs. real" reacciona al mismo
+   filtro de período que el resto del dashboard, sin volver a iterar
+   movimientos (reusa el Map ya agregado por categoría -- perf con miles
+   de movimientos: O(categorías), no O(movimientos), ver checklist #2).
+   TOTAL_INGRESOS_REALES_ACTUAL es el mismo patrón "espejo a nivel de
+   módulo" que ya usan DATA_ACTUAL/GASTO_POR_CATEGORIA_ACTUAL: lo
+   necesitan los modales de configuración (más abajo) para volver a
+   pintar los 3 baldes después de guardar, sin tener que recorrer todo
+   renderDashboard() de nuevo (que además destruye/recrea los 9 gráficos
+   de Chart.js -- innecesario para un cambio que no los toca).
+================================================================= */
+let TOTAL_INGRESOS_REALES_ACTUAL = 0;
+
+function baldeDeCategoria(categoria) {
+  const balde = CATEGORIA_BALDE[categoria];
+  // Mismo fallback conservador que CATEGORIA_BALDE_FALLBACK en
+  // db_finanzas.py: una categoría sin mapeo (o con un balde inválido,
+  // por si el mapeo llegara corrupto) cae en "necesidades", nunca se
+  // pierde silenciosamente del total.
+  return (balde && BALDES.some(b => b.id === balde)) ? balde : 'necesidades';
+}
+
+function calcularRealPorBalde(gastoPorCategoria) {
+  const real = { necesidades: 0, gustos: 0, ahorro_deudas: 0 };
+  for (const [cat, monto] of gastoPorCategoria) {
+    real[baldeDeCategoria(cat)] += monto;
+  }
+  return real;
+}
+
+// Estado de CADA balde (identidad vs. estado -- sección 3 del informe de
+// paleta): "real > presupuestado" es sobregasto real (rojo) sin importar
+// qué tan cerca del umbral esté; si no se pasó, se compara contra
+// UMBRAL_ATENCION_BALDE (definido arriba, junto a BALDES). Con
+// presupuestado=0 (un balde en 0%) y algo de gasto real, ya cae en el
+// primer if (rojo) -- nunca una división por cero.
+function estadoBalde(real, presupuestado) {
+  if (real > presupuestado) return 'rojo';
+  if (presupuestado > 0 && (real / presupuestado) >= UMBRAL_ATENCION_BALDE) return 'amber';
+  return 'verde';
+}
+
+function renderPresupuesto(gastoPorCategoria, totalIngresosReales) {
+  TOTAL_INGRESOS_REALES_ACTUAL = totalIngresosReales;
+  const grid = document.getElementById('baldeGrid');
+  if (!grid) return; // por las dudas -- esta sección no es ocultable hoy, pero el guard es gratis
+
+  const realPorBalde = calcularRealPorBalde(gastoPorCategoria);
+
+  // Advertencia (no bloqueante -- ver "Algo a cuidar entre todos" del
+  // documento de requisitos) si los 3 porcentajes no suman 100. Con
+  // ícono + texto (checklist de accesibilidad), nunca solo un borde de
+  // color.
+  const avisoEl = document.getElementById('presupuestoAvisoSuma');
+  if (avisoEl) {
+    const suma = PRESUPUESTO.suma_pct;
+    if (Math.abs(suma - 100) > 0.01) {
+      const diff = Math.round((100 - suma) * 100) / 100;
+      avisoEl.innerHTML = `<div class="aviso-amber">${ICONS_KPI.warning}<span>Tus 3 porcentajes suman <b>${fmtPct(suma)}</b>, no 100% -- ${diff > 0 ? `queda <b>${fmtPct(diff)}</b> de tu ingreso sin asignar a ningún balde` : `te estás pasando por <b>${fmtPct(Math.abs(diff))}</b>`}. Podés ajustarlo en "Configurar presupuesto".</span></div>`;
+    } else {
+      avisoEl.innerHTML = '';
+    }
+  }
+
+  // Invitación discreta (mismo lenguaje que "Registrá tus tarjetas..." de
+  // renderTarjetas()) para una cuenta que nunca configuró nada -- los
+  // valores sugeridos (50/30/20) ya se están mostrando igual, así que
+  // esto es una invitación, no un estado vacío/bloqueante.
+  const inviteEl = document.getElementById('presupuestoInvite');
+  if (inviteEl) {
+    inviteEl.innerHTML = !PRESUPUESTO.configurado
+      ? `<div class="empty-state">Todavía no configuraste tu presupuesto -- estos son los porcentajes sugeridos (50/30/20). Tocá "Configurar presupuesto" para ajustarlo a tu situación.</div>`
+      : '';
+  }
+
+  grid.innerHTML = BALDES.map(b => {
+    const pct = PRESUPUESTO[`pct_${b.id}`] ?? 0;
+    const presupuestado = (pct / 100) * totalIngresosReales;
+    const real = realPorBalde[b.id] || 0;
+    const diferencia = presupuestado - real;
+    const estado = estadoBalde(real, presupuestado);
+    const pctBarra = presupuestado > 0 ? Math.min((real / presupuestado) * 100, 100) : (real > 0 ? 100 : 0);
+    const ESTADO_TEXTO = { verde: 'Vas bien', amber: 'Atención', rojo: 'Te pasaste' };
+    const ESTADO_ICON = { verde: ICONS_KPI.check, amber: ICONS_KPI.warning, rojo: ICONS_KPI.warning };
+    return `
+    <div class="balde-card identidad-${b.id} estado-${estado}">
+      <div class="balde-card-head">
+        <div class="balde-card-icon">${ICONS_BALDE[b.id]}</div>
+        <div>
+          <div class="balde-card-nombre">${b.label}</div>
+          <div class="balde-card-pct">${fmtPct(pct)} de tu ingreso</div>
+        </div>
+        <span class="balde-card-estado" title="${real > presupuestado ? 'Gastaste más de lo presupuestado en este balde' : (estado === 'amber' ? 'Ya usaste ' + UMBRAL_ATENCION_BALDE * 100 + '% o más de lo presupuestado' : 'Estás dentro de lo presupuestado')}">${ESTADO_ICON[estado]} ${ESTADO_TEXTO[estado]}</span>
+      </div>
+      <div class="balde-barra"><span style="width:${pctBarra}%"></span></div>
+      <div class="balde-cifras">
+        <div class="fila"><span>Presupuestado</span><b>${fmtCOP(presupuestado)}</b></div>
+        <div class="fila"><span>Real gastado</span><b>${fmtCOP(real)}</b></div>
+        <div class="fila ${diferencia < 0 ? 'negativo' : 'positivo'}"><span>Diferencia</span><b>${diferencia < 0 ? '-' : '+'} ${fmtCOP(Math.abs(diferencia))}</b></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* =================================================================
+   METAS DE AHORRO (2026-09-08)
+   -----------------------------------------------------------------
+   A diferencia de renderPresupuesto(), NO depende del filtro de período
+   (el avance hacia una meta es siempre acumulado histórico, ver
+   docstring de /api/dashboard-data) -- se renderiza UNA vez acá abajo
+   (fuera de renderDashboard()) y se vuelve a llamar solo después de
+   crear/editar/archivar una meta (recargarMetas()), mismo criterio que
+   renderTarjetas()/renderPerfilFinanciero() para datos que no cambian
+   con año/mes.
+================================================================= */
+function renderMetas() {
+  const grid = document.getElementById('metasGrid');
+  if (!grid) return;
+  const countEl = document.getElementById('metasAhorroCount');
+  const activas = METAS_AHORRO.filter(m => m.activa);
+
+  if (countEl) countEl.textContent = `${activas.length} activa${activas.length === 1 ? '' : 's'}`;
+
+  if (!METAS_AHORRO.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">Todavía no creaste ninguna meta de ahorro. Creá la primera con "Nueva meta de ahorro" para ver tu avance real hacia ella.</div>';
+    return;
+  }
+  if (!activas.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">Todas tus metas están archivadas. Creá una nueva cuando quieras.</div>';
+    return;
+  }
+
+  grid.innerHTML = activas.map(m => {
+    const alcanzada = m.porcentaje >= 100;
+    const pctBarra = Math.min(m.porcentaje, 100);
+    return `
+    <div class="meta-card ${alcanzada ? 'alcanzada' : ''}">
+      <div class="meta-card-head">
+        <div>
+          <div class="meta-card-nombre">${m.nombre}</div>
+          ${m.fecha_objetivo ? `<div class="meta-card-fecha">Meta para ${fmtDate(m.fecha_objetivo)}</div>` : ''}
+        </div>
+        <span class="meta-card-pct">${fmtPct(Math.min(m.porcentaje, 999))}</span>
+      </div>
+      <div class="meta-barra"><span style="width:${pctBarra}%"></span></div>
+      <div class="meta-cifras">
+        <span>Ahorrado: <b>${fmtCOP(m.ahorrado)}</b></span>
+        <span>Faltan: <b>${fmtCOP(m.restante)}</b></span>
+      </div>
+      ${alcanzada
+        ? `<div class="meta-card-alcanzada-badge">${ICONS_KPI.check} Meta alcanzada</div>`
+        : ''}
+      <div class="meta-card-acciones">
+        <button type="button" onclick="abrirModalMeta(${m.id})">Editar</button>
+        <button type="button" onclick="archivarMeta(${m.id})">Archivar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+renderMetas();
+
+async function recargarMetas() {
+  try {
+    const resp = await fetch('/api/metas-ahorro');
+    const json = await resp.json();
+    if (json.ok) METAS_AHORRO = json.metas;
+  } catch (err) {
+    console.error('Error recargando metas de ahorro:', err);
+  }
+  renderMetas();
+}
+
+/* =================================================================
+   FORMULARIOS: guardar presupuesto / reasignar categoría / crear-editar-
+   archivar meta de ahorro -- todos POST con FormData (mismo contrato que
+   routes/presupuesto.py, "todo POST, acción en la URL", igual que
+   tarjetas/correo). Ninguno recarga la página: cada uno actualiza su
+   mirror en memoria (PRESUPUESTO/CATEGORIA_BALDE/METAS_AHORRO) y vuelve a
+   pintar solo lo que cambió.
+================================================================= */
+async function postForm(url, datos) {
+  const body = new URLSearchParams();
+  for (const [k, v] of Object.entries(datos)) {
+    if (v !== undefined && v !== null) body.set(k, String(v));
+  }
+  try {
+    const resp = await fetch(url, { method: 'POST', body });
+    return await resp.json();
+  } catch (err) {
+    return { ok: false, error: 'No se pudo conectar con el servidor.' };
+  }
+}
+
+// --- Configurar presupuesto ---------------------------------------
+function abrirModalPresupuesto() {
+  document.getElementById('formPresupuestoError').hidden = true;
+  document.getElementById('inputPctNecesidades').value = PRESUPUESTO.pct_necesidades;
+  document.getElementById('inputPctGustos').value = PRESUPUESTO.pct_gustos;
+  document.getElementById('inputPctAhorroDeudas').value = PRESUPUESTO.pct_ahorro_deudas;
+  actualizarSumaPctModal();
+  document.getElementById('modalPresupuesto').classList.add('open');
+}
+function cerrarModalPresupuesto() {
+  document.getElementById('modalPresupuesto').classList.remove('open');
+}
+function actualizarSumaPctModal() {
+  const n = parseFloat(document.getElementById('inputPctNecesidades').value) || 0;
+  const g = parseFloat(document.getElementById('inputPctGustos').value) || 0;
+  const a = parseFloat(document.getElementById('inputPctAhorroDeudas').value) || 0;
+  const suma = Math.round((n + g + a) * 100) / 100;
+  const el = document.getElementById('formPresupuestoSuma');
+  el.innerHTML = Math.abs(suma - 100) > 0.01
+    ? `Suma actual: <b style="color:var(--gold)">${suma}%</b> -- lo ideal es 100%, pero podés guardar igual.`
+    : `Suma actual: <b style="color:var(--green)">${suma}%</b>`;
+}
+['inputPctNecesidades', 'inputPctGustos', 'inputPctAhorroDeudas'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', actualizarSumaPctModal);
+});
+document.getElementById('formPresupuesto')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('formPresupuestoError');
+  errEl.hidden = true;
+  const resultado = await postForm('/api/presupuesto/guardar', {
+    pct_necesidades: document.getElementById('inputPctNecesidades').value,
+    pct_gustos: document.getElementById('inputPctGustos').value,
+    pct_ahorro_deudas: document.getElementById('inputPctAhorroDeudas').value,
+  });
+  if (!resultado.ok) {
+    errEl.textContent = resultado.error || 'No se pudo guardar el presupuesto.';
+    errEl.hidden = false;
+    return;
+  }
+  PRESUPUESTO = resultado.presupuesto;
+  cerrarModalPresupuesto();
+  renderPresupuesto(GASTO_POR_CATEGORIA_ACTUAL, TOTAL_INGRESOS_REALES_ACTUAL);
+});
+
+// --- Reasignar categorías -------------------------------------------
+function abrirModalCategorias() {
+  const lista = document.getElementById('categoriaBaldeLista');
+  const categorias = Object.keys(CATEGORIA_BALDE).sort();
+  lista.innerHTML = categorias.length
+    ? categorias.map(cat => `
+      <div class="categoria-balde-row">
+        <span class="cat-nombre">${catIcon(cat)} ${cat}</span>
+        <select data-categoria="${cat}" onchange="cambiarBaldeCategoria(this)" aria-label="Balde de la categoría ${cat}">
+          ${BALDES.map(b => `<option value="${b.id}" ${CATEGORIA_BALDE[cat] === b.id ? 'selected' : ''}>${b.label}</option>`).join('')}
+        </select>
+      </div>`).join('')
+    : '<div class="empty-state">Todavía no tenés categorías registradas.</div>';
+  document.getElementById('modalCategorias').classList.add('open');
+}
+function cerrarModalCategorias() {
+  document.getElementById('modalCategorias').classList.remove('open');
+}
+async function cambiarBaldeCategoria(selectEl) {
+  const categoria = selectEl.dataset.categoria;
+  const balde = selectEl.value;
+  const anterior = CATEGORIA_BALDE[categoria];
+  selectEl.disabled = true;
+  const resultado = await postForm('/api/presupuesto/categoria/asignar', { categoria, balde });
+  selectEl.disabled = false;
+  if (!resultado.ok) {
+    selectEl.value = anterior; // revertir -- el select no puede quedar mostrando algo que no se guardó
+    console.error('Error reasignando categoría:', resultado.error);
+    return;
+  }
+  CATEGORIA_BALDE = resultado.categoria_balde;
+  renderPresupuesto(GASTO_POR_CATEGORIA_ACTUAL, TOTAL_INGRESOS_REALES_ACTUAL);
+}
+
+// --- Crear / editar / archivar meta de ahorro -----------------------
+function abrirModalMeta(id) {
+  document.getElementById('formMetaError').hidden = true;
+  const meta = id ? METAS_AHORRO.find(m => m.id === id) : null;
+  document.getElementById('modalMetaTitulo').textContent = meta ? 'Editar meta de ahorro' : 'Nueva meta de ahorro';
+  document.getElementById('btnGuardarMeta').textContent = meta ? 'Guardar cambios' : 'Crear meta';
+  document.getElementById('inputMetaId').value = meta ? meta.id : '';
+  document.getElementById('inputMetaNombre').value = meta ? meta.nombre : '';
+  document.getElementById('inputMetaMonto').value = meta ? meta.monto_objetivo : '';
+  document.getElementById('inputMetaFecha').value = meta && meta.fecha_objetivo ? meta.fecha_objetivo : '';
+  document.getElementById('modalMeta').classList.add('open');
+}
+function cerrarModalMeta() {
+  document.getElementById('modalMeta').classList.remove('open');
+}
+document.getElementById('formMeta')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById('formMetaError');
+  errEl.hidden = true;
+  const id = document.getElementById('inputMetaId').value;
+  const btn = document.getElementById('btnGuardarMeta');
+  btn.disabled = true;
+  const resultado = await postForm(id ? `/api/metas-ahorro/${id}/editar` : '/api/metas-ahorro/crear', {
+    nombre: document.getElementById('inputMetaNombre').value.trim(),
+    monto_objetivo: document.getElementById('inputMetaMonto').value,
+    fecha_objetivo: document.getElementById('inputMetaFecha').value,
+  });
+  btn.disabled = false;
+  if (!resultado.ok) {
+    errEl.textContent = resultado.error || 'No se pudo guardar la meta.';
+    errEl.hidden = false;
+    return;
+  }
+  cerrarModalMeta();
+  await recargarMetas();
+});
+async function archivarMeta(id) {
+  const meta = METAS_AHORRO.find(m => m.id === id);
+  if (!confirm(`¿Archivar "${meta ? meta.nombre : 'esta meta'}"? Vas a conservar el historial de aportes, pero ya no vas a poder aportarle más ni la vas a ver entre tus metas activas.`)) return;
+  const errEl = document.getElementById('metasAhorroError');
+  if (errEl) errEl.hidden = true;
+  const resultado = await postForm(`/api/metas-ahorro/${id}/archivar`, {});
+  if (!resultado.ok) {
+    if (errEl) { errEl.textContent = resultado.error || 'No se pudo archivar la meta.'; errEl.hidden = false; }
+    return;
+  }
+  await recargarMetas();
+}
+
+// onclick="" inline (filas de meta) y onchange="" inline (select de
+// categoría) se resuelven en el scope global -- mismo motivo que
+// abrirModalGrafico/etc. más abajo, hay que exponerlos a mano.
+window.abrirModalMeta = abrirModalMeta;
+window.cerrarModalMeta = cerrarModalMeta;
+window.archivarMeta = archivarMeta;
+window.cambiarBaldeCategoria = cambiarBaldeCategoria;
+window.cerrarModalPresupuesto = cerrarModalPresupuesto;
+window.cerrarModalCategorias = cerrarModalCategorias;
+
+document.getElementById('btnConfigurarPresupuesto')?.addEventListener('click', abrirModalPresupuesto);
+document.getElementById('btnEditarCategorias')?.addEventListener('click', abrirModalCategorias);
+document.getElementById('btnNuevaMeta')?.addEventListener('click', () => abrirModalMeta());
+
+// Cerrar al hacer click afuera de la tarjeta del modal (fondo) -- mismo
+// patrón que modalGrafico/modalInsight, ver más abajo. Esta página vive
+// dentro de un <iframe> same-origin (ver templates/dashboard.html), pero
+// eso solo importa para listeners puestos en el documento PADRE; este
+// listener vive en el propio documento del iframe (este archivo), así
+// que alcanza sin ningún enganche especial a contentDocument.
+document.getElementById('modalPresupuesto')?.addEventListener('click', (e) => {
+  if (e.target.id === 'modalPresupuesto') cerrarModalPresupuesto();
+});
+document.getElementById('modalCategorias')?.addEventListener('click', (e) => {
+  if (e.target.id === 'modalCategorias') cerrarModalCategorias();
+});
+document.getElementById('modalMeta')?.addEventListener('click', (e) => {
+  if (e.target.id === 'modalMeta') cerrarModalMeta();
+});
 
 function renderDashboard(DATA, DEUDA_TARJETAS) {
 
@@ -857,83 +2170,100 @@ if (todosMovActivo) renderTodosMovimientos(DATA);
 // se destruye la instancia anterior antes de crear una nueva sobre el
 // mismo canvas, Chart.js tira error. Chart.getChart(id) devuelve la
 // instancia activa de ese canvas (o nada, la primera vez).
-['chartDeudaEvolucion','chartCategorias','chartIngresosGastos','chartMoneda',
+['chartDeudaEvolucion','chartCategorias','chartIngresosGastos','chartIngresosGastosCompact','chartMoneda',
  'chartEvolucion','chartDistribucion','chartTendenciaMensual','chartEntidades'].forEach(id => {
   const existente = Chart.getChart(id);
   if (existente) existente.destroy();
 });
 
-// Textos dinámicos: reaccionan al período seleccionado en los filtros de
-// año/mes. Van ANTES del corte por período vacío de más abajo -- si no,
-// un período sin datos los dejaría pegados con los del período anterior.
+// Textos dinámicos: reaccionan al período seleccionado (los presets
+// Trimestral/Semestral/Anual, o los selects año/mes en modo Personalizado
+// -- ver filtroPeriodoActivo). Van ANTES del corte por período vacío de
+// más abajo -- si no, un período sin datos los dejaría pegados con los
+// del período anterior.
 {
-  const anioSel = document.getElementById('filtroAnio');
-  const mesSel = document.getElementById('filtroMes');
-  const anioVal = anioSel ? anioSel.value : 'todos';
-  const mesVal = mesSel ? mesSel.value : 'todos';
-
-  let periodoTxt = 'en total';
-  if (anioVal !== 'todos' && mesVal !== 'todos') {
-    periodoTxt = `en ${mesSel.selectedOptions[0].text.toLowerCase()} de ${anioVal}`;
-  } else if (anioVal !== 'todos') {
-    periodoTxt = `en ${anioVal}`;
-  } else if (mesVal !== 'todos') {
-    periodoTxt = `en ${mesSel.selectedOptions[0].text.toLowerCase()} (todos los años)`;
-  }
-  document.getElementById('movimientosInfo').innerHTML =
-    `<span class="dot"></span> <b>${DATA.length}</b> movimiento${DATA.length === 1 ? '' : 's'} cargado${DATA.length === 1 ? '' : 's'} ${periodoTxt}`;
-
-  // Rango de fechas: se muestra el calendario completo del período (mes
-  // y/o año entero) en vez de la última fecha con movimiento -- así un
-  // período en curso (o con huecos de carga) no aparenta estar
-  // "desactualizado" contra la fecha de "Última actualización" de abajo.
-  // Si el período incluye hoy, se corta en la fecha actual, ya que esos
-  // días todavía no pasaron. Solo "Todos los años" + "Todos los meses"
-  // (sin ningún filtro) no tiene un calendario propio -- ahí se usa el
-  // rango real del histórico completo.
   const pad = n => String(n).padStart(2, '0');
   const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  let periodoTxt = 'en total';
   let rangoHTML = '';
 
-  if (anioVal !== 'todos') {
-    // Año concreto: mes completo, o el año completo si mes = "todos".
-    const anio = parseInt(anioVal, 10);
-    let inicio, fin;
-    if (mesVal !== 'todos') {
+  if (filtroPeriodoActivo !== 'personalizado') {
+    // Trimestral/Semestral/Anual: rango FIJO calculado sobre "hoy" (ver
+    // PRESETS_PERIODO, definido junto al resto del selector de período)
+    // -- ya no dependen de los selects año/mes en absoluto.
+    const preset = PRESETS_PERIODO[filtroPeriodoActivo];
+    const inicio = preset.calcularInicio(hoy);
+    periodoTxt = preset.texto;
+    if (hoy >= inicio) {
+      rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(iso(inicio))}</b> hasta <b>${fmtDate(iso(hoy))}</b></div>`;
+    }
+  } else {
+    // Modo Personalizado: mismo comportamiento de siempre, basado en los
+    // selects año/mes ya existentes (reutilizados tal cual).
+    const anioSel = document.getElementById('filtroAnio');
+    const mesSel = document.getElementById('filtroMes');
+    const anioVal = anioSel ? anioSel.value : 'todos';
+    const mesVal = mesSel ? mesSel.value : 'todos';
+
+    if (anioVal !== 'todos' && mesVal !== 'todos') {
+      periodoTxt = `en ${mesSel.selectedOptions[0].text.toLowerCase()} de ${anioVal}`;
+    } else if (anioVal !== 'todos') {
+      periodoTxt = `en ${anioVal}`;
+    } else if (mesVal !== 'todos') {
+      periodoTxt = `en ${mesSel.selectedOptions[0].text.toLowerCase()} (todos los años)`;
+    }
+
+    // Rango de fechas: se muestra el calendario completo del período (mes
+    // y/o año entero) en vez de la última fecha con movimiento -- así un
+    // período en curso (o con huecos de carga) no aparenta estar
+    // "desactualizado" contra la fecha de "Última actualización" de abajo.
+    // Si el período incluye hoy, se corta en la fecha actual, ya que esos
+    // días todavía no pasaron. Solo "Todos los años" + "Todos los meses"
+    // (sin ningún filtro) no tiene un calendario propio -- ahí se usa el
+    // rango real del histórico completo.
+    if (anioVal !== 'todos') {
+      // Año concreto: mes completo, o el año completo si mes = "todos".
+      const anio = parseInt(anioVal, 10);
+      let inicio, fin;
+      if (mesVal !== 'todos') {
+        const mesIdx = parseInt(mesVal, 10) - 1;
+        inicio = new Date(anio, mesIdx, 1);
+        fin = new Date(anio, mesIdx + 1, 0); // último día de ese mes
+      } else {
+        inicio = new Date(anio, 0, 1);
+        fin = new Date(anio, 11, 31);
+      }
+      if (fin > hoy) fin = hoy;
+      if (fin >= inicio) {
+        rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(iso(inicio))}</b> hasta <b>${fmtDate(iso(fin))}</b></div>`;
+      }
+    } else if (mesVal === 'todos') {
+      // Sin ningún filtro: "todos los datos" es un período abierto (llega
+      // hasta ahora), así que el final es HOY -- no el último movimiento
+      // cargado. Si no, esta fecha queda atrás de "Última actualización"
+      // apenas pasa un día sin cargar nada, y parece un error.
+      if (DATA_COMPLETA.length) {
+        const fechasCompletas = [...new Set(DATA_COMPLETA.map(r => r.fecha))].sort();
+        rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(fechasCompletas[0])}</b> hasta <b>${fmtDate(iso(hoy))}</b></div>`;
+      }
+    } else if (DATA.length) {
+      // "Todos los años" + un mes específico: puede abarcar varios años --
+      // se toma el mes completo desde el primer año con datos hasta el
+      // mes completo del último año con datos (cortado en hoy si aplica).
+      const aniosEnPeriodo = [...new Set(DATA.map(r => r.fecha.slice(0, 4)))].sort();
       const mesIdx = parseInt(mesVal, 10) - 1;
-      inicio = new Date(anio, mesIdx, 1);
-      fin = new Date(anio, mesIdx + 1, 0); // último día de ese mes
-    } else {
-      inicio = new Date(anio, 0, 1);
-      fin = new Date(anio, 11, 31);
-    }
-    if (fin > hoy) fin = hoy;
-    if (fin >= inicio) {
-      rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(iso(inicio))}</b> hasta <b>${fmtDate(iso(fin))}</b></div>`;
-    }
-  } else if (mesVal === 'todos') {
-    // Sin ningún filtro: "todos los datos" es un período abierto (llega
-    // hasta ahora), así que el final es HOY -- no el último movimiento
-    // cargado. Si no, esta fecha queda atrás de "Última actualización"
-    // apenas pasa un día sin cargar nada, y parece un error.
-    if (DATA_COMPLETA.length) {
-      const fechasCompletas = [...new Set(DATA_COMPLETA.map(r => r.fecha))].sort();
-      rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(fechasCompletas[0])}</b> hasta <b>${fmtDate(iso(hoy))}</b></div>`;
-    }
-  } else if (DATA.length) {
-    // "Todos los años" + un mes específico: puede abarcar varios años --
-    // se toma el mes completo desde el primer año con datos hasta el
-    // mes completo del último año con datos (cortado en hoy si aplica).
-    const aniosEnPeriodo = [...new Set(DATA.map(r => r.fecha.slice(0, 4)))].sort();
-    const mesIdx = parseInt(mesVal, 10) - 1;
-    let inicio = new Date(parseInt(aniosEnPeriodo[0], 10), mesIdx, 1);
-    let fin = new Date(parseInt(aniosEnPeriodo[aniosEnPeriodo.length - 1], 10), mesIdx + 1, 0);
-    if (fin > hoy) fin = hoy;
-    if (fin >= inicio) {
-      rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(iso(inicio))}</b> hasta <b>${fmtDate(iso(fin))}</b></div>`;
+      let inicio = new Date(parseInt(aniosEnPeriodo[0], 10), mesIdx, 1);
+      let fin = new Date(parseInt(aniosEnPeriodo[aniosEnPeriodo.length - 1], 10), mesIdx + 1, 0);
+      if (fin > hoy) fin = hoy;
+      if (fin >= inicio) {
+        rangoHTML = `<div class="pill">🗓️ Desde <b>${fmtDate(iso(inicio))}</b> hasta <b>${fmtDate(iso(fin))}</b></div>`;
+      }
     }
   }
+
+  document.getElementById('movimientosInfo').innerHTML =
+    `<span class="dot"></span> <b>${DATA.length}</b> movimiento${DATA.length === 1 ? '' : 's'} cargado${DATA.length === 1 ? '' : 's'} ${periodoTxt}`;
   document.getElementById('rangoTotalBadge').innerHTML = rangoHTML;
 }
 
@@ -943,21 +2273,52 @@ if (todosMovActivo) renderTodosMovimientos(DATA);
 if (!DATA.length) {
   document.getElementById('kpiGrid').innerHTML =
     '<div class="empty-state">📭 No hay movimientos registrados en el período seleccionado.</div>';
-  document.getElementById('kpiGridDeuda').innerHTML = '';
-  document.getElementById('resumenDeuda').textContent =
+  const _headerResumenVacio = document.getElementById('headerResumen'); // requisito 2026-09-08 punto 1
+  if (_headerResumenVacio) _headerResumenVacio.textContent = 'No hay movimientos registrados en este período.';
+  // Todo lo que sigue puede no existir si un admin ocultó "deuda",
+  // "analisis" o "movimientos" para esta cuenta -- ver ocultarSubvistas().
+  const _kpiGridDeudaVacio = document.getElementById('kpiGridDeuda');
+  if (_kpiGridDeudaVacio) _kpiGridDeudaVacio.innerHTML = '';
+  const _resumenDeudaVacio = document.getElementById('resumenDeuda');
+  if (_resumenDeudaVacio) _resumenDeudaVacio.textContent =
     'No se registraron movimientos de tarjeta de crédito en el período seleccionado.';
-  document.getElementById('chartDeudaEvolucionHolder').innerHTML =
+  const _chartDeudaHolderVacio = document.getElementById('chartDeudaEvolucionHolder');
+  if (_chartDeudaHolderVacio) _chartDeudaHolderVacio.innerHTML =
     '<div class="empty-state">💳 No se detectaron compras, avances ni pagos de tarjeta de crédito en los movimientos del período seleccionado.</div>';
-  document.getElementById('insightsGrid').innerHTML =
+  const _insightsGridVacio = document.getElementById('insightsGrid'); // null si la sección está oculta -- ver ocultarSubvistas()
+  if (_insightsGridVacio) _insightsGridVacio.innerHTML =
     '<div class="empty-state">🧠 Todavía no hay suficientes movimientos en este período para generar insights automáticos.</div>';
-  document.getElementById('leaderboard').innerHTML = '';
+  const _leaderboardVacio = document.getElementById('leaderboard');
+  if (_leaderboardVacio) _leaderboardVacio.innerHTML = '';
+  // Distribución por moneda (requisito punto 6, caso borde "cuenta sin
+  // movimientos"): 0 monedas distintas también es <=1 -- se oculta igual
+  // que con una sola moneda, no queda un gráfico de dona vacío/roto.
+  const _chartMonedaCardVacio = document.getElementById('chartMonedaCard'); // null si "analisis" está oculta
+  if (_chartMonedaCardVacio) _chartMonedaCardVacio.hidden = true;
+  // Presupuesto por baldes (2026-09-08): sin movimientos en el período no
+  // hay "real" que calcular -- en vez de mostrar los 3 baldes en $0 (que
+  // se leería como "sin gastos, todo perfecto" en vez de "no hay datos"),
+  // un estado vacío explícito, mismo criterio que el resto de esta rama.
+  // Metas de ahorro NO se toca acá -- es histórico acumulado, no depende
+  // del período filtrado (ver renderMetas()).
+  const _baldeGridVacio = document.getElementById('baldeGrid');
+  if (_baldeGridVacio) _baldeGridVacio.innerHTML =
+    '<div class="empty-state" style="grid-column:1/-1;">No hay movimientos en este período para calcular tu presupuesto.</div>';
+  const _avisoSumaVacio = document.getElementById('presupuestoAvisoSuma');
+  if (_avisoSumaVacio) _avisoSumaVacio.innerHTML = '';
+  const _inviteVacio = document.getElementById('presupuestoInvite');
+  if (_inviteVacio) _inviteVacio.innerHTML = '';
+  TOTAL_INGRESOS_REALES_ACTUAL = 0;
   GASTO_POR_CATEGORIA_ACTUAL = []; // que el modal del ranking tampoco muestre datos de un período anterior
+  INSIGHTS_ACTUAL = []; // ídem, para el modal de insight
   // Ninguno de los crearGrafico() de más abajo llega a correr en este
   // corte -- sin este reseteo, el modal de "ver en grande" seguiría
   // ofreciendo abrir el gráfico del ÚLTIMO período que sí tuvo datos.
   Object.keys(GRAFICOS_REGISTRY).forEach(id => delete GRAFICOS_REGISTRY[id]);
   ['tbodyUltimos','tbodyMayoresGastos','tbodyMayoresIngresos','tbodyMoneda','tbodyDeuda'].forEach(id => {
-    document.getElementById(id).innerHTML =
+    const el = document.getElementById(id); // no existe si "movimientos" está oculta -- ver ocultarSubvistas()
+    if (!el) return;
+    el.innerHTML =
       '<tr><td colspan="10" style="padding:14px;"><div class="empty-state" style="justify-content:center;">Sin movimientos en este período.</div></td></tr>';
   });
   return;
@@ -1004,13 +2365,24 @@ const totalPagosTarjeta   = pagosTarjeta.reduce((s,r)=>s+r.monto,0);
 // Balance de caja real: lo único que de verdad entró y salió de tus cuentas.
 const balanceCajaReal = totalIngresosReales + totalAvancesCredito - totalGastoReal;
 
-// Saldo actual estimado de deuda en tarjetas de crédito (último punto del ledger cronológico).
-const deudaActual = DEUDA_TARJETAS.length ? DEUDA_TARJETAS[DEUDA_TARJETAS.length - 1].saldo_acumulado : 0;
+// Saldo ACTUAL (hoy) estimado de deuda en tarjetas de crédito -- último punto
+// del ledger cronológico COMPLETO (DEUDA_COMPLETA), no del recorte por período
+// (DEUDA_TARJETAS, parámetro de esta función). "Actual" es una foto del
+// presente: filtrar por año/mes sirve para mirar la ACTIVIDAD de un período
+// (compras/avances/pagos, ver más abajo), pero no puede hacer que la deuda
+// vigente "desaparezca" o cambie según qué período estés mirando -- antes sí
+// pasaba (bug real, QA 2026-09-06/07): con un período filtrado sin ledger de
+// deuda, esta variable daba 0 y la tarjeta de arriba ("Balance de caja real")
+// decía "sin deuda de tarjeta" mientras la sección de deuda, más abajo,
+// mostraba un saldo real -- contradicción entre dos textos de la misma
+// pantalla, en vez de dos números que en verdad no se contradecían.
+const deudaActual = DEUDA_COMPLETA.length ? DEUDA_COMPLETA[DEUDA_COMPLETA.length - 1].saldo_acumulado : 0;
 
 // Resumen de la sección: números reales del período seleccionado en vez de
 // un texto genérico fijo -- solo se agrega la explicación metodológica
 // cuando sí hay algo que explicar.
-document.getElementById('resumenDeuda').innerHTML = DEUDA_TARJETAS.length
+const _resumenDeuda = document.getElementById('resumenDeuda'); // null si "deuda" está oculta -- ver ocultarSubvistas()
+if (_resumenDeuda) _resumenDeuda.innerHTML = DEUDA_TARJETAS.length
   ? `Saldo estimado actual: <b style="color:var(--text)">${fmtCOP(deudaActual)}</b> — ${gastosCredito.length} compra${gastosCredito.length===1?'':'s'} a crédito, ${avancesCredito.length} avance${avancesCredito.length===1?'':'s'} y ${pagosTarjeta.length} pago${pagosTarjeta.length===1?'':'s'} registrados en el período seleccionado. Clasificación automática por texto (ej. "T.Cred", "T.Deb", "Avance") — no es asesoría tributaria, verificá estos números con tu contador antes de usarlos para declarar renta.`
   : `No se registraron movimientos de tarjeta de crédito en el período seleccionado. La clasificación es automática por texto (ej. "T.Cred", "T.Deb", "Avance") — no es asesoría tributaria.`;
 
@@ -1037,11 +2409,24 @@ function sortMapDesc(map){
 // Gasto por categoría (COP)
 const gastoPorCategoria = sortMapDesc(groupSum(gastosCOP, r=>r.categoria));
 GASTO_POR_CATEGORIA_ACTUAL = gastoPorCategoria; // para el modal del ranking completo, fuera de esta función
+
+// Presupuesto por baldes (2026-09-08): reusa gastoPorCategoria (ya
+// agregado arriba) y totalIngresosReales (ya calculado más arriba, mismo
+// número que usan las tarjetas KPI "Dinero que entró"/"Dinero disponible")
+// -- "presupuestado" de cada balde es pct/100 * totalIngresosReales, "real"
+// es la suma de gastoPorCategoria mapeada por categoria_balde. Ver
+// renderPresupuesto() para el detalle completo.
+renderPresupuesto(gastoPorCategoria, totalIngresosReales);
+
 // Categoría con mayor gasto (con respaldo por si el período filtrado no tiene ningún gasto)
 const [catTop, catTopMonto] = gastoPorCategoria[0] || ['sin datos', 0];
 // Promedio mensual de gasto REAL de caja (COP): total gasto real / nº de meses distintos presentes en los datos
 const mesesPresentes = [...new Set(dataCOP.map(r=>r.fecha.slice(0,7)))].sort();
 const promedioMensualGasto = mesesPresentes.length ? totalGastoReal / mesesPresentes.length : 0;
+// Mismo cálculo que arriba pero de lo que entró (requisito 2026-09-08 punto
+// 8) -- se usa en el detalle expandible de "Dinero disponible", no como
+// tarjeta propia, para no sumar otra tarjeta más a la grilla.
+const promedioMensualIngreso = mesesPresentes.length ? totalIngresosReales / mesesPresentes.length : 0;
 // Formato de etiqueta de mes ("Ene 2026") reutilizado por todos los gráficos
 // que agregan por mes (deuda de tarjetas, evolución de gastos, tendencia
 // mensual) -- definido acá, antes de su primer uso, para que esté disponible
@@ -1057,93 +2442,172 @@ const monedaCount = groupCount(DATA, r=>r.moneda);
 /* =================================================================
    KPIs
 ================================================================= */
+// Distribución por moneda (requisito 2026-09-07, punto 6): tarjeta KPI y
+// gráfico de dona se ocultan cuando el período FILTRADO actual (DATA, no
+// DATA_COMPLETA) tiene 1 sola moneda o menos -- conteo estricto de
+// monedas distintas presentes, nunca un umbral de porcentaje. Se recalcula
+// en cada renderDashboard(), así que cambia de inmediato al cambiar de
+// filtro (ver casos borde del requisito).
+const haySoloUnaMoneda = monedaCount.size <= 1;
+
+// "Deuda actual estimada" duplicada acá arriba (requisito punto 3): mismo
+// valor exacto que la tarjeta original de "Tarjetas de crédito y deuda"
+// (deudaActual, una sola variable) -- si esa sub-vista está oculta para
+// esta cuenta, la copia de acá tampoco se muestra (ver VISTAS_OCULTAS).
+const deudaVisibleArriba = !VISTAS_OCULTAS.has('deuda');
+
+// Requisito 2026-09-08 punto 1: reemplaza el texto fijo/técnico del header
+// ("Análisis automático de movimientos -- generado desde finanzas.db...")
+// por un resumen real del período que sí filtró la persona, en lenguaje
+// llano -- se recalcula en cada render, así que cambia con el filtro.
+const _headerResumenEl = document.getElementById('headerResumen');
+if (_headerResumenEl) _headerResumenEl.textContent = balanceCajaReal >= 0
+  ? `Vas bien: en este período te sobraron ${fmtCOP(balanceCajaReal)} después de tus gastos.`
+  : `Atención: en este período gastaste ${fmtCOP(Math.abs(balanceCajaReal))} más de lo que te entró.`;
+
+// Requisito 2026-09-08 puntos 8 y 10: helper para el patrón "Ver detalle"
+// que reemplaza el texto técnico permanente de estas 4 tarjetas (antes en
+// `.sub`, siempre visible) -- arranca colapsado (`hidden`), se abre con un
+// click delegado en document (ver más abajo, cerca de btnSubir) porque
+// este HTML se reconstruye entero en cada render.
+function kpiDetalle(id, htmlInterno) {
+  return `
+    <button type="button" class="kpi-detalle-btn" data-detalle-target="${id}" aria-expanded="false">Ver detalle <span class="chev">▾</span></button>
+    <div class="kpi-detalle" id="${id}" hidden>${htmlInterno}</div>
+  `;
+}
+
 const kpiGrid = document.getElementById('kpiGrid');
 kpiGrid.innerHTML = `
-  <div class="kpi accent-green">
-    <div class="icon">📥</div>
-    <div class="label">Ingresos reales</div>
-    <div class="value">${fmtCOP(totalIngresosReales)}</div>
-    <div class="sub">${ingresosReales.length} movimientos · excluye avances de tarjeta de crédito</div>
-  </div>
-
-  <div class="kpi accent-red">
-    <div class="icon">📤</div>
-    <div class="label">Gasto real (caja)</div>
-    <div class="value">${fmtCOP(totalGastoReal)}</div>
-    <div class="sub">${gastosReales.length} movimientos · dinero que realmente salió de tus cuentas</div>
-  </div>
-
-  <div class="kpi ${balanceCajaReal >= 0 ? 'accent-green' : 'accent-red'}">
-    <div class="icon">${balanceCajaReal >= 0 ? '✅' : '⚠️'}</div>
-    <div class="label">Balance de caja real</div>
+  <div class="kpi kpi-hero ${balanceCajaReal >= 0 ? 'accent-green' : 'accent-red'}">
+    <div class="icon-badge"><div class="icon">${ICONS_KPI[balanceCajaReal >= 0 ? 'check' : 'warning']}</div></div>
+    <!-- Requisito 2026-09-08 punto 7: "Balance de caja real" sonaba
+         técnico -- "Dinero disponible" es lo mismo dicho en el lenguaje
+         que usaría cualquiera que no maneje jerga contable. -->
+    <div class="label">Dinero disponible</div>
     <div class="value">${fmtCOP(balanceCajaReal)}</div>
-    <div class="sub">${balanceCajaReal >= 0 ? 'Saldo positivo en el período' : 'El gasto real supera tus ingresos reales'} · sin deuda de tarjeta</div>
+    ${kpiDetalle('detalleBalance', `
+      <p>${balanceCajaReal >= 0 ? 'Es el dinero que de verdad entró y salió de tus cuentas en este período -- lo que sobró.' : 'En este período gastaste más de lo que te entró.'} No incluye lo que debes en tarjetas de crédito.</p>
+      ${deudaActual > 0 ? `<p>Hoy debés <b style="color:var(--text)">${fmtCOP(deudaActual)}</b> en tarjetas de crédito (no está restado de este número).</p>` : ''}
+      <div class="mini-rows">
+        <div class="row"><span>Promedio mensual que entró</span><b>${fmtCOP(promedioMensualIngreso)}</b></div>
+        <div class="row"><span>Promedio mensual que salió</span><b>${fmtCOP(promedioMensualGasto)}</b></div>
+      </div>
+    `)}
   </div>
 
-  <div class="kpi accent-purple">
-    <div class="icon">🧾</div>
+  <div class="kpi-support-grid">
+    <div class="kpi accent-green">
+      <div class="icon-badge"><div class="icon">${ICONS_KPI.arrowDown}</div></div>
+      <!-- Requisito 2026-09-08 punto 9: "Ingresos reales" sonaba a que
+           existen "ingresos falsos" -- se nombra directamente qué es. -->
+      <div class="label">Dinero que entró</div>
+      <div class="value">${fmtCOP(totalIngresosReales)}</div>
+      ${kpiDetalle('detalleIngresos', `<p>Se contaron ${ingresosReales.length} movimiento${ingresosReales.length===1?'':'s'}. No incluye los adelantos de efectivo de tu tarjeta de crédito -- eso es deuda, no un ingreso real.</p>`)}
+    </div>
+
+    <div class="kpi accent-red">
+      <div class="icon-badge"><div class="icon">${ICONS_KPI.arrowUp}</div></div>
+      <div class="label">Dinero que salió</div>
+      <div class="value">${fmtCOP(totalGastoReal)}</div>
+      ${kpiDetalle('detalleGasto', `<p>Se contaron ${gastosReales.length} movimiento${gastosReales.length===1?'':'s'}. Es lo que de verdad salió de tus cuentas -- no incluye compras a crédito que todavía no pagaste.</p>`)}
+    </div>
+
+    ${deudaVisibleArriba ? `
+    <div class="kpi ${deudaActual > 0 ? 'accent-red' : 'accent-green'}">
+      <div class="icon-badge"><div class="icon">${ICONS_KPI.card}</div></div>
+      <div class="label">Deuda actual estimada</div>
+      <div class="value">${fmtCOP(deudaActual)}</div>
+      ${kpiDetalle('detalleDeuda', `<p>Es lo que debés hoy en tus tarjetas de crédito: se suman tus compras y adelantos, y se resta lo que ya pagaste.</p>`)}
+    </div>` : ''}
+  </div>
+
+  <!-- Gráfico compacto "Ingresos vs. gastos" (requisito punto 4): mismo
+       cálculo (totalIngresosReales/totalGastoReal) que el gráfico completo
+       de "Análisis visual", ver configIngresosVsGastos() más abajo -- se
+       crea la instancia de Chart.js después de insertar este HTML (el
+       <canvas> tiene que existir en el DOM primero). El padding/tamaño de
+       h3 vivían como style="" inline -- se movieron a la clase
+       .chart-card-compacto-ingresos (ver CSS) para poder recortarlos más
+       en mobile sin pelear contra la especificidad de un inline style
+       (bug qa-responsive 2026-09-07 #2). -->
+  <div class="chart-card full chart-card-compacto-ingresos">
+    <h3>⚖️ Ingresos vs. gastos <span class="tag" style="margin-left:8px; font-weight:400;">vista compacta</span></h3>
+    <div class="chart-holder compact"><canvas id="chartIngresosGastosCompact"></canvas></div>
+  </div>
+
+  <div class="kpi kpi-compact accent-purple">
+    <div class="icon-badge"><div class="icon">${ICONS_KPI.list}</div></div>
     <div class="label">Transacciones totales</div>
     <div class="value">${fmtNum(DATA.length)}</div>
     <div class="sub">${gastosCOP.length + dataUSD.length} gastos · ${ingresosCOP.length} ingresos</div>
   </div>
 
-  <div class="kpi">
-    <div class="icon">${catIcon(catTop)}</div>
+  <div class="kpi kpi-compact">
+    <div class="icon-badge"><div class="icon">${catIcon(catTop)}</div></div>
     <div class="label">Categoría con mayor gasto</div>
-    <div class="value" style="font-size:19px; text-transform:capitalize;">${catTop}</div>
+    <div class="value" style="text-transform:capitalize;">${catTop}</div>
     <div class="sub">${fmtCOP(catTopMonto)} · ${fmtPct(totalGastosCOP ? catTopMonto/totalGastosCOP*100 : 0)} del consumo total (incl. crédito)</div>
   </div>
 
-  <div class="kpi">
-    <div class="icon">📆</div>
+  <div class="kpi kpi-compact">
+    <div class="icon-badge"><div class="icon">${ICONS_KPI.calendar}</div></div>
     <div class="label">Promedio mensual de gasto real</div>
     <div class="value">${fmtCOP(promedioMensualGasto)}</div>
     <div class="sub">calculado sobre ${mesesPresentes.length} meses con datos · solo caja real</div>
   </div>
 
+  <div class="kpi kpi-compact">
+    <div class="icon-badge"><div class="icon">${ICONS_KPI.bank}</div></div>
+    <div class="label">Entidad más utilizada</div>
+    <div class="value">${entidadTop}</div>
+    <div class="sub">${entidadCount[0]?.[1] || 0} movimientos · ${fmtCOP(entidadMonto.find(e=>e[0]===entidadTop)?.[1]||0)}</div>
+  </div>
+
+  ${!haySoloUnaMoneda ? `
   <div class="kpi">
-    <div class="icon">💱</div>
+    <div class="icon-badge"><div class="icon">${ICONS_KPI.exchange}</div></div>
     <div class="label">Distribución por moneda</div>
     <div class="mini-rows">
       ${[...monedaCount.entries()].map(([m,c])=>`<div class="row"><span>${m}</span><b>${c} mov. (${fmtPct(c/DATA.length*100)})</b></div>`).join('')}
     </div>
-  </div>
-
-  <div class="kpi">
-    <div class="icon">🏦</div>
-    <div class="label">Entidad más utilizada</div>
-    <div class="value" style="font-size:19px;">${entidadTop}</div>
-    <div class="sub">${entidadCount[0]?.[1] || 0} movimientos · ${fmtCOP(entidadMonto.find(e=>e[0]===entidadTop)?.[1]||0)}</div>
-  </div>
+  </div>` : ''}
 `;
+
+// El <canvas id="chartIngresosGastosCompact"> recién quedó en el DOM
+// (arriba) -- configIngresosVsGastos() está definida más abajo (sección
+// "GRÁFICO 2"), pero al ser una function declaration queda hoisteada
+// dentro de renderDashboard() y ya se puede llamar acá.
+crearGrafico('chartIngresosGastosCompact', configIngresosVsGastos({ compacto: true }));
 
 /* =================================================================
    KPIs — TARJETAS DE CRÉDITO Y DEUDA
 ================================================================= */
-document.getElementById('kpiGridDeuda').innerHTML = `
+const _kpiGridDeuda = document.getElementById('kpiGridDeuda'); // null si "deuda" está oculta -- ver ocultarSubvistas()
+if (_kpiGridDeuda) _kpiGridDeuda.innerHTML = `
   <div class="kpi ${deudaActual > 0 ? 'accent-red' : 'accent-green'}">
-    <div class="icon">💳</div>
+    <div class="icon-badge"><div class="icon">${ICONS_KPI.card}</div></div>
     <div class="label">Deuda actual estimada</div>
     <div class="value">${fmtCOP(deudaActual)}</div>
     <div class="sub">saldo acumulado: compras a crédito + avances − pagos</div>
   </div>
 
   <div class="kpi">
-    <div class="icon">🛍️</div>
+    <div class="icon-badge"><div class="icon">${ICONS_KPI.bag}</div></div>
     <div class="label">Gasto con tarjeta de crédito</div>
     <div class="value">${fmtCOP(totalGastoCredito)}</div>
     <div class="sub">${gastosCredito.length} compras · ${fmtPct(totalGastosCOP ? totalGastoCredito/totalGastosCOP*100 : 0)} de todo lo que gastaste</div>
   </div>
 
   <div class="kpi">
-    <div class="icon">💰</div>
+    <div class="icon-badge"><div class="icon">${ICONS_KPI.arrowDown}</div></div>
     <div class="label">Avances de crédito recibidos</div>
     <div class="value">${fmtCOP(totalAvancesCredito)}</div>
     <div class="sub">${avancesCredito.length} adelanto(s) de efectivo — es deuda, no ingreso real</div>
   </div>
 
   <div class="kpi accent-green">
-    <div class="icon">✅</div>
+    <div class="icon-badge"><div class="icon">${ICONS_KPI.check}</div></div>
     <div class="label">Pagos a tarjetas de crédito</div>
     <div class="value">${fmtCOP(totalPagosTarjeta)}</div>
     <div class="sub">${pagosTarjeta.length} pago(s) registrados que abonan la deuda</div>
@@ -1156,7 +2620,8 @@ document.getElementById('kpiGridDeuda').innerHTML = `
 // El contenedor se repone desde cero en cada render (con un <canvas> fresco)
 // antes de decidir qué mostrar — así funciona sin importar qué haya quedado
 // dibujado ahí en la llamada anterior (gráfico o mensaje de "sin datos").
-document.getElementById('chartDeudaEvolucionHolder').innerHTML = '<canvas id="chartDeudaEvolucion"></canvas>';
+const _chartDeudaHolder = document.getElementById('chartDeudaEvolucionHolder'); // null si "deuda" está oculta -- ver ocultarSubvistas()
+if (_chartDeudaHolder) _chartDeudaHolder.innerHTML = '<canvas id="chartDeudaEvolucion"></canvas>';
 if (DEUDA_TARJETAS.length) {
   // Mismo criterio que chartEvolucion (más abajo): con más de 2 meses
   // distintos en el período, un punto por movimiento puede volverse una
@@ -1225,7 +2690,7 @@ if (DEUDA_TARJETAS.length) {
   });
 } else {
   delete GRAFICOS_REGISTRY['chartDeudaEvolucion']; // sin canvas en este período -- que el modal no reabra el de un período anterior
-  document.getElementById('chartDeudaEvolucionHolder').innerHTML =
+  if (_chartDeudaHolder) _chartDeudaHolder.innerHTML =
     '<div class="empty-state">💳 No se detectaron compras, avances ni pagos de tarjeta de crédito en los movimientos del período seleccionado.</div>';
 }
 
@@ -1260,51 +2725,84 @@ crearGrafico('chartCategorias', {
 
 /* =================================================================
    GRÁFICO 2 — Ingresos vs gastos (totales)
+   -----------------------------------------------------------------
+   configIngresosVsGastos() arma la config a partir de los mismos totales
+   ya calculados (totalIngresosReales/totalGastoReal, definidos arriba en
+   el pre-procesamiento) -- se usa acá para el gráfico completo Y para la
+   versión compacta de la sección de KPIs (ver más arriba en este mismo
+   render): misma fuente de datos, sin duplicar el cálculo. Se llama una
+   vez por canvas (no se comparte el mismo objeto de config entre dos
+   Chart.js vivos a la vez -- Chart.js le agrega metadata interna propia a
+   cada dataset, y compartir el objeto rompe la segunda instancia).
 ================================================================= */
-crearGrafico('chartIngresosGastos', {
-  type: 'bar',
-  data: {
-    labels: ['Ingresos reales', 'Gasto real (caja)'],
-    datasets: [{
-      data: [totalIngresosReales, totalGastoReal],
-      backgroundColor: ['#27d9a8', '#fb7185'],
-      borderRadius: 10,
-      barThickness: 60
-    }]
-  },
-  options: {
-    responsive: true, maintainAspectRatio: false,
-    plugins: { legend: { display:false }, tooltip: { callbacks: { label:(ctx)=> fmtCOP(ctx.parsed.y) } } },
-    scales: {
-      y: { ticks: { callback:(v)=> fmtNum(v) }, grid: { color:'rgba(255,255,255,0.05)' } },
-      x: { grid: { display:false } }
+function configIngresosVsGastos({ compacto = false } = {}) {
+  return {
+    type: 'bar',
+    data: {
+      labels: ['Ingresos reales', 'Gasto real (caja)'],
+      datasets: [{
+        data: [totalIngresosReales, totalGastoReal],
+        backgroundColor: ['#27d9a8', '#fb7185'],
+        borderRadius: compacto ? 6 : 10,
+        barThickness: compacto ? 22 : 60
+      }]
+    },
+    options: {
+      // Compacto: barras horizontales -- aprovechan mejor un contenedor
+      // bajo y ancho (130px de alto) que las verticales, que necesitan
+      // espacio debajo para las etiquetas del eje X.
+      indexAxis: compacto ? 'y' : 'x',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display:false },
+        tooltip: { callbacks: { label:(ctx)=> fmtCOP(compacto ? ctx.parsed.x : ctx.parsed.y) } }
+      },
+      scales: compacto ? {
+        x: { ticks: { callback:(v)=> fmtNum(v), font:{ size:9 } }, grid: { color:'rgba(255,255,255,0.05)' } },
+        y: { ticks: { font:{ size:9 } }, grid: { display:false } }
+      } : {
+        y: { ticks: { callback:(v)=> fmtNum(v) }, grid: { color:'rgba(255,255,255,0.05)' } },
+        x: { grid: { display:false } }
+      }
     }
-  }
-});
+  };
+}
+crearGrafico('chartIngresosGastos', configIngresosVsGastos());
 
 /* =================================================================
    GRÁFICO 3 — Distribución por moneda (nº movimientos)
+   -----------------------------------------------------------------
+   Requisito 2026-09-07, punto 6: tarjeta KPI (ver sección KPIs, más
+   arriba) y este gráfico de dona comparten la MISMA condición
+   (haySoloUnaMoneda, sobre DATA ya filtrado por el período activo) --
+   nunca uno oculto y el otro visible. Se recalcula en cada render.
 ================================================================= */
-crearGrafico('chartMoneda', {
-  type: 'doughnut',
-  data: {
-    labels: [...monedaCount.keys()],
-    datasets: [{
-      data: [...monedaCount.values()],
-      backgroundColor: ['#7c6cfb', '#fbbf24'],
-      borderColor: '#131928',
-      borderWidth: 3
-    }]
-  },
-  options: {
-    responsive: true, maintainAspectRatio: false,
-    cutout: '68%',
-    plugins: {
-      legend: { position:'bottom', labels:{ boxWidth:10, padding:14 } },
-      tooltip: { callbacks: { label:(ctx)=> `${ctx.label}: ${ctx.parsed} movimiento(s)` } }
+const _chartMonedaCard = document.getElementById('chartMonedaCard'); // null si "analisis" está oculta -- ver ocultarSubvistas()
+if (_chartMonedaCard) _chartMonedaCard.hidden = haySoloUnaMoneda;
+if (haySoloUnaMoneda) {
+  delete GRAFICOS_REGISTRY['chartMoneda']; // que el modal "ver en grande" no reabra un gráfico oculto
+} else {
+  crearGrafico('chartMoneda', {
+    type: 'doughnut',
+    data: {
+      labels: [...monedaCount.keys()],
+      datasets: [{
+        data: [...monedaCount.values()],
+        backgroundColor: ['#7c6cfb', '#fbbf24'],
+        borderColor: '#131928',
+        borderWidth: 3
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '68%',
+      plugins: {
+        legend: { position:'bottom', labels:{ boxWidth:10, padding:14 } },
+        tooltip: { callbacks: { label:(ctx)=> `${ctx.label}: ${ctx.parsed} movimiento(s)` } }
+      }
     }
-  }
-});
+  });
+}
 
 /* =================================================================
    GRÁFICO 4 — Evolución temporal de gastos (línea diaria)
@@ -1359,7 +2857,8 @@ crearGrafico('chartEvolucion', {
 ================================================================= */
 const top5 = gastoPorCategoria.slice(0,5);
 const maxTop5 = top5[0]?.[1] || 0;
-document.getElementById('leaderboard').innerHTML = top5.map(([cat,monto],i)=>{
+const _leaderboard = document.getElementById('leaderboard'); // null si "analisis" está oculta -- ver ocultarSubvistas()
+if (_leaderboard) _leaderboard.innerHTML = top5.map(([cat,monto],i)=>{
   const pct = (monto/maxTop5*100).toFixed(0);
   const rankClass = i===0?'top1':i===1?'top2':i===2?'top3':'';
   return `
@@ -1589,23 +3088,30 @@ if (totalGastoCredito > 0 || totalAvancesCredito > 0) {
   });
 }
 
-document.getElementById('insightsGrid').innerHTML = insights.map(ins => `
-  <div class="insight">
+INSIGHTS_ACTUAL = insights; // para que el modal (fuera de esta función) los pueda abrir por índice
+const _insightsGrid = document.getElementById('insightsGrid'); // null si la sección está oculta -- ver ocultarSubvistas()
+if (_insightsGrid) _insightsGrid.innerHTML = insights.map((ins, i) => `
+  <div class="insight expandible" onclick="abrirModalInsight(${i})">
     <div class="ic">${ins.icon}</div>
-    <div class="body"><h4>${ins.title}</h4><p>${ins.text}</p></div>
+    <div class="body"><h4>${ins.title}</h4></div>
   </div>
 `).join('');
 
 /* =================================================================
    TABLAS
 ================================================================= */
+// Las 5 tablas de abajo viven dentro de "cincoVistasCard" -- si "movimientos"
+// está oculta para esta cuenta, ninguna existe (ver ocultarSubvistas()).
+
 // Últimos movimientos (por fecha desc; a igualdad de fecha, se respeta el orden inverso de carga)
 const ultimos = [...DATA].map((r,i)=>({...r,_i:i})).sort((a,b)=> b.fecha.localeCompare(a.fecha) || b._i - a._i).slice(0,12);
-document.getElementById('tbodyUltimos').innerHTML = ultimos.map(r=>rowHTML(r, true)).join('');
+const _tbodyUltimos = document.getElementById('tbodyUltimos');
+if (_tbodyUltimos) _tbodyUltimos.innerHTML = ultimos.map(r=>rowHTML(r, true)).join('');
 
 // Mayores gastos (top 10, COP)
 const mayoresGastos = [...gastosCOP].sort((a,b)=>b.monto-a.monto).slice(0,10);
-document.getElementById('tbodyMayoresGastos').innerHTML = mayoresGastos.map(r=>`
+const _tbodyMayoresGastos = document.getElementById('tbodyMayoresGastos');
+if (_tbodyMayoresGastos) _tbodyMayoresGastos.innerHTML = mayoresGastos.map(r=>`
   <tr>
     <td>${fmtDate(r.fecha)}</td>
     <td><span class="cat-chip">${catIcon(r.categoria)} ${r.categoria}</span></td>
@@ -1616,7 +3122,8 @@ document.getElementById('tbodyMayoresGastos').innerHTML = mayoresGastos.map(r=>`
 
 // Mayores ingresos (todos, ordenados desc)
 const mayoresIngresos = [...ingresosCOP].sort((a,b)=>b.monto-a.monto);
-document.getElementById('tbodyMayoresIngresos').innerHTML = mayoresIngresos.map(r=>`
+const _tbodyMayoresIngresos = document.getElementById('tbodyMayoresIngresos');
+if (_tbodyMayoresIngresos) _tbodyMayoresIngresos.innerHTML = mayoresIngresos.map(r=>`
   <tr>
     <td>${fmtDate(r.fecha)}</td>
     <td><span class="cat-chip">${catIcon(r.categoria)} ${r.categoria}</span></td>
@@ -1627,7 +3134,8 @@ document.getElementById('tbodyMayoresIngresos').innerHTML = mayoresIngresos.map(
 
 // Movimientos por moneda (resumen)
 const monedas = [...new Set(DATA.map(r=>r.moneda))];
-document.getElementById('tbodyMoneda').innerHTML = monedas.map(m=>{
+const _tbodyMoneda = document.getElementById('tbodyMoneda');
+if (_tbodyMoneda) _tbodyMoneda.innerHTML = monedas.map(m=>{
   const rows = DATA.filter(r=>r.moneda===m);
   const ing = rows.filter(r=>r.tipo==='ingreso').reduce((s,r)=>s+r.monto,0);
   const gas = rows.filter(r=>r.tipo==='gasto').reduce((s,r)=>s+r.monto,0);
@@ -1645,7 +3153,8 @@ document.getElementById('tbodyMoneda').innerHTML = monedas.map(m=>{
 
 // Deuda en tarjetas de crédito (ledger cronológico, más reciente primero)
 const ETIQUETA_MOVIMIENTO_DEUDA = { credito:'Compra a crédito', avance_credito:'Avance de crédito', pago_tarjeta_credito:'Pago a tarjeta' };
-document.getElementById('tbodyDeuda').innerHTML = [...DEUDA_TARJETAS].reverse().map(d => {
+const _tbodyDeuda = document.getElementById('tbodyDeuda');
+if (_tbodyDeuda) _tbodyDeuda.innerHTML = [...DEUDA_TARJETAS].reverse().map(d => {
   const esPago = d.tipo_movimiento === 'pago_tarjeta_credito';
   return `
     <tr>
@@ -1704,25 +3213,97 @@ function aplicarFiltroPeriodo() {
 selAnio.addEventListener('change', aplicarFiltroPeriodo);
 selMes.addEventListener('change', aplicarFiltroPeriodo);
 
+/* =================================================================
+   CONTROL UNIFICADO DE PERÍODO -- botones Trimestral/Semestral/Anual/
+   Personalizado (requisito 2026-09-07, punto 1)
+   -----------------------------------------------------------------
+   Trimestral/Semestral/Anual ya NO son decorativos: calculan un rango
+   fijo sobre "hoy" (PRESETS_PERIODO, definido junto a filtroPeriodoActivo
+   más arriba) y llaman a renderDashboard() con el mismo DATA_COMPLETA/
+   DEUDA_COMPLETA filtrados por fecha -- mismo pipeline que usa
+   aplicarFiltroPeriodo() para año/mes, sin una segunda ruta de cálculo.
+   "Personalizado" no filtra nada por sí solo: revela los selects y
+   delega en aplicarFiltroPeriodo(), que ya sabe leerlos.
+================================================================= */
+const btnsPeriodo = document.getElementById('periodoBotones');
+
+function actualizarUIPeriodoControl() {
+  btnsPeriodo?.querySelectorAll('button').forEach(b => {
+    b.classList.toggle('active', b.dataset.periodo === filtroPeriodoActivo);
+  });
+  // Requisito 2026-09-08 punto 5: antes se OCULTABAN los selects año/mes
+  // (`hidden`) fuera de "Personalizado" -- la interfaz cambiaba de
+  // estructura en cada click, una percepción de la UI "saltando". Ahora
+  // quedan siempre en el mismo lugar del header (ver `.header-meta`) y
+  // solo se deshabilitan -- opacos, sin poder interactuar -- cuando no
+  // aplican (ver .pill-select:disabled en el CSS).
+  const esPersonalizado = filtroPeriodoActivo === 'personalizado';
+  if (selAnio) selAnio.disabled = !esPersonalizado;
+  if (selMes) selMes.disabled = !esPersonalizado;
+}
+
+function aplicarPreset(tipo) {
+  filtroPeriodoActivo = tipo;
+  actualizarUIPeriodoControl();
+  const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+  const pad = n => String(n).padStart(2, '0');
+  const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const isoInicio = iso(PRESETS_PERIODO[tipo].calcularInicio(hoy));
+  const isoFin = iso(hoy);
+  // Comparación de strings YYYY-MM-DD: lexicográficamente equivalente a
+  // comparar fechas reales (mismo truco que ya usa startsWith() más arriba).
+  renderDashboard(
+    DATA_COMPLETA.filter(r => r.fecha >= isoInicio && r.fecha <= isoFin),
+    DEUDA_COMPLETA.filter(r => r.fecha >= isoInicio && r.fecha <= isoFin)
+  );
+}
+
+function activarPersonalizado() {
+  // Caso borde explícito del requisito: si el usuario ya había ajustado
+  // año/mes a mano antes de pasar a un preset, y vuelve a "Personalizado",
+  // NO se resetea nada -- reaparece exactamente donde lo había dejado
+  // (los selects nunca se tocaron, solo estaban ocultos).
+  filtroPeriodoActivo = 'personalizado';
+  actualizarUIPeriodoControl();
+  aplicarFiltroPeriodo();
+}
+
+btnsPeriodo?.querySelectorAll('button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tipo = btn.dataset.periodo;
+    if (tipo === 'personalizado') activarPersonalizado();
+    else aplicarPreset(tipo);
+  });
+});
+
 // Switch "Movimientos": es excluyente con las "5 vistas" -- prender uno
 // apaga (oculta) el otro, nunca los dos a la vez. La lógica interna de
 // cada uno (tabs, filtros, paginado) sigue exactamente igual, esto solo
 // decide cuál de las dos tarjetas se ve.
-document.getElementById('toggleTodosMovimientos').addEventListener('change', (e) => {
-  todosMovActivo = e.target.checked;
-  document.getElementById('todosMovimientosCard').hidden = !todosMovActivo;
-  document.getElementById('cincoVistasCard').hidden = todosMovActivo;
-  if (todosMovActivo) {
-    todosMovPagina = 1;
-    renderTodosMovimientos(DATA_ACTUAL);
-    document.getElementById('tituloSeccionMovimientos').textContent = '📋 Movimientos';
-  } else {
-    // Vuelve a nombrar la pestaña que sigue activa (no se resetea al
-    // apagar el switch, solo queda oculta mientras tanto).
-    const tabActiva = document.querySelector('.tab-btn.active');
-    document.getElementById('tituloSeccionMovimientos').textContent = `📋 ${tabActiva ? tabActiva.textContent : 'Últimos movimientos'}`;
-  }
-});
+// El checkbox, y todo lo que este listener toca (todosMovimientosCard,
+// cincoVistasCard, tituloSeccionMovimientos), vive dentro de la sección
+// "movimientos" -- si un admin la ocultó para esta cuenta, el checkbox
+// no existe. Sin este guard, el addEventListener sobre undefined tira un
+// TypeError que corta iniciarDashboard() entera (nada de lo que sigue en
+// el script, como los tabs de más abajo, llegaría a ejecutarse).
+const toggleTodosMovimientos = document.getElementById('toggleTodosMovimientos');
+if (toggleTodosMovimientos) {
+  toggleTodosMovimientos.addEventListener('change', (e) => {
+    todosMovActivo = e.target.checked;
+    document.getElementById('todosMovimientosCard').hidden = !todosMovActivo;
+    document.getElementById('cincoVistasCard').hidden = todosMovActivo;
+    if (todosMovActivo) {
+      todosMovPagina = 1;
+      renderTodosMovimientos(DATA_ACTUAL);
+      document.getElementById('tituloSeccionMovimientos').textContent = '📋 Movimientos';
+    } else {
+      // Vuelve a nombrar la pestaña que sigue activa (no se resetea al
+      // apagar el switch, solo queda oculta mientras tanto).
+      const tabActiva = document.querySelector('.tab-btn.active');
+      document.getElementById('tituloSeccionMovimientos').textContent = `📋 ${tabActiva ? tabActiva.textContent : 'Últimos movimientos'}`;
+    }
+  });
+}
 
 /* =================================================================
    MODAL DE GRÁFICOS EXPANDIBLES
@@ -1799,6 +3380,18 @@ function cerrarModalGrafico() {
   if (modalChartInstance) { modalChartInstance.destroy(); modalChartInstance = null; }
 }
 
+function abrirModalInsight(i) {
+  const ins = INSIGHTS_ACTUAL[i];
+  if (!ins) return; // el período cambió justo entre el render y el click -- no reventar
+  document.getElementById('modalInsightTitulo').textContent = `${ins.icon} ${ins.title}`;
+  document.getElementById('modalInsightTexto').innerHTML = ins.text;
+  document.getElementById('modalInsight').classList.add('open');
+}
+
+function cerrarModalInsight() {
+  document.getElementById('modalInsight').classList.remove('open');
+}
+
 // Sin DOMContentLoaded acá: este código corre recién después del
 // "await fetch(...)" de más arriba, momento en el que el DOM entero
 // (incluido el <div id="modalGrafico">, más abajo en el HTML) ya
@@ -1807,18 +3400,27 @@ function cerrarModalGrafico() {
 document.getElementById('modalGrafico').addEventListener('click', (e) => {
   if (e.target.id === 'modalGrafico') cerrarModalGrafico(); // click en el fondo, no en la tarjeta
 });
+document.getElementById('modalInsight').addEventListener('click', (e) => {
+  if (e.target.id === 'modalInsight') cerrarModalInsight();
+});
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') cerrarModalGrafico();
+  if (e.key === 'Escape') {
+    cerrarModalGrafico(); cerrarModalInsight();
+    cerrarModalPresupuesto(); cerrarModalCategorias(); cerrarModalMeta();
+  }
 });
 
-// abrirModalGrafico/abrirModalLeaderboard/cerrarModalGrafico se llaman
-// desde atributos onclick="" inline en el HTML -- esos se resuelven en
-// el scope GLOBAL (window), no en el de esta función async, así que
-// hay que exponerlos a mano.
+// abrirModalGrafico/abrirModalLeaderboard/cerrarModalGrafico/abrirModalInsight/
+// cerrarModalInsight se llaman desde atributos onclick="" inline en el
+// HTML -- esos se resuelven en el scope GLOBAL (window), no en el de
+// esta función async, así que hay que exponerlos a mano.
 window.abrirModalGrafico = abrirModalGrafico;
 window.abrirModalLeaderboard = abrirModalLeaderboard;
 window.cerrarModalGrafico = cerrarModalGrafico;
+window.abrirModalInsight = abrirModalInsight;
+window.cerrarModalInsight = cerrarModalInsight;
 
+actualizarUIPeriodoControl(); // estado inicial: "Personalizado" activo, selects visibles (ya reflejado en el HTML, esto solo lo confirma)
 renderDashboard(DATA_COMPLETA, DEUDA_COMPLETA); // primera carga: histórico completo, sin filtro
 
 /* =================================================================
@@ -1879,6 +3481,21 @@ document.addEventListener('DOMContentLoaded', () => {
   btnSubir.addEventListener('click', () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
+
+  // Requisito 2026-09-08 puntos 8/10: "Ver detalle" de las tarjetas KPI
+  // (ver kpiDetalle() en renderDashboard()). Delegado en document en vez
+  // de atado a cada botón porque #kpiGrid se reconstruye por completo
+  // (innerHTML) en cada render -- un listener puesto directo sobre un
+  // botón puntual moriría con él en el próximo filtro de período.
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.kpi-detalle-btn');
+    if (!btn) return;
+    const detalle = document.getElementById(btn.dataset.detalleTarget);
+    if (!detalle) return;
+    const yaAbierto = !detalle.hidden;
+    detalle.hidden = yaAbierto;
+    btn.setAttribute('aria-expanded', String(!yaAbierto));
+  });
 });
 </script>
 
@@ -1896,6 +3513,108 @@ document.addEventListener('DOMContentLoaded', () => {
         <canvas id="modalGraficoCanvas"></canvas>
       </div>
       <div id="modalGraficoTabla"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MODAL DE DETALLE DE INSIGHT (ver JS: abrirModalInsight) --
+     mismas clases modal-grafico-* que el de arriba, para que se vea
+     igual, pero sin canvas -- el detalle es solo texto.
+     ============================================================ -->
+<div class="modal-grafico-overlay" id="modalInsight">
+  <div class="modal-grafico-card" style="width: min(560px, 100%);">
+    <div class="modal-grafico-header">
+      <h3 id="modalInsightTitulo"></h3>
+      <button type="button" class="modal-grafico-cerrar" onclick="cerrarModalInsight()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-grafico-body">
+      <p id="modalInsightTexto" style="margin:0; font-size:13.5px; line-height:1.6; color:var(--text-dim);"></p>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MODAL "CONFIGURAR PRESUPUESTO" (ver JS: abrirModalPresupuesto) --
+     mismas clases modal-grafico-* que los modales de arriba.
+     ============================================================ -->
+<div class="modal-grafico-overlay" id="modalPresupuesto">
+  <div class="modal-grafico-card" style="width: min(460px, 100%);">
+    <div class="modal-grafico-header">
+      <h3>Configurar presupuesto</h3>
+      <button type="button" class="modal-grafico-cerrar" onclick="cerrarModalPresupuesto()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-grafico-body">
+      <p class="desc" style="margin:0 0 14px;">Definí qué % de tu ingreso real destinás a cada balde. Lo ideal es que sumen 100%, pero podés guardar igual si no da -- te avisamos en el dashboard.</p>
+      <form id="formPresupuesto">
+        <div class="form-row">
+          <label for="inputPctNecesidades">Necesidades (%)</label>
+          <input type="number" id="inputPctNecesidades" min="0" step="0.1" required>
+        </div>
+        <div class="form-row">
+          <label for="inputPctGustos">Gustos (%)</label>
+          <input type="number" id="inputPctGustos" min="0" step="0.1" required>
+        </div>
+        <div class="form-row">
+          <label for="inputPctAhorroDeudas">Ahorro/deudas (%)</label>
+          <input type="number" id="inputPctAhorroDeudas" min="0" step="0.1" required>
+        </div>
+        <div class="form-suma-pct" id="formPresupuestoSuma"></div>
+        <div class="form-error" id="formPresupuestoError" hidden></div>
+        <button type="submit" class="btn-primario">Guardar presupuesto</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MODAL "REASIGNAR CATEGORÍAS" (ver JS: abrirModalCategorias) --
+     un <select> por categoría, se guarda al instante (criterio de
+     aceptación: "sin tocar código ni pedirnos ayuda").
+     ============================================================ -->
+<div class="modal-grafico-overlay" id="modalCategorias">
+  <div class="modal-grafico-card" style="width: min(520px, 100%);">
+    <div class="modal-grafico-header">
+      <h3>Reasignar categorías a un balde</h3>
+      <button type="button" class="modal-grafico-cerrar" onclick="cerrarModalCategorias()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-grafico-body">
+      <p class="desc" style="margin:0 0 6px;">Cada categoría ya viene asignada a un balde razonable. Cambiala si no te calza -- se guarda al instante, sin tocar nada más.</p>
+      <div class="categoria-balde-lista" id="categoriaBaldeLista"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MODAL "NUEVA / EDITAR META DE AHORRO" (ver JS: abrirModalMeta) --
+     mismo formulario para crear y editar (el título/botón cambian según
+     si venís de "Nueva meta de ahorro" o de "Editar" en una meta ya
+     existente, ver abrirModalMeta()).
+     ============================================================ -->
+<div class="modal-grafico-overlay" id="modalMeta">
+  <div class="modal-grafico-card" style="width: min(440px, 100%);">
+    <div class="modal-grafico-header">
+      <h3 id="modalMetaTitulo">Nueva meta de ahorro</h3>
+      <button type="button" class="modal-grafico-cerrar" onclick="cerrarModalMeta()" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-grafico-body">
+      <form id="formMeta">
+        <input type="hidden" id="inputMetaId">
+        <div class="form-row">
+          <label for="inputMetaNombre">Nombre</label>
+          <input type="text" id="inputMetaNombre" maxlength="80" required placeholder="Ej. Vacaciones, Fondo de emergencia">
+        </div>
+        <div class="form-row">
+          <label for="inputMetaMonto">Monto objetivo (COP)</label>
+          <input type="number" id="inputMetaMonto" min="1" step="1" required>
+        </div>
+        <div class="form-row">
+          <label for="inputMetaFecha">Fecha objetivo (opcional)</label>
+          <input type="date" id="inputMetaFecha">
+        </div>
+        <div class="form-error" id="formMetaError" hidden></div>
+        <button type="submit" class="btn-primario" id="btnGuardarMeta">Crear meta</button>
+      </form>
     </div>
   </div>
 </div>
