@@ -67,6 +67,16 @@
         </div>
       </div>
 
+      {% if tarjetas %}
+      <label class="field-label">Tarjeta de crédito <span style="color:var(--text-faint); font-weight:400;">(opcional -- solo si este movimiento es de una tarjeta registrada)</span></label>
+      <select name="tarjeta_id" class="field-select">
+        <option value="">Sin asignar</option>
+        {% for t in tarjetas %}
+        <option value="{{ t.id }}">{{ t.nombre }}{% if t.ultimos4 %} · Terminada en {{ t.ultimos4 }}{% endif %}</option>
+        {% endfor %}
+      </select>
+      {% endif %}
+
       <button type="submit" class="btn-primary" id="btnRegistrar">Registrar</button>
     </form>
 

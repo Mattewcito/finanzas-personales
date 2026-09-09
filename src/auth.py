@@ -45,6 +45,41 @@ def viendo_id() -> int:
     return session.get("viendo_id", session.get("usuario_id"))
 
 
+def requiere_vista_visible(vista: str, *, por_viendo: bool = False):
+    """Decorador: bloquea una ruta que un admin ocultó -- no solo el
+    ítem del menú, la ruta en sí, para que ocultar algo sea una
+    restricción real (nadie accede hasta que se reactive), sin
+    excepción de rol: un admin queda bloqueado igual que cualquiera si
+    la vista está oculta para la cuenta que corresponda. Esto es seguro
+    porque /admin/vistas (el panel que revierte cualquier restricción)
+    NUNCA lleva este decorador -- siempre hay una puerta de salida.
+
+    `por_viendo=False` (default): chequea la vista oculta de
+    session["usuario_id"] (quien inició sesión) -- para funciones de
+    autoservicio como Correo automático, ligadas a la identidad de
+    sesión, no a la cuenta que se esté viendo (así un admin puede seguir
+    configurando el correo de otro usuario vía viendo_id() aunque ese
+    usuario tenga esa sección oculta para sí mismo).
+    `por_viendo=True`: chequea la de viendo_id() -- para contenido del
+    dashboard, donde lo que importa es DE QUÉ CUENTA se muestran datos,
+    sin importar quién inició sesión."""
+    def decorador(f):
+        @wraps(f)
+        def decorado(*args, **kwargs):
+            id_a_chequear = viendo_id() if por_viendo else session.get("usuario_id")
+            with db.conexion() as conn:
+                ocultas = db.vistas_ocultas_de(conn, id_a_chequear)
+            if vista in ocultas:
+                # /api/... son llamadas fetch (esperan JSON, nunca una
+                # redirección) -- el resto son páginas de verdad.
+                if request.path.startswith("/api/"):
+                    return jsonify(ok=False, error="Esta función está desactivada para esta cuenta."), 403
+                return redirect(url_for("usuarios.mi_perfil"))
+            return f(*args, **kwargs)
+        return decorado
+    return decorador
+
+
 @auth_bp.app_context_processor
 def inyectar_globales():
     usuarios_disponibles = []
@@ -55,10 +90,22 @@ def inyectar_globales():
     # mandarlos, después de que una carga terminó en la cuenta
     # equivocada por tener seleccionado otro perfil sin darse cuenta).
     usuario_viendo_nombre = session.get("nombre")
+    vistas_ocultas = set()          # de session["usuario_id"] -- ítems de autoservicio (Correo automático)
+    vistas_ocultas_viendo = set()   # de viendo_id() -- contenido del dashboard (de qué cuenta son los datos)
+    if session.get("usuario_id"):
+        with db.conexion() as conn:
+            vistas_ocultas = db.vistas_ocultas_de(conn, session["usuario_id"])
+            vistas_ocultas_viendo = db.vistas_ocultas_de(conn, viendo_id())
     if session.get("rol") == "admin":
         with db.conexion() as conn:
             usuarios_disponibles = db.listar_usuarios(conn)
-            if viendo_id() != session.get("usuario_id"):
+            # La cuenta del propio admin queda SIEMPRE primera en la
+            # lista (anclada), sin importar el orden de creación --
+            # es la única forma de volver a la cuenta propia rápido
+            # cuando la lista crece o se está filtrando por búsqueda.
+            propio_id = session.get("usuario_id")
+            usuarios_disponibles.sort(key=lambda u: u["id"] != propio_id)
+            if viendo_id() != propio_id:
                 cuenta_vista = db.obtener_usuario(conn, viendo_id())
                 if cuenta_vista:
                     usuario_viendo_nombre = cuenta_vista["nombre_mostrado"]
@@ -69,6 +116,8 @@ def inyectar_globales():
         "viendo_id": viendo_id(),
         "usuario_viendo_nombre": usuario_viendo_nombre,
         "usuarios_disponibles": usuarios_disponibles,
+        "vistas_ocultas": vistas_ocultas,
+        "vistas_ocultas_viendo": vistas_ocultas_viendo,
     }
 
 
