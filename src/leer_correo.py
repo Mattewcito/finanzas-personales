@@ -383,7 +383,6 @@ def esta_pendiente(config: dict, ahora: datetime.datetime) -> bool:
 
 
 DIAS_MAXIMO_SI_HUBO_HUECO = 60  # tope: si la automatización estuvo caída meses, no escanea años de correo
-DIAS_PRIMERA_CORRIDA = 30       # sin ninguna corrida previa, cubre un mes hacia atrás por las dudas
 
 
 def calcular_dias_a_revisar(config: dict, ahora: datetime.datetime, dias_minimo: int) -> int:
@@ -391,11 +390,23 @@ def calcular_dias_a_revisar(config: dict, ahora: datetime.datetime, dias_minimo:
     `dias_minimo` (el piso que se le pide por CLI), pero ampliado para
     cubrir todo el hueco desde su última corrida -- si la automatización
     estuvo caída o pausada varios días, esta corrida no se pierde ese
-    tramo. Sin ninguna corrida previa, usa DIAS_PRIMERA_CORRIDA en vez de
-    `dias_minimo` a secas, para no arrancar viendo solo lo de hoy."""
+    tramo.
+
+    Sin ninguna corrida previa (primera vez que se activa/corre esta
+    cuenta), busca desde el 1 de enero del año en curso hasta `ahora`
+    -- no un tope fijo de días -- para traer todo lo que hay en lo que
+    va del año en vez de perderse meses de historial (2026-09-10: con
+    el tope fijo anterior de 30 días, la primera corrida real de un
+    usuario solo recuperó 26 movimientos, mucho menos de lo que
+    esperaba). A PARTIR DE LA SEGUNDA corrida (ya hay `ultima_corrida`
+    guardado) la ventana vuelve al criterio de siempre -- cubrir el
+    hueco desde la última corrida, topado en DIAS_MAXIMO_SI_HUBO_HUECO
+    -- que ya viene funcionando bien y no se toca."""
     ultima = config.get("ultima_corrida")
     if not ultima:
-        return max(dias_minimo, DIAS_PRIMERA_CORRIDA)
+        primer_dia_anio = ahora.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        dias_desde_enero = (ahora - primer_dia_anio).days + 1  # +1: incluye el propio 1 de enero completo
+        return max(dias_minimo, dias_desde_enero)
     ultima_dt = datetime.datetime.fromisoformat(ultima)
     hueco_dias = (ahora - ultima_dt).days + 1  # +1: cubre el día de la última corrida completo, no solo desde su hora exacta
     return max(dias_minimo, min(hueco_dias, DIAS_MAXIMO_SI_HUBO_HUECO))
