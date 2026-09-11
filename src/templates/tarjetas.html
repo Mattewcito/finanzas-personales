@@ -48,19 +48,53 @@
   }
   @media (max-width: 720px){ .tarjetas-grid{ grid-template-columns: 1fr; } }
 
+  /* Rediseño estilo Apple Wallet (2026-09-10, mismo mockup "Tarjetas
+     Wallet" ya aplicado en el Dashboard -- ver dashboard_finanzas.html)
+     ACÁ TAMBIÉN: esta es la página real donde se gestionan las tarjetas
+     ("Mis tarjetas"), así que es donde más importa que el diseño se
+     vea. /api/tarjetas no trae deuda/% de uso (esa cuenta la hace
+     obtener_tarjetas_con_deuda(), que solo usa el Dashboard) -- por eso
+     acá la tarjeta muestra identidad + cupo total, sin barra de %. */
+  .tarjeta-wrap{ display:flex; flex-direction:column; gap:10px; min-width:0; }
+
   .tarjeta-card-mgmt{
-    background: var(--card-solid); border:1px solid var(--card-border); border-radius: 10px;
-    padding: 16px; min-width:0;
+    position:relative; overflow:hidden; min-width:0; color:#fff;
+    border-radius:16px; padding:18px 20px; box-sizing:border-box;
+    aspect-ratio:1.6; display:flex; flex-direction:column; justify-content:space-between;
+    box-shadow: 0 16px 30px -16px var(--tarjeta-sombra, rgba(0,0,0,0.5)), 0 1px 0 rgba(255,255,255,0.08) inset;
   }
-  .tarjeta-card-mgmt.archivada{ opacity:.72; border-style:dashed; }
-  .tarjeta-card-nombre{ font-size:14px; font-weight:700; color:var(--text); }
+  .tarjeta-card-mgmt::before{
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background: radial-gradient(120% 80% at 12% -10%, rgba(255,255,255,0.22), transparent 55%);
+  }
+  .tarjeta-card-mgmt::after{
+    content:''; position:absolute; right:-36px; bottom:-46px; width:160px; height:160px; border-radius:50%; pointer-events:none;
+    background: radial-gradient(circle, rgba(255,255,255,0.10), transparent 70%);
+  }
+  /* Archivada: se apaga (grises + menos opacidad) en vez de perder el
+     color -- sigue siendo SU tarjeta, solo ya no está en uso. */
+  .tarjeta-card-mgmt.archivada{ filter:grayscale(0.6); opacity:.6; }
+
+  .tarjeta-card-head{ position:relative; display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  .tarjeta-card-titulo{ min-width:0; }
+  .tarjeta-card-nombre{ display:block; font-size:14.5px; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .tag-archivada{
     font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
-    color: var(--text-faint); background: var(--bg-soft); border:1px solid var(--card-border);
+    color:#fff; background: rgba(0,0,0,0.38); border:1px solid rgba(255,255,255,0.25);
     padding:2px 7px; border-radius:999px; margin-left:6px; vertical-align:middle;
   }
-  .tarjeta-card-meta{ display:block; font-size:12px; color:var(--text-dim); margin-top:4px; word-break: break-word; }
-  .tarjeta-card-actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .tarjeta-card-meta{ display:block; font-size:10.5px; font-weight:700; color:rgba(255,255,255,0.7); margin-top:3px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tarjeta-card-chip{ flex-shrink:0; opacity:.9; position:relative; }
+
+  .tarjeta-card-digits{
+    position:relative; font-family: ui-monospace, 'SF Mono', 'IBM Plex Mono', monospace;
+    font-size:16px; font-weight:600; color:#fff; letter-spacing:.14em;
+  }
+
+  .tarjeta-card-cupo{ position:relative; display:flex; justify-content:space-between; align-items:baseline; font-size:11.5px; color:rgba(255,255,255,0.85); }
+  .tarjeta-card-cupo b{ font-size:15px; font-weight:700; color:#fff; font-variant-numeric:tabular-nums; }
+
+  .tarjeta-card-actions{ display:flex; flex-wrap:wrap; gap:8px; }
   .btn-icono{
     background: var(--bg-soft); border:1px solid var(--card-border); color: var(--text-dim);
     font-family:inherit; font-size:12px; font-weight:600; padding:7px 11px; border-radius:8px; cursor:pointer;
@@ -130,7 +164,16 @@
       <div class="field-row">
         <div>
           <label class="field-label">Cupo total (COP)</label>
-          <input type="number" id="campoCupo" class="field-input" min="0.01" step="0.01" placeholder="5000000" required>
+          <!-- type="text" + máscara de miles, NO type="number" (2026-09-10,
+               bug real): un <input type="number"> nativo no deja escribir el
+               punto como separador de miles -- el navegador descarta el
+               segundo punto en cuanto se tipea, así que "16.600.000" quedaba
+               guardado como "16.600" (16,6) sin que nada avisara del
+               problema. Ver activarCampoMonto()/valorMontoNumerico() más
+               abajo: el campo se ve y se escribe con puntos de miles (igual
+               que fmtCOP en todos lados), pero lo que se manda al backend es
+               siempre el número plano. -->
+          <input type="text" inputmode="numeric" id="campoCupo" class="field-input" placeholder="5.000.000" required>
         </div>
         <div>
           <label class="field-label">Últimos 4 dígitos <span style="color:var(--text-faint); font-weight:400;">(opcional)</span></label>
@@ -175,6 +218,29 @@ function fmtCOP(n) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
 }
 
+// --- Campo de monto con separador de miles en vivo (2026-09-10) --------
+// Bug real reportado por el usuario: cargaba un cupo de "16.600.000" y
+// quedaba mal guardado "por los ceros". Causa: <input type="number">
+// nativo no permite escribir un segundo punto -- lo descarta en cuanto se
+// tipea, así que "16.600.000" terminaba siendo "16.600" (16,6) sin ningún
+// error visible. Cupo total es siempre COP y esta app SIEMPRE muestra COP
+// sin decimales (ver fmtCOP) -- por eso este campo, a diferencia del de
+// "Registrar movimiento" (que sí admite USD con centavos), formatea solo
+// enteros con puntos de miles, igual que se ve en el resto del Dashboard.
+function activarCampoMonto(input) {
+  input.addEventListener('input', () => {
+    const soloDigitos = input.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+    input.value = soloDigitos.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  });
+}
+function setValorMonto(input, numero) {
+  input.value = (numero || numero === 0) ? String(Math.round(numero)).replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+}
+function valorMontoNumerico(input) {
+  return input.value.replace(/\./g, '');
+}
+activarCampoMonto(campoCupo);
+
 function abrirModal(modo, tarjeta) {
   form.reset();
   ocultarResultado(resultadoModal);
@@ -183,7 +249,7 @@ function abrirModal(modo, tarjeta) {
     campoId.value = tarjeta.id;
     campoNombre.value = tarjeta.nombre;
     campoEntidad.value = tarjeta.entidad || '';
-    campoCupo.value = tarjeta.cupo_total;
+    setValorMonto(campoCupo, tarjeta.cupo_total);
     campoUltimos4.value = tarjeta.ultimos4 || '';
   } else {
     modalTitulo.textContent = 'Nueva tarjeta';
@@ -207,7 +273,7 @@ form.addEventListener('submit', async (e) => {
   const datos = new FormData();
   datos.set('nombre', campoNombre.value.trim());
   datos.set('entidad', campoEntidad.value.trim());
-  datos.set('cupo_total', campoCupo.value);
+  datos.set('cupo_total', valorMontoNumerico(campoCupo));
   datos.set('ultimos4', campoUltimos4.value.trim());
 
   const btn = document.getElementById('btnGuardarTarjeta');
@@ -231,13 +297,30 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
+// Color de identidad por tarjeta (mismo criterio y misma paleta que
+// dashboard_finanzas.html::renderTarjetas() -- fijo por tarjeta, no
+// depende de ningún campo nuevo en el esquema, se deriva del id).
+const PALETA_IDENTIDAD_TARJETA = ['#7c6cfb', '#38bdf8', '#27d9a8', '#f97316', '#ec4899', '#fbbf24'];
+const colorTarjeta = (id) => PALETA_IDENTIDAD_TARJETA[Math.abs(Number(id) || 0) % PALETA_IDENTIDAD_TARJETA.length];
+const ICON_CHIP = '<svg width="30" height="22" viewBox="0 0 34 26" fill="none"><rect x="0.5" y="0.5" width="33" height="25" rx="5" fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.4)"></rect><line x1="0.5" y1="9" x2="33.5" y2="9" stroke="rgba(255,255,255,0.35)"></line><line x1="0.5" y1="17" x2="33.5" y2="17" stroke="rgba(255,255,255,0.35)"></line><line x1="11" y1="0.5" x2="11" y2="25.5" stroke="rgba(255,255,255,0.35)"></line><line x1="23" y1="0.5" x2="23" y2="25.5" stroke="rgba(255,255,255,0.35)"></line></svg>';
+
 function renderCard(t) {
-  const meta = [t.entidad, t.ultimos4 ? `Terminada en ${t.ultimos4}` : null, `Cupo: ${fmtCOP(t.cupo_total)}`]
-    .filter(Boolean).join(' · ');
+  const metaTexto = t.entidad ? `${t.entidad}${t.ultimos4 ? ` · Terminada en ${t.ultimos4}` : ''}` : (t.ultimos4 ? `Terminada en ${t.ultimos4}` : 'Tarjeta de crédito');
+  const color = colorTarjeta(t.id);
+  const digitosHTML = t.ultimos4 ? `<div class="tarjeta-card-digits">•••• •••• •••• ${t.ultimos4}</div>` : '';
   return `
-  <div class="tarjeta-card-mgmt ${t.activa ? '' : 'archivada'}">
-    <div class="tarjeta-card-nombre">${t.nombre}${t.activa ? '' : ' <span class="tag-archivada">archivada</span>'}</div>
-    <span class="tarjeta-card-meta">${meta}</span>
+  <div class="tarjeta-wrap">
+    <div class="tarjeta-card-mgmt ${t.activa ? '' : 'archivada'}" style="background: linear-gradient(135deg, ${color} 0%, color-mix(in oklch, ${color} 60%, black) 100%); --tarjeta-sombra: color-mix(in srgb, ${color} 45%, transparent);">
+      <div class="tarjeta-card-head">
+        <div class="tarjeta-card-titulo">
+          <span class="tarjeta-card-nombre">${t.nombre}${t.activa ? '' : ' <span class="tag-archivada">archivada</span>'}</span>
+          <span class="tarjeta-card-meta">${metaTexto}</span>
+        </div>
+        <div class="tarjeta-card-chip">${ICON_CHIP}</div>
+      </div>
+      ${digitosHTML}
+      <div class="tarjeta-card-cupo"><span>Cupo total</span><b>${fmtCOP(t.cupo_total)}</b></div>
+    </div>
     <div class="tarjeta-card-actions">
       <button type="button" class="btn-icono" data-accion="editar" data-id="${t.id}">✏️ Editar</button>
       ${t.activa ? `<button type="button" class="btn-icono" data-accion="archivar" data-id="${t.id}">🗄️ Archivar</button>` : ''}

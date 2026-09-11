@@ -36,7 +36,19 @@
       <div class="field-row">
         <div>
           <label class="field-label">Monto</label>
-          <input type="number" name="monto" class="field-input" step="0.01" min="0" placeholder="23000" required>
+          <!-- type="text" + máscara de miles, NO type="number" (2026-09-10,
+               bug real reportado: cargar "16.600.000" en COP se guardaba mal
+               "por los ceros"): un <input type="number"> nativo descarta el
+               segundo punto en cuanto se tipea, así que ese valor terminaba
+               siendo "16.600" (16,6). Acá el punto es SIEMPRE separador de
+               miles (igual que en el resto de la app, ver fmtCOP) y la coma
+               es el separador decimal -- hace falta para USD con centavos
+               (ver activarCampoMonto() más abajo). name="monto" queda en
+               este input solo para que el placeholder/autofill tengan
+               sentido; el valor real que se manda al backend se normaliza
+               en el submit (ver más abajo), nunca el texto con puntos tal
+               cual. -->
+          <input type="text" inputmode="decimal" name="monto" id="campoMonto" class="field-input" placeholder="23.000" required>
         </div>
         <div>
           <label class="field-label">Moneda</label>
@@ -87,9 +99,33 @@
 <script>
 document.getElementById('campoFecha').valueAsDate = new Date();
 
+// --- Campo de monto con separador de miles en vivo (2026-09-10) --------
+// Mismo fix que templates/tarjetas.html::campoCupo -- ver el comentario
+// largo junto al <input> de arriba para el porqué. Acá SÍ admite decimales
+// (coma, nunca punto -- el punto es siempre separador de miles) porque
+// este campo también registra movimientos en USD con centavos.
+function activarCampoMonto(input) {
+  input.addEventListener('input', () => {
+    const [enteroRaw, decimalRaw] = input.value.split(',');
+    const entero = (enteroRaw || '').replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+    const conMiles = entero.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    if (input.value.includes(',')) {
+      const decimal = (decimalRaw || '').replace(/\D/g, '').slice(0, 2);
+      input.value = `${conMiles},${decimal}`;
+    } else {
+      input.value = conMiles;
+    }
+  });
+}
+function valorMontoNumerico(input) {
+  return input.value.replace(/\./g, '').replace(',', '.');
+}
+activarCampoMonto(document.getElementById('campoMonto'));
+
 document.getElementById('formRegistrar').addEventListener('submit', async (e) => {
   e.preventDefault();
   const datos = new FormData(e.target);
+  datos.set('monto', valorMontoNumerico(document.getElementById('campoMonto')));
   const resultado = document.getElementById('resultado');
   const btn = document.getElementById('btnRegistrar');
 

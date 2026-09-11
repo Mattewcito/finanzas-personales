@@ -2156,6 +2156,23 @@ async function cambiarBaldeCategoria(selectEl) {
   renderPresupuesto(GASTO_POR_CATEGORIA_ACTUAL, TOTAL_INGRESOS_REALES_ACTUAL);
 }
 
+// --- Campo de monto con separador de miles en vivo (2026-09-10) --------
+// Mismo fix y mismo porqué que templates/tarjetas.html::campoCupo -- ver
+// el comentario largo junto al <input id="inputMetaMonto"> de arriba.
+function activarCampoMonto(input) {
+  input.addEventListener('input', () => {
+    const soloDigitos = input.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+    input.value = soloDigitos.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  });
+}
+function setValorMonto(input, numero) {
+  input.value = (numero || numero === 0) ? String(Math.round(numero)).replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+}
+function valorMontoNumerico(input) {
+  return input.value.replace(/\./g, '');
+}
+activarCampoMonto(document.getElementById('inputMetaMonto'));
+
 // --- Crear / editar / archivar meta de ahorro -----------------------
 function abrirModalMeta(id) {
   document.getElementById('formMetaError').hidden = true;
@@ -2164,7 +2181,7 @@ function abrirModalMeta(id) {
   document.getElementById('btnGuardarMeta').textContent = meta ? 'Guardar cambios' : 'Crear meta';
   document.getElementById('inputMetaId').value = meta ? meta.id : '';
   document.getElementById('inputMetaNombre').value = meta ? meta.nombre : '';
-  document.getElementById('inputMetaMonto').value = meta ? meta.monto_objetivo : '';
+  setValorMonto(document.getElementById('inputMetaMonto'), meta ? meta.monto_objetivo : '');
   document.getElementById('inputMetaFecha').value = meta && meta.fecha_objetivo ? meta.fecha_objetivo : '';
   document.getElementById('modalMeta').classList.add('open');
 }
@@ -2180,7 +2197,7 @@ document.getElementById('formMeta')?.addEventListener('submit', async (e) => {
   btn.disabled = true;
   const resultado = await postForm(id ? `/api/metas-ahorro/${id}/editar` : '/api/metas-ahorro/crear', {
     nombre: document.getElementById('inputMetaNombre').value.trim(),
-    monto_objetivo: document.getElementById('inputMetaMonto').value,
+    monto_objetivo: valorMontoNumerico(document.getElementById('inputMetaMonto')),
     fecha_objetivo: document.getElementById('inputMetaFecha').value,
   });
   btn.disabled = false;
@@ -3684,7 +3701,11 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="form-row">
           <label for="inputMetaMonto">Monto objetivo (COP)</label>
-          <input type="number" id="inputMetaMonto" min="1" step="1" required>
+          <!-- type="text" + máscara de miles, NO type="number" (2026-09-10,
+               mismo bug real que templates/tarjetas.html::campoCupo -- ver
+               el comentario largo ahí para el porqué). Monto objetivo es
+               siempre COP, sin decimales, igual que cupo_total de tarjetas. -->
+          <input type="text" inputmode="numeric" id="inputMetaMonto" required>
         </div>
         <div class="form-row">
           <label for="inputMetaFecha">Fecha objetivo (opcional)</label>
