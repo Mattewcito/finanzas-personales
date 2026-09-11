@@ -386,12 +386,14 @@ def test_migrar_columna_tarjeta_id_agrega_tabla_y_columna_a_bd_vieja(conn_sin_es
     assert columnas_final.count("tarjeta_id") == 1
 
 
-def test_movimientos_historicos_preexistentes_quedan_con_tarjeta_id_null_tras_migrar(conn_sin_esquema):
-    """Movimientos ya cargados ANTES de esta feature nunca se reasignan
-    retroactivamente a ninguna tarjeta -- ni con la migración, ni después,
-    aunque el usuario termine registrando una tarjeta con el mismo
-    último-4 que aparece en su descripción (ver requisitos, "Migración de
-    datos existentes")."""
+def test_migrar_esquema_no_reasigna_tarjeta_id_por_su_cuenta(conn_sin_esquema):
+    """La MIGRACIÓN de esquema en sí (agregar la columna tarjeta_id a una
+    tabla movimientos vieja que no la tenía) nunca reasigna nada por su
+    cuenta -- eso quedó sin cambios, solo agrega la columna vacía. El
+    backfill retroactivo es un paso APARTE y explícito (ver
+    reasociar_movimientos_huerfanos(), disparado por crear_tarjeta()/
+    actualizar_tarjeta() -- test_crear_tarjeta_con_ultimos4_reasocia..
+    más abajo), no algo que corra implícitamente al migrar."""
     conn = conn_sin_esquema
     conn.execute("""
         CREATE TABLE usuarios (
@@ -410,16 +412,43 @@ def test_movimientos_historicos_preexistentes_quedan_con_tarjeta_id_null_tras_mi
     )
     conn.commit()
 
-    db.crear_esquema(conn)  # corre la migración de tarjeta_id sobre la fila ya existente
+    db.crear_esquema(conn)  # solo agrega la columna tarjeta_id -- no reasigna nada
 
     fila = conn.execute("SELECT tarjeta_id FROM movimientos WHERE id = 1").fetchone()
     assert fila["tarjeta_id"] is None
 
-    # Registrar HOY una tarjeta con ese mismo último-4 tampoco reasigna
-    # el histórico -- no existe ninguna función que lo haga.
-    db.crear_tarjeta(conn, usuario_id=1, nombre="Visa", cupo_total=1000000, ultimos4="2011")
+
+def test_crear_tarjeta_con_ultimos4_reasocia_movimientos_historicos_huerfanos(conn_sin_esquema):
+    """2026-09-10, pedido explícito del usuario: a diferencia de la
+    migración de esquema (test de arriba), registrar HOY una tarjeta con
+    un último-4 que matchea la descripción de un movimiento histórico
+    huérfano SÍ lo asocia automáticamente -- ver
+    db.reasociar_movimientos_huerfanos(), disparada desde crear_tarjeta().
+    Este es el caso real reportado: "cargué gastos de mi tarjeta antes de
+    darla de alta en Mis tarjetas, y quedaron sin asociar"."""
+    conn = conn_sin_esquema
+    conn.execute("""
+        CREATE TABLE usuarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL, password_hash TEXT NOT NULL,
+            rol TEXT NOT NULL DEFAULT 'usuario', nombre_mostrado TEXT,
+            creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+        )
+    """)
+    _crear_tabla_movimientos_vieja(conn)
+    conn.execute("INSERT INTO usuarios (username, password_hash, nombre_mostrado) VALUES ('ana', 'x', 'Ana')")
+    conn.execute(
+        "INSERT INTO movimientos (fecha, tipo, categoria, moneda, monto, descripcion, entidad, medio_pago, "
+        "es_deuda, usuario_id) VALUES ('2026-01-01', 'gasto', 'credito', 'COP', 50000, "
+        "'Compra vieja con T.Cred *2011', 'Bancolombia', 'credito', 1, 1)"
+    )
+    conn.commit()
+    db.crear_esquema(conn)
+
+    tid = db.crear_tarjeta(conn, usuario_id=1, nombre="Visa", cupo_total=1000000, ultimos4="2011")
+
     fila = conn.execute("SELECT tarjeta_id FROM movimientos WHERE id = 1").fetchone()
-    assert fila["tarjeta_id"] is None
+    assert fila["tarjeta_id"] == tid
 
 
 # ============================================================================
@@ -492,14 +521,35 @@ def test_insertar_movimientos_resuelve_tarjeta_id_por_ultimos4_automaticamente(c
     assert _tarjeta_id_de(conn, fila_id) == tid
 
 
-def test_insertar_movimientos_sin_ultimos4_deja_tarjeta_id_null(conn):
-    """Un movimiento que no trae 'ultimos4' (histórico, o un parser que no
-    lo detectó) queda sin tarjeta -- nunca se adivina."""
+def test_insertar_movimientos_sin_ultimos4_explicito_lo_extrae_de_la_descripcion(conn):
+    """2026-09-10: un movimiento que no trae la clave 'ultimos4' explícita
+    (ej. registro manual, que no tiene ese campo en el formulario -- ver
+    templates/registrar.html) YA NO queda sin tarjeta si su descripción
+    menciona el patrón "tarjeta/T.Cred *XXXX" o "terminada en XXXX" -- se
+    extrae de ahí (ver _extraer_ultimos4_de_texto()). Esto es lo que
+    permite que el registro manual también se auto-asocie, no solo los
+    movimientos que vienen de correo/PDF/Excel con 'ultimos4' ya
+    resuelto por el parser."""
+    uid = crear_usuario(conn, "ana")
+    tid = db.crear_tarjeta(conn, uid, "Visa", 100000, ultimos4="2011")
+
+    db.insertar_movimientos(conn, [mov("2026-09-01", "gasto", "compras", 40000, "Compra en Tienda con T.Cred *2011")],
+                             origen="app_manual", usuario_id=uid)
+
+    fila_id = db.obtener_movimientos(conn, usuario_id=uid)[0]["id"]
+    assert _tarjeta_id_de(conn, fila_id) == tid
+
+
+def test_insertar_movimientos_sin_ningun_patron_reconocible_deja_tarjeta_id_null(conn):
+    """Sigue sin adivinar cuando la descripción no trae ningún patrón
+    reconocible (ni 'ultimos4' explícito, ni "tarjeta/T.Cred *XXXX", ni
+    "terminada en XXXX") -- un movimiento genérico nunca se asocia por
+    casualidad."""
     uid = crear_usuario(conn, "ana")
     db.crear_tarjeta(conn, uid, "Visa", 100000, ultimos4="2011")
 
-    db.insertar_movimientos(conn, [mov("2026-09-01", "gasto", "compras", 40000, "Compra en Tienda con T.Cred *2011")],
-                             origen="correo_imap", usuario_id=uid)
+    db.insertar_movimientos(conn, [mov("2026-09-01", "gasto", "compras", 40000, "Compra en Tienda")],
+                             origen="app_manual", usuario_id=uid)
 
     fila_id = db.obtener_movimientos(conn, usuario_id=uid)[0]["id"]
     assert _tarjeta_id_de(conn, fila_id) is None
@@ -709,3 +759,194 @@ def test_obtener_tarjetas_con_deuda_tarjeta_archivada_con_movimientos_desaparece
     total_agregado = ledger[-1]["saldo_acumulado"]
 
     assert total_desglosado == total_agregado
+
+
+# ============================================================================
+# _extraer_ultimos4_de_texto(): último-4 desde texto libre (2026-09-10)
+# ============================================================================
+
+@pytest.mark.parametrize("texto, esperado", [
+    ("Compra en Uber con T.Cred *4821", "4821"),
+    ("Pago tarjeta Visa *4821", "4821"),
+    ("pagué con mi tarjeta terminada en 4821 en el super", "4821"),
+    ("Avance T.Cred *4821 a cta *5360", "4821"),  # nunca el de la cuenta destino
+    ("compra con card *1234 en Amazon", "1234"),
+])
+def test_extraer_ultimos4_de_texto_reconoce_el_patron(texto, esperado):
+    assert db._extraer_ultimos4_de_texto(texto) == esperado
+
+
+@pytest.mark.parametrize("texto", [
+    "Uber viaje 4821",       # 4 dígitos sueltos, sin palabra de contexto
+    "Compra en el super",    # sin ningún dígito
+    "",
+    None,
+])
+def test_extraer_ultimos4_de_texto_sin_patron_reconocible_devuelve_none(texto):
+    assert db._extraer_ultimos4_de_texto(texto) is None
+
+
+# ============================================================================
+# reasociar_movimientos_huerfanos() (2026-09-10)
+# ============================================================================
+
+def test_reasociar_huerfanos_asocia_el_que_matchea(conn):
+    uid = crear_usuario(conn, "ana")
+    tid = db.crear_tarjeta(conn, uid, "Visa", 100000)  # sin ultimos4 -> no dispara backfill al crear
+    db.insertar_movimientos(conn, [mov("2026-09-01", "gasto", "compras", 40000, "Compra en Tienda con T.Cred *2011")],
+                             origen="app_manual", usuario_id=uid)
+    db.actualizar_tarjeta(conn, uid, tid, ultimos4="9999")  # último-4 que NO matchea -> no lo asocia
+    fila_id = db.obtener_movimientos(conn, usuario_id=uid)[0]["id"]
+    assert _tarjeta_id_de(conn, fila_id) is None
+
+    n = db.reasociar_movimientos_huerfanos(conn, uid)  # barrido general, sin tarjeta_id puntual
+    assert n == 0  # sigue sin matchear ninguna tarjeta activa
+
+    db.actualizar_tarjeta(conn, uid, tid, ultimos4="2011")  # ahora sí matchea -- ya dispara el backfill sola
+    assert _tarjeta_id_de(conn, fila_id) == tid
+
+
+def test_reasociar_huerfanos_sin_patron_reconocible_no_toca_nada(conn):
+    uid = crear_usuario(conn, "ana")
+    db.insertar_movimientos(conn, [mov("2026-09-01", "gasto", "compras", 40000, "Compra en Tienda")],
+                             origen="app_manual", usuario_id=uid)
+    tid = db.crear_tarjeta(conn, uid, "Visa", 100000, ultimos4="2011")
+
+    fila_id = db.obtener_movimientos(conn, usuario_id=uid)[0]["id"]
+    assert _tarjeta_id_de(conn, fila_id) is None
+    assert db.reasociar_movimientos_huerfanos(conn, uid, tarjeta_id=tid) == 0
+
+
+def test_reasociar_huerfanos_respeta_ambiguedad_dos_tarjetas_mismo_ultimos4(conn):
+    """Mismo criterio que _resolver_tarjeta_por_ultimos4: si hay 2+
+    tarjetas ACTIVAS con el mismo último-4, nunca se adivina cuál es. Las
+    dos tarjetas se crean SIN ultimos4 y se les setea por SQL directo a
+    propósito -- pasar por actualizar_tarjeta() de a una dispararía su
+    propio backfill en cuanto la PRIMERA quedara sin ambigüedad (todavía
+    sería la única con ese último-4), asociando el movimiento antes de
+    que la segunda tarjeta llegue a crear la ambigüedad que este test
+    quiere probar."""
+    uid = crear_usuario(conn, "ana")
+    db.insertar_movimientos(conn, [mov("2026-09-01", "gasto", "compras", 40000, "Compra en Tienda con T.Cred *2011")],
+                             origen="app_manual", usuario_id=uid)
+    db.crear_tarjeta(conn, uid, "Visa vieja", 100000)
+    db.crear_tarjeta(conn, uid, "Visa nueva", 100000)
+    conn.execute("UPDATE tarjetas_credito SET ultimos4 = '2011' WHERE usuario_id = ?", (uid,))
+    conn.commit()
+
+    fila_id = db.obtener_movimientos(conn, usuario_id=uid)[0]["id"]
+    assert db.reasociar_movimientos_huerfanos(conn, uid) == 0
+    assert _tarjeta_id_de(conn, fila_id) is None
+
+
+def test_reasociar_huerfanos_aisla_por_usuario(conn):
+    uid1 = crear_usuario(conn, "ana")
+    uid2 = crear_usuario(conn, "beto")
+    db.insertar_movimientos(conn, [mov("2026-09-01", "gasto", "compras", 40000, "Compra en Tienda con T.Cred *2011")],
+                             origen="app_manual", usuario_id=uid1)
+
+    # La tarjeta con ese último-4 la registra OTRO usuario -- nunca debe cruzar cuentas.
+    db.crear_tarjeta(conn, uid2, "Visa de Beto", 100000, ultimos4="2011")
+
+    fila_id = db.obtener_movimientos(conn, usuario_id=uid1)[0]["id"]
+    assert _tarjeta_id_de(conn, fila_id) is None
+
+
+def test_reasociar_huerfanos_con_tarjeta_id_puntual_ignora_matches_de_otra_tarjeta(conn):
+    """Si se acota el barrido a una tarjeta_id puntual (el caso normal:
+    se acaba de crear/editar ESA tarjeta), un huérfano que en realidad
+    matchea OTRA tarjeta activa distinta no se toca -- queda para la
+    corrida de esa otra tarjeta."""
+    uid = crear_usuario(conn, "ana")
+    db.insertar_movimientos(conn, [mov("2026-09-01", "gasto", "compras", 40000, "Compra en Tienda con T.Cred *2011")],
+                             origen="app_manual", usuario_id=uid)
+    tid_otra = db.crear_tarjeta(conn, uid, "La que matchea", 100000, ultimos4="2011")
+    tid_recien_creada = db.crear_tarjeta(conn, uid, "Recien creada", 100000)  # sin ultimos4 -- no matchea nada
+
+    fila_id = db.obtener_movimientos(conn, usuario_id=uid)[0]["id"]
+    assert _tarjeta_id_de(conn, fila_id) == tid_otra  # ya se auto-asoció sola al crear tid_otra
+
+    # Fuerzo un segundo huérfano para probar el acotado por tarjeta_id puntual.
+    db.insertar_movimientos(conn, [mov("2026-09-02", "gasto", "compras", 15000, "Compra en Otra con T.Cred *2011")],
+                             origen="upload_pdf_tarjeta", usuario_id=uid)  # sin ultimos4 explícito en el dict
+    fila2_id = [m["id"] for m in db.obtener_movimientos(conn, usuario_id=uid) if m["fecha"] == "2026-09-02"][0]
+    # Esta ya se resolvió sola al insertar (mismo mecanismo de _extraer_ultimos4_de_texto),
+    # así que para ejercitar el acotado por tarjeta_id puntual la desasocio a mano.
+    conn.execute("UPDATE movimientos SET tarjeta_id = NULL WHERE id = ?", (fila2_id,))
+    conn.commit()
+
+    n = db.reasociar_movimientos_huerfanos(conn, uid, tarjeta_id=tid_recien_creada)
+    assert n == 0
+    assert _tarjeta_id_de(conn, fila2_id) is None  # sigue huérfano -- matchea tid_otra, no tid_recien_creada
+
+
+def test_reasociar_huerfanos_nunca_pisa_un_tarjeta_id_ya_asignado(conn):
+    uid = crear_usuario(conn, "ana")
+    tid1 = db.crear_tarjeta(conn, uid, "Visa", 100000, ultimos4="1111")
+    db.insertar_movimientos(
+        conn, [mov("2026-09-01", "gasto", "compras", 40000, "Compra en Tienda con T.Cred *2011", tarjeta_id=tid1)],
+        origen="app_manual", usuario_id=uid,
+    )  # tarjeta_id explícito -- nunca se recalcula, aunque la descripción diga otro último-4
+    fila_id = db.obtener_movimientos(conn, usuario_id=uid)[0]["id"]
+    assert _tarjeta_id_de(conn, fila_id) == tid1
+
+    db.crear_tarjeta(conn, uid, "La del 2011", 100000, ultimos4="2011")
+    assert _tarjeta_id_de(conn, fila_id) == tid1  # sigue igual, nunca se pisó
+
+
+# ============================================================================
+# Disparo automático end-to-end: crear_tarjeta()/actualizar_tarjeta()
+# ============================================================================
+
+def test_crear_tarjeta_sin_ultimos4_no_dispara_backfill(conn):
+    uid = crear_usuario(conn, "ana")
+    db.insertar_movimientos(conn, [mov("2026-09-01", "gasto", "compras", 40000, "Compra en Tienda")],
+                             origen="app_manual", usuario_id=uid)
+    fila_id = db.obtener_movimientos(conn, usuario_id=uid)[0]["id"]
+
+    db.crear_tarjeta(conn, uid, "Visa", 100000)  # sin ultimos4
+    assert _tarjeta_id_de(conn, fila_id) is None
+
+
+def test_actualizar_tarjeta_agregando_ultimos4_dispara_backfill(conn):
+    uid = crear_usuario(conn, "ana")
+    tid = db.crear_tarjeta(conn, uid, "Visa", 100000)  # sin ultimos4 al crear
+    db.insertar_movimientos(conn, [mov("2026-09-01", "gasto", "compras", 40000, "Compra en Tienda con T.Cred *2011")],
+                             origen="app_manual", usuario_id=uid)
+    fila_id = db.obtener_movimientos(conn, usuario_id=uid)[0]["id"]
+    assert _tarjeta_id_de(conn, fila_id) is None
+
+    db.actualizar_tarjeta(conn, uid, tid, ultimos4="2011")
+    assert _tarjeta_id_de(conn, fila_id) == tid
+
+
+def test_actualizar_tarjeta_borrando_ultimos4_no_dispara_backfill(conn):
+    """Borrar el último-4 (ultimos4="") no tiene ningún valor nuevo contra
+    el cual matchear, así que no dispara reasociar_movimientos_huerfanos
+    -- no tendría sentido ni efecto (ver la condición `if ultimos4_nuevo`
+    en actualizar_tarjeta())."""
+    uid = crear_usuario(conn, "ana")
+    tid = db.crear_tarjeta(conn, uid, "Visa", 100000, ultimos4="2011")
+    db.insertar_movimientos(conn, [mov("2026-09-01", "gasto", "compras", 40000, "Compra en Tienda")],
+                             origen="app_manual", usuario_id=uid)  # descripción sin patrón -- huérfano de por sí
+    fila_id = db.obtener_movimientos(conn, usuario_id=uid)[0]["id"]
+
+    db.actualizar_tarjeta(conn, uid, tid, ultimos4="")  # no debería reventar ni tocar nada
+    assert _tarjeta_id_de(conn, fila_id) is None
+
+
+def test_registro_manual_con_tarjeta_ya_registrada_se_auto_asocia_sin_elegirla(conn):
+    """Escenario real reportado por el usuario: registra un gasto A MANO
+    (sin elegir la tarjeta del desplegable) mencionando la tarjeta en la
+    descripción -- se auto-asocia igual, sin que el formulario ni el
+    llamador tengan que pasar tarjeta_id ni ultimos4 explícitos."""
+    uid = crear_usuario(conn, "ana")
+    tid = db.crear_tarjeta(conn, uid, "Visa", 100000, ultimos4="4821")
+
+    db.insertar_movimientos(
+        conn, [mov("2026-09-01", "gasto", "compras", 60000, "Uber con mi tarjeta terminada en 4821")],
+        origen="app_manual", usuario_id=uid,
+    )
+
+    fila_id = db.obtener_movimientos(conn, usuario_id=uid)[0]["id"]
+    assert _tarjeta_id_de(conn, fila_id) == tid
