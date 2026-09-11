@@ -77,6 +77,7 @@ ingreso/gasto/deuda, que dependen de tipo/medio_pago/monto, no de categoria.
 import re
 import io
 import sys
+import time
 import imaplib
 import email
 import argparse
@@ -556,6 +557,7 @@ def procesar_cuenta(config: dict, dias: int, aplicar: bool) -> str:
     para loguearlo/mostrarlo."""
     usuario_id = config["usuario_id"]
     etiqueta = f"usuario {usuario_id} ({config.get('email', '?')})"
+    inicio = time.monotonic()  # para el detalle técnico de la corrida -- ver más abajo
 
     log(f"[{etiqueta}] Buscando notificaciones de Bancolombia de los últimos {dias} días...")
     movimientos = buscar_movimientos_correo(dias, config)
@@ -570,6 +572,7 @@ def procesar_cuenta(config: dict, dias: int, aplicar: bool) -> str:
 
     if not movimientos:
         mensaje = "sin movimientos nuevos en el correo, nada que insertar."
+        stats = {"nuevos": 0, "duplicados": 0, "duplicados_bd": 0, "duplicados_lote": 0}
     else:
         conn = db.conectar()
         try:
@@ -579,8 +582,34 @@ def procesar_cuenta(config: dict, dias: int, aplicar: bool) -> str:
         finally:
             conn.close()
 
+    # Detalle técnico de ESTA corrida (2026-09-10, pedido del usuario:
+    # "Última corrida" en la interfaz solo decía ok/error, sin decir qué
+    # hizo realmente) -- se guarda tal cual en correo_config y solo se le
+    # muestra al admin (ver routes/correo.py / configurar_correo.html).
+    # La lista de movimientos queda acotada a 100: una primera corrida
+    # ampliada a "todo el año" puede traer varios cientos, y el detalle de
+    # cada uno ya vive de sobra en la tabla `movimientos` real -- acá
+    # alcanza con una muestra representativa, no un espejo completo.
+    categorias: dict[str, int] = {}
+    for m in movimientos:
+        categorias[m["categoria"]] = categorias.get(m["categoria"], 0) + 1
+    detalle = {
+        "duracion_seg": round(time.monotonic() - inicio, 1),
+        "dias_revisados": dias,
+        "correos_encontrados": len(movimientos),
+        "nuevos": stats["nuevos"],
+        "duplicados_bd": stats["duplicados_bd"],
+        "duplicados_lote": stats["duplicados_lote"],
+        "categorias": categorias,
+        "movimientos": [
+            {"fecha": m["fecha"], "tipo": m["tipo"], "categoria": m["categoria"],
+             "moneda": m["moneda"], "monto": m["monto"], "descripcion": m["descripcion"]}
+            for m in movimientos[:100]
+        ],
+    }
+
     with db.conexion() as conn:
-        db.actualizar_estado_correo(conn, usuario_id, ok=True, error=None)
+        db.actualizar_estado_correo(conn, usuario_id, ok=True, error=None, detalle=detalle)
 
     log(f"[{etiqueta}] OK — {mensaje}")
     return mensaje

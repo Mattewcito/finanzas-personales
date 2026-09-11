@@ -137,23 +137,21 @@ document.getElementById('formRegistrar').addEventListener('submit', async (e) =>
   try {
     const res = await fetch('/api/registrar-movimiento', { method: 'POST', body: datos });
     const json = await res.json();
+    resultado.style.display = 'none';
     if (!res.ok || !json.ok) {
-      resultado.className = 'result-box error';
-      resultado.textContent = '❌ ' + (json.error || 'Error desconocido');
+      await mostrarAlertaApp('error', '❌ ' + (json.error || 'Error desconocido'));
       return;
     }
     if (json.duplicados > 0) {
-      resultado.className = 'result-box error';
-      resultado.textContent = '⚠️ No se guardó: ya existe un movimiento con la misma fecha y monto (posible duplicado).';
+      await mostrarAlertaApp('error', '⚠️ No se guardó: ya existe un movimiento con la misma fecha y monto (posible duplicado).');
       return;
     }
-    resultado.className = 'result-box ok';
-    resultado.textContent = '✅ Movimiento registrado. El dashboard ya se actualizó.';
+    await mostrarAlertaApp('ok', '✅ Movimiento registrado. El dashboard ya se actualizó.');
     e.target.reset();
     document.getElementById('campoFecha').valueAsDate = new Date();
   } catch (err) {
-    resultado.className = 'result-box error';
-    resultado.textContent = '❌ No se pudo conectar con el servidor.';
+    resultado.style.display = 'none';
+    await mostrarAlertaApp('error', '❌ No se pudo conectar con el servidor.');
   } finally {
     btn.disabled = false;
   }

@@ -290,6 +290,39 @@ def test_actualizar_estado_correo_con_error_guarda_ok_falso_y_el_mensaje(conn):
     assert fila["ultimo_error"] == "fallo de conexión IMAP simulado"
 
 
+def test_actualizar_estado_correo_con_detalle_lo_guarda_como_json(conn):
+    """detalle (2026-09-10, ver leer_correo.py::procesar_cuenta) se guarda
+    tal cual serializado -- obtener_correo_config lo devuelve como el
+    string JSON crudo (lo interpreta el frontend, no la capa de datos)."""
+    uid = crear_usuario(conn, "maria")
+    db.guardar_correo_config(conn, uid, email="maria@example.com", app_password="clave-original")
+    detalle = {
+        "duracion_seg": 2.3, "dias_revisados": 7, "correos_encontrados": 2,
+        "nuevos": 1, "duplicados_bd": 1, "duplicados_lote": 0,
+        "categorias": {"supermercado": 1}, "movimientos": [],
+    }
+
+    db.actualizar_estado_correo(conn, uid, ok=True, error=None, detalle=detalle)
+
+    fila = db.obtener_correo_config(conn, uid)
+    import json
+    assert json.loads(fila["ultima_corrida_detalle"]) == detalle
+
+
+def test_actualizar_estado_correo_sin_detalle_borra_el_de_la_corrida_anterior(conn):
+    """Una corrida que no llega a armar el detalle (ej. error antes de
+    tiempo) no debe dejar viendo el detalle de la corrida ANTERIOR como si
+    fuera de esta -- detalle=None (default) lo limpia."""
+    uid = crear_usuario(conn, "maria")
+    db.guardar_correo_config(conn, uid, email="maria@example.com", app_password="clave-original")
+    db.actualizar_estado_correo(conn, uid, ok=True, error=None, detalle={"duracion_seg": 1.0})
+
+    db.actualizar_estado_correo(conn, uid, ok=False, error="fallo de conexión IMAP simulado")
+
+    fila = db.obtener_correo_config(conn, uid)
+    assert fila["ultima_corrida_detalle"] is None
+
+
 # ----------------------------- eliminar_correo_config -----------------------------
 
 def test_eliminar_correo_config_borra_la_fila(conn):

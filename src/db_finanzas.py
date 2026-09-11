@@ -27,6 +27,7 @@ Vista:
 """
 
 import re
+import json
 import sqlite3
 import datetime
 from collections import defaultdict
@@ -108,6 +109,7 @@ CREATE TABLE IF NOT EXISTS correo_config (
     ultima_corrida TEXT,
     ultima_corrida_ok INTEGER,
     ultimo_error TEXT,
+    ultima_corrida_detalle TEXT,  -- JSON con el detalle técnico de la última corrida (ver actualizar_estado_correo) -- solo visible para admin en la interfaz
     actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
@@ -480,6 +482,14 @@ def _migrar_cifrado_correo_config(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
+def _migrar_columna_detalle_correo_config(conn: sqlite3.Connection) -> None:
+    """correo_config ya existía sin esta columna en cualquier BD real donde
+    ya se hubiera guardado alguna configuración -- CREATE TABLE IF NOT
+    EXISTS no la agrega sola a una tabla que ya existe (mismo patrón que
+    _migrar_columna_cedula_correo_config)."""
+    _agregar_columna_si_falta(conn, "correo_config", "ultima_corrida_detalle", "TEXT")
+
+
 def crear_esquema(conn: sqlite3.Connection) -> None:
     conn.executescript(ESQUEMA_SQL)
     _migrar_columna_usuario_id(conn)
@@ -487,6 +497,7 @@ def crear_esquema(conn: sqlite3.Connection) -> None:
     _migrar_columna_tarjeta_id(conn)  # después de ESQUEMA_SQL: necesita que tarjetas_credito ya exista (FK)
     _migrar_columna_meta_ahorro_id(conn)  # después de ESQUEMA_SQL: necesita que metas_ahorro ya exista (FK)
     _migrar_columna_cedula_correo_config(conn)
+    _migrar_columna_detalle_correo_config(conn)
     _migrar_cifrado_correo_config(conn)
     # DROP + recrear la vista: si ya existía de antes de agregar usuario_id
     # a su SELECT, "CREATE VIEW IF NOT EXISTS" no la actualiza sola.
@@ -826,13 +837,27 @@ def guardar_correo_config(
     conn.commit()
 
 
-def actualizar_estado_correo(conn: sqlite3.Connection, usuario_id: int, ok: bool, error: str | None = None) -> None:
+def actualizar_estado_correo(conn: sqlite3.Connection, usuario_id: int, ok: bool, error: str | None = None,
+                              detalle: dict | None = None) -> None:
     """Deja constancia del resultado de la última corrida -- lo que se
-    muestra en la interfaz ("última sincronización: hace 12 min, OK")."""
+    muestra en la interfaz ("última sincronización: hace 12 min, OK").
+
+    `detalle` (2026-09-10, opcional): diccionario JSON-serializable con el
+    detalle técnico de ESTA corrida puntual -- cuánto tardó, cuántos
+    correos encontró, nuevos/duplicados, categorías, y una lista acotada
+    de los movimientos concretos (ver leer_correo.py::procesar_cuenta,
+    que lo arma). Acá solo se serializa y guarda tal cual, sin
+    interpretarlo -- lo interpreta el frontend (routes/correo.py expone
+    esta columna al template, que solo la muestra si `usuario_rol ==
+    'admin'`: un usuario normal ve el resumen de siempre, no el detalle
+    técnico). None (default) borra cualquier detalle anterior -- una
+    corrida que no lo calculó (ej. un error temprano, antes de llegar a
+    armarlo) no debe dejar viendo el detalle de la corrida ANTERIOR como
+    si fuera de esta."""
     conn.execute(
         "UPDATE correo_config SET ultima_corrida = datetime('now', 'localtime'), "
-        "ultima_corrida_ok = ?, ultimo_error = ? WHERE usuario_id = ?",
-        (int(bool(ok)), error, usuario_id),
+        "ultima_corrida_ok = ?, ultimo_error = ?, ultima_corrida_detalle = ? WHERE usuario_id = ?",
+        (int(bool(ok)), error, json.dumps(detalle, ensure_ascii=False) if detalle is not None else None, usuario_id),
     )
     conn.commit()
 

@@ -207,10 +207,19 @@ const campoUltimos4 = document.getElementById('campoUltimos4');
 const resultadoModal = document.getElementById('resultadoModal');
 const resultadoGlobal = document.getElementById('resultadoGlobal');
 
+// clase 'loading': se queda igual que siempre (texto transitorio, inline,
+// no es una alerta que haga falta confirmar). clase 'ok'/'error': ahora
+// entran al modal global (ver mostrarAlertaApp() en base.html) -- no se
+// cierran solos, el usuario tiene que leerlos y confirmarlos.
 function mostrarResultado(el, clase, texto) {
-  el.style.display = 'block';
-  el.className = 'result-box ' + clase;
-  el.textContent = texto;
+  if (clase === 'loading') {
+    el.style.display = 'block';
+    el.className = 'result-box loading';
+    el.textContent = texto;
+    return;
+  }
+  el.style.display = 'none';
+  mostrarAlertaApp(clase, texto);
 }
 function ocultarResultado(el) { el.style.display = 'none'; }
 
@@ -391,7 +400,7 @@ async function ejecutarAccion(url, mensajeOk) {
   }
 }
 
-document.addEventListener('click', (e) => {
+document.addEventListener('click', async (e) => {
   const btn = e.target.closest('button[data-accion]');
   if (!btn) return;
   const id = btn.dataset.id;
@@ -401,10 +410,12 @@ document.addEventListener('click', (e) => {
   if (accion === 'editar') {
     abrirModal('editar', tarjeta);
   } else if (accion === 'archivar') {
-    if (!confirm(`¿Archivar "${tarjeta ? tarjeta.nombre : 'esta tarjeta'}"? Vas a conservar su historial, pero ya no vas a poder elegirla para movimientos nuevos.`)) return;
+    const ok = await confirmarApp(`¿Archivar "${tarjeta ? tarjeta.nombre : 'esta tarjeta'}"? Vas a conservar su historial, pero ya no vas a poder elegirla para movimientos nuevos.`);
+    if (!ok) return;
     ejecutarAccion(`/api/tarjetas/${id}/archivar`, 'Tarjeta archivada.');
   } else if (accion === 'borrar') {
-    if (!confirm(`¿Borrar definitivamente "${tarjeta ? tarjeta.nombre : 'esta tarjeta'}"? Solo funciona si nunca tuvo movimientos asociados -- si los tiene, te vamos a sugerir archivarla en su lugar.`)) return;
+    const ok = await confirmarApp(`¿Borrar definitivamente "${tarjeta ? tarjeta.nombre : 'esta tarjeta'}"? Solo funciona si nunca tuvo movimientos asociados -- si los tiene, te vamos a sugerir archivarla en su lugar.`);
+    if (!ok) return;
     ejecutarAccion(`/api/tarjetas/${id}/borrar`, 'Tarjeta borrada.');
   }
 });

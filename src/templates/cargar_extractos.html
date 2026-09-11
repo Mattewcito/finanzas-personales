@@ -162,7 +162,7 @@ document.getElementById('formCarga').addEventListener('submit', async (e) => {
   // Confirmación explícita solo para admin -- es quien puede tener
   // seleccionado el perfil de OTRA persona en "Viendo perfil de" y no
   // haberse dado cuenta (esto ya pasó una vez de verdad).
-  const confirmado = confirm('¿Confirmás que este archivo es de la cuenta de "{{ usuario_viendo_nombre }}"?');
+  const confirmado = await confirmarApp('¿Confirmás que este archivo es de la cuenta de "{{ usuario_viendo_nombre }}"?');
   if (!confirmado) return;
   {% endif %}
 
@@ -178,20 +178,19 @@ document.getElementById('formCarga').addEventListener('submit', async (e) => {
   try {
     const res = await fetch('/api/cargar-extracto', { method: 'POST', body: datos });
     const json = await res.json();
+    resultado.style.display = 'none';
     if (!res.ok || !json.ok) {
-      resultado.className = 'result-box error';
-      resultado.textContent = '❌ ' + (json.error || 'Error desconocido');
+      await mostrarAlertaApp('error', '❌ ' + (json.error || 'Error desconocido'));
       return;
     }
-    resultado.className = 'result-box ok';
     const lineas = [`✅ ${json.nuevos} movimiento(s) nuevo(s) insertado(s).`];
     if (json.duplicados_bd > 0) lineas.push(`${json.duplicados_bd} ya estaban guardados de antes (mismo día y monto).`);
     if (json.duplicados_lote > 0) lineas.push(`${json.duplicados_lote} estaban repetidos dentro del mismo archivo.`);
     lineas.push('El dashboard ya se actualizó con estos datos.');
-    resultado.textContent = lineas.join('\n');
+    await mostrarAlertaApp('ok', lineas.join('\n'));
   } catch (err) {
-    resultado.className = 'result-box error';
-    resultado.textContent = '❌ No se pudo conectar con el servidor.';
+    resultado.style.display = 'none';
+    await mostrarAlertaApp('error', '❌ No se pudo conectar con el servidor.');
   } finally {
     btn.disabled = false;
   }

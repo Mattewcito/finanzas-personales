@@ -227,6 +227,58 @@
   .result-box.error{ border-left-color:#f87171; color:#f87171; }
   .result-box.loading{ border-left-color: var(--accent-2); color: var(--text-dim); }
 
+  /* ---- Modal global de alertas/confirmaciones (2026-09-10) ----
+     Reemplaza alert()/confirm() nativos (sin estilo propio, y el
+     navegador los puede autocompletar/cerrar de formas raras) y unifica
+     el "resultado ok/error" que cada página venía mostrando en su propio
+     result-box -- esos avisos se podían perder si algo disparaba un
+     location.reload() antes de que el usuario alcanzara a leerlos (bug
+     real reportado 2026-09-10 con el botón "Sincronizar ahora" de la
+     sección de correo). Este modal NUNCA se cierra solo: solo por click en el botón
+     centrado, la "X", clic afuera o Escape -- ver mostrarAlertaApp()/
+     confirmarApp() al final de este archivo. El "loading" transitorio de
+     cada formulario se queda igual que antes (inline, no es una alerta
+     que haga falta confirmar). */
+  .alerta-app-overlay{
+    display:none; position:fixed; inset:0; background:rgba(5,7,12,0.78);
+    z-index:1000; align-items:center; justify-content:center; padding:24px;
+  }
+  .alerta-app-overlay.abierto{ display:flex; }
+  .alerta-app-box{
+    position:relative; max-width:400px; width:100%;
+    background: linear-gradient(180deg, var(--card-solid), #10141f);
+    border:1px solid var(--card-border); border-radius:18px; padding:34px 28px 24px;
+    text-align:center; box-shadow: 0 24px 60px -20px rgba(0,0,0,0.6);
+    animation: alertaAppPop .18s ease;
+  }
+  @keyframes alertaAppPop{ from{ transform:scale(.94); opacity:0; } to{ transform:scale(1); opacity:1; } }
+  .alerta-app-cerrar{
+    position:absolute; top:12px; right:12px; width:28px; height:28px; border-radius:50%;
+    border:none; background:var(--bg-soft); color:var(--text-dim); cursor:pointer; font-size:13px;
+    display:flex; align-items:center; justify-content:center; font-family:inherit;
+  }
+  .alerta-app-cerrar:hover{ background:var(--card-hover); color:#fff; }
+  .alerta-app-icono{
+    width:52px; height:52px; border-radius:50%; margin:0 auto 16px;
+    display:flex; align-items:center; justify-content:center; font-size:24px; font-weight:700;
+  }
+  .alerta-app-icono.ok{ background:rgba(52,211,153,0.14); color:#34d399; }
+  .alerta-app-icono.error{ background:rgba(248,113,113,0.14); color:#f87171; }
+  .alerta-app-icono.confirmar{ background:rgba(251,191,36,0.14); color:#fbbf24; }
+  .alerta-app-mensaje{ margin:0 0 24px; font-size:14px; color:var(--text); line-height:1.55; white-space:pre-line; }
+  .alerta-app-botones{ display:flex; gap:10px; justify-content:center; }
+  .alerta-app-botones .btn-primary{ margin-top:0; flex:1; max-width:160px; }
+  /* No depende de .btn-secundario (esa clase la define cada página que
+     la necesita en su propio <style>, no vive acá en base.html) -- este
+     modal aparece en TODAS las páginas, así que su botón "Cancelar"
+     necesita su propio estilo autocontenido. */
+  .alerta-app-btn-secundario{
+    flex:1; max-width:160px; padding: 11px 20px; border-radius: 10px;
+    border:1px solid var(--card-border); background: var(--bg-soft); color: var(--text);
+    font-weight:600; font-size:13.5px; cursor:pointer; font-family: inherit;
+  }
+  .alerta-app-btn-secundario:hover{ background: var(--card-hover); }
+
   /* Pantallas chicas (celular/tablet en vertical): el menú lateral pasa a
      ser una barra inferior fija, tipo app nativa -- nada de sidebar de
      226px comiéndose la pantalla. */
@@ -436,6 +488,23 @@
   </div>
 </div>
 
+<!-- Modal global de alertas/confirmaciones -- ver mostrarAlertaApp()/
+     confirmarApp() en el <script> de abajo y su comentario en el CSS de
+     arriba. Vive una sola vez acá porque TODAS las páginas que arman
+     esta plantilla lo comparten (el Dashboard es la excepción: corre
+     dentro de un <iframe>, documento aparte -- tiene su propia copia). -->
+<div class="alerta-app-overlay" id="alertaAppOverlay" role="alertdialog" aria-modal="true">
+  <div class="alerta-app-box">
+    <button type="button" class="alerta-app-cerrar" id="alertaAppCerrar" aria-label="Cerrar">✕</button>
+    <div class="alerta-app-icono" id="alertaAppIcono"></div>
+    <p class="alerta-app-mensaje" id="alertaAppMensaje"></p>
+    <div class="alerta-app-botones">
+      <button type="button" class="alerta-app-btn-secundario" id="alertaAppCancelar" hidden>Cancelar</button>
+      <button type="button" class="btn-primary" id="alertaAppOk">Ok</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   const sidebar = document.getElementById('appSidebar');
@@ -584,6 +653,62 @@ function alHacerClickEnCualquierDocumento(handler) {
     window.addEventListener('resize', actualizar); // navegador muy viejo sin ResizeObserver
   }
   actualizar();
+})();
+
+// --- Modal global de alertas/confirmaciones (ver comentario en el CSS y
+// en el <div id="alertaAppOverlay"> de arriba) --------------------------
+// mostrarAlertaApp(tipo, mensaje) reemplaza los result-box de ok/error
+// que cada página mostraba a mano (loading se queda como estaba, no es
+// una alerta). confirmarApp(mensaje) reemplaza confirm() nativo. Las dos
+// devuelven una Promise que solo se resuelve cuando el usuario elige un
+// botón, la "X", clic afuera o Escape -- nunca solas con un timer.
+(function(){
+  const overlay = document.getElementById('alertaAppOverlay');
+  if (!overlay) return; // no debería pasar -- esta plantilla siempre lo incluye
+  const icono = document.getElementById('alertaAppIcono');
+  const mensajeEl = document.getElementById('alertaAppMensaje');
+  const btnOk = document.getElementById('alertaAppOk');
+  const btnCancelar = document.getElementById('alertaAppCancelar');
+  const btnCerrar = document.getElementById('alertaAppCerrar');
+
+  let resolverActual = null;
+
+  function cerrar(resultado) {
+    overlay.classList.remove('abierto');
+    if (resolverActual) { const r = resolverActual; resolverActual = null; r(resultado); }
+  }
+
+  btnCerrar.addEventListener('click', () => cerrar(false));
+  btnOk.addEventListener('click', () => cerrar(true));
+  btnCancelar.addEventListener('click', () => cerrar(false));
+  // Mismo enganche que el resto de paneles flotantes de este archivo --
+  // hace falta también en el contentDocument del iframe del Dashboard
+  // para que un clic ahí adentro cierre este modal si estuviera abierto
+  // encima (en la práctica el Dashboard no lo usa, tiene el suyo propio,
+  // pero no cuesta nada dejarlo consistente).
+  alHacerClickEnCualquierDocumento((e) => { if (e.target === overlay) cerrar(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay.classList.contains('abierto')) cerrar(false); });
+
+  const ICONOS = { ok: '✓', error: '✕', confirmar: '?' };
+
+  function abrir({ tipo, mensaje, textoBoton, conCancelar }) {
+    return new Promise((resolve) => {
+      resolverActual = resolve;
+      icono.className = 'alerta-app-icono ' + tipo;
+      icono.textContent = ICONOS[tipo] || 'ℹ';
+      mensajeEl.textContent = mensaje;
+      btnOk.textContent = textoBoton || (conCancelar ? 'Confirmar' : 'Ok');
+      btnCancelar.hidden = !conCancelar;
+      overlay.classList.add('abierto');
+      btnOk.focus();
+    });
+  }
+
+  window.mostrarAlertaApp = (tipo, mensaje, opts) =>
+    abrir({ tipo, mensaje, textoBoton: opts && opts.textoBoton, conCancelar: false });
+
+  window.confirmarApp = (mensaje, opts) =>
+    abrir({ tipo: 'confirmar', mensaje, conCancelar: true, textoBoton: opts && opts.textoBoton });
 })();
 </script>
 </body>
