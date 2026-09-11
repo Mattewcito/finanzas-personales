@@ -934,7 +934,13 @@ def obtener_ledger_deuda(conn: sqlite3.Connection, usuario_id: int | None = None
 def crear_tarjeta(conn: sqlite3.Connection, usuario_id: int, nombre: str, cupo_total: float,
                    entidad: str | None = None, ultimos4: str | None = None) -> int:
     """cupo_total es obligatorio y > 0 (validado acá, no solo en la UI --
-    ver requisitos, "Cupo total es obligatorio")."""
+    ver requisitos, "Cupo total es obligatorio").
+
+    Si viene ultimos4, dispara reasociar_movimientos_huerfanos() para esa
+    tarjeta recién creada (2026-09-10): es el caso típico de "ya tenía
+    gastos de esta tarjeta cargados, pero la tarjeta en sí la doy de alta
+    recién ahora" -- sin esto, esos movimientos viejos quedarían
+    huérfanos para siempre (ver el docstring de esa función)."""
     nombre = (nombre or "").strip()
     if not nombre:
         raise ValueError("Falta el nombre de la tarjeta.")
@@ -946,8 +952,11 @@ def crear_tarjeta(conn: sqlite3.Connection, usuario_id: int, nombre: str, cupo_t
         "INSERT INTO tarjetas_credito (usuario_id, nombre, entidad, cupo_total, ultimos4) VALUES (?, ?, ?, ?, ?)",
         (usuario_id, nombre, entidad, cupo_total, ultimos4),
     )
+    tarjeta_id = cur.lastrowid
     conn.commit()
-    return cur.lastrowid
+    if ultimos4:
+        reasociar_movimientos_huerfanos(conn, usuario_id, tarjeta_id=tarjeta_id)
+    return tarjeta_id
 
 
 def obtener_tarjetas(conn: sqlite3.Connection, usuario_id: int, solo_activas: bool = False) -> list[dict]:
@@ -990,7 +999,14 @@ def actualizar_tarjeta(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: in
     NULL, son opcionales); nombre es obligatorio y no puede quedar vacío
     -- lanza ValueError en ese caso, igual que cupo_total <= 0. Devuelve
     False si la tarjeta no existe o no es de usuario_id (aislamiento:
-    nunca edita la de otro usuario aunque el id exista)."""
+    nunca edita la de otro usuario aunque el id exista).
+
+    Si ultimos4 se está SETEANDO a un valor no vacío (ya sea que antes
+    estuviera vacío o cambiando por otro), dispara
+    reasociar_movimientos_huerfanos() para esta tarjeta, mismo criterio y
+    mismo motivo que crear_tarjeta() -- cubre el caso de "ya tenía la
+    tarjeta creada pero sin el último-4 cargado, y recién ahora lo
+    completo"."""
     if obtener_tarjeta(conn, usuario_id, tarjeta_id) is None:
         return False
 
@@ -1006,14 +1022,17 @@ def actualizar_tarjeta(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: in
         if cupo_total <= 0:
             raise ValueError("El cupo total tiene que ser mayor a 0.")
         campos.append("cupo_total = ?"); valores.append(cupo_total)
+    ultimos4_nuevo = ultimos4.strip() or None if ultimos4 is not None else None
     if ultimos4 is not None:
-        campos.append("ultimos4 = ?"); valores.append(ultimos4.strip() or None)
+        campos.append("ultimos4 = ?"); valores.append(ultimos4_nuevo)
 
     if campos:
         campos.append("actualizado_en = datetime('now', 'localtime')")
         valores.extend([tarjeta_id, usuario_id])
         conn.execute(f"UPDATE tarjetas_credito SET {', '.join(campos)} WHERE id = ? AND usuario_id = ?", valores)
         conn.commit()
+    if ultimos4_nuevo:
+        reasociar_movimientos_huerfanos(conn, usuario_id, tarjeta_id=tarjeta_id)
     return True
 
 
@@ -1066,6 +1085,89 @@ def _resolver_tarjeta_por_ultimos4(conn: sqlite3.Connection, usuario_id: int, ul
         (usuario_id, ultimos4),
     ).fetchall()
     return filas[0]["id"] if len(filas) == 1 else None
+
+
+# Exige la palabra "tarjeta"/"T.Cred"/"card" a poco trecho del "*XXXX"
+# -- un extracto de tarjeta también puede mencionar el último-4 de una
+# CUENTA destino en la misma descripción (ej. "Avance T.Cred *4821 a
+# cta *5360", ver tools/reconciliar_extractos.py::_formatear_movimiento):
+# sin ese contexto, un "*XXXX" suelto es ambiguo y NO debe capturarse.
+# "terminada/termina en XXXX" es el otro patrón frecuente cuando alguien
+# lo escribe a mano en la descripción de un registro manual (ver
+# templates/registrar.html, que no tiene un campo dedicado de
+# últimos4).
+_RE_ULTIMOS4_EN_TEXTO = re.compile(
+    r"(?:tarjeta|t\.?\s*cred(?:ito)?|card)\D{0,20}?\*\s*(\d{4})\b"
+    r"|termin(?:ada|a)\s+en\s+(\d{4})\b",
+    re.IGNORECASE,
+)
+
+
+def _extraer_ultimos4_de_texto(texto: str | None) -> str | None:
+    """Busca un patrón "...tarjeta *4821" / "T.Cred *4821" / "terminada
+    en 4821" dentro de texto libre (típicamente la descripción de un
+    movimiento) -- ver _RE_ULTIMOS4_EN_TEXTO para el porqué del
+    contexto exigido. None si no encuentra nada: mismo criterio de "no
+    adivinar" que _resolver_tarjeta_por_ultimos4."""
+    if not texto:
+        return None
+    m = _RE_ULTIMOS4_EN_TEXTO.search(texto)
+    if not m:
+        return None
+    return m.group(1) or m.group(2)
+
+
+def reasociar_movimientos_huerfanos(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: int | None = None) -> int:
+    """Backfill retroactivo (2026-09-10, ver el pedido del usuario de
+    "un trigger que asocie tanto movimientos viejos de tarjetas no
+    agregadas como nuevos a tarjetas ya registradas"): recorre los
+    movimientos de usuario_id que quedaron con tarjeta_id NULL y les
+    intenta asociar una tarjeta ahora mismo, usando el mismo
+    _extraer_ultimos4_de_texto()/_resolver_tarjeta_por_ultimos4() que
+    corre al insertar (ver insertar_movimientos()) -- así que aplica la
+    MISMA regla de "nunca adivinar" (0 o 2+ tarjetas activas
+    coincidentes deja el movimiento sin tocar).
+
+    Esto reemplaza deliberadamente la política previa documentada en
+    insertar_movimientos() ("nada se reasigna retroactivamente, ni
+    siquiera implícitamente") -- el usuario pidió explícitamente lo
+    contrario para este caso: una tarjeta que se registra DESPUÉS de
+    tener movimientos ya cargados (típicamente porque el usuario recién
+    ahora la dio de alta en "Mis tarjetas") debe "adoptar" los
+    movimientos viejos que la mencionan, en vez de quedar huérfanos para
+    siempre. Se llama automáticamente desde crear_tarjeta() y desde
+    actualizar_tarjeta() cuando cambia ultimos4 -- nunca hace falta
+    invocarla a mano.
+
+    `tarjeta_id`, si se pasa, acota el barrido a los huérfanos que
+    matchean ESA tarjeta puntual (el caso común: se acaba de crear/
+    editar una sola tarjeta) -- se sigue re-chequeando ambigüedad contra
+    TODAS las tarjetas activas del usuario, no solo esa, para no asociar
+    un movimiento que en realidad es ambiguo entre dos tarjetas con el
+    mismo último-4. Sin `tarjeta_id` (None) barre todos los huérfanos del
+    usuario contra cualquier tarjeta activa -- pensado para poder
+    invocarse también como mantenimiento general a futuro.
+
+    Devuelve cuántos movimientos quedaron asociados."""
+    huerfanos = conn.execute(
+        "SELECT id, descripcion FROM movimientos WHERE usuario_id = ? AND tarjeta_id IS NULL",
+        (usuario_id,),
+    ).fetchall()
+    asociados = 0
+    for fila in huerfanos:
+        ultimos4 = _extraer_ultimos4_de_texto(fila["descripcion"])
+        if not ultimos4:
+            continue
+        resuelto = _resolver_tarjeta_por_ultimos4(conn, usuario_id, ultimos4)
+        if resuelto is None:
+            continue
+        if tarjeta_id is not None and resuelto != tarjeta_id:
+            continue  # matchea OTRA tarjeta activa -- no es el barrido que se pidió, se deja para su propia corrida
+        conn.execute("UPDATE movimientos SET tarjeta_id = ? WHERE id = ?", (resuelto, fila["id"]))
+        asociados += 1
+    if asociados:
+        conn.commit()
+    return asociados
 
 
 def obtener_tarjetas_con_deuda(conn: sqlite3.Connection, usuario_id: int) -> dict:
@@ -1585,7 +1687,12 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
         e["origen"] = origen
         e["usuario_id"] = usuario_id
         if not e.get("tarjeta_id"):
-            e["tarjeta_id"] = _resolver_tarjeta_por_ultimos4(conn, usuario_id, e.get("ultimos4"))
+            # 'ultimos4' explícito (correo/PDF/Excel, ver el docstring de
+            # arriba) tiene prioridad; si no vino, se intenta extraer del
+            # texto de la descripción (cubre el registro manual, que no
+            # tiene un campo dedicado -- ver _extraer_ultimos4_de_texto).
+            ultimos4 = e.get("ultimos4") or _extraer_ultimos4_de_texto(e.get("descripcion"))
+            e["tarjeta_id"] = _resolver_tarjeta_por_ultimos4(conn, usuario_id, ultimos4)
         # meta_ahorro_id: a diferencia de tarjeta_id, no hay forma de
         # resolverlo automáticamente por texto (no hay un patrón bancario
         # equivalente a "últimos4") -- solo llega explícito cuando el
