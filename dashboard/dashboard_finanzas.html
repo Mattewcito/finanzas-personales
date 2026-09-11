@@ -61,6 +61,15 @@
     --red: #fb7185;         /* gastos / negativo */
     --gold: #fbbf24;        /* insights / highlights */
 
+    /* Jerarquía de superficies estilo Apple/Copilot Money (2026-09-10,
+       ver requisitos/investigacion_colores_apple_2026-09-10.md secc. 3.2):
+       una superficie ELEVADA (modal, dropdown) debe leerse MÁS CERCA del
+       usuario -- más clara, no más oscura. Antes los modales degradaban
+       hacia #10141f (más oscuro que --card-solid, al revés del principio).
+       Mismo matiz azul-violeta que el resto de la paleta, un paso más
+       claro que --card-solid -- 13.81:1 de contraste con --text. */
+    --surface-elevated: #1b2338;
+
     /* Presupuesto por baldes -- identidad (2026-09-08, ver qa_reports/
        2026-09-08/marketing_paleta_presupuesto.md secciones 3 y 7). Color de
        IDENTIDAD de cada balde (fijo, nunca cambia con el estado) -- el
@@ -601,7 +610,12 @@
   }
   .modal-grafico-overlay.open{ opacity: 1; pointer-events: auto; }
   .modal-grafico-card{
-    background: var(--card-solid); border: 1px solid var(--card-border); border-radius: var(--radius);
+    /* Superficie elevada (2026-09-10): antes era un --card-solid plano,
+       igual de oscuro que la tarjeta que tiene detrás -- ver
+       --surface-elevated arriba. Un modal es la superficie más cerca del
+       usuario, así que arranca más clara. */
+    background: linear-gradient(180deg, var(--surface-elevated), var(--card-solid));
+    border: 1px solid var(--card-border); border-radius: var(--radius);
     width: min(920px, 100%); max-height: 88vh; display:flex; flex-direction:column; overflow:hidden;
     box-shadow: 0 20px 60px rgba(0,0,0,0.45);
   }
@@ -615,6 +629,58 @@
   .tabla-detalle-modal th, .tabla-detalle-modal td{ padding: 7px 10px; border-bottom: 1px solid var(--card-border); text-align:left; }
   .tabla-detalle-modal th{ color: var(--text-dim); font-weight:600; }
   .tabla-detalle-modal td:not(:first-child), .tabla-detalle-modal th:not(:first-child){ text-align:right; }
+
+  /* ---- Modal global de alertas/confirmaciones (2026-09-10) ----
+     Mismo componente que src/templates/base.html (mostrarAlertaApp()/
+     confirmarApp()), con su propia copia acá: este archivo es un
+     documento aparte que corre dentro de un <iframe> same-origin (ver
+     templates/dashboard.html) y no hereda nada de esa plantilla.
+     Reemplaza el único confirm() nativo que tenía este dashboard
+     (archivar una meta de ahorro) y los mensajes de error de los
+     formularios de presupuesto/meta que se escribían a mano en su
+     <div class="form-error">. Nunca se cierra solo: solo por click en
+     el botón centrado, la "X", clic afuera o Escape -- ver el <script>
+     al final de este archivo. z-index más alto que .modal-grafico-overlay
+     (1000) a propósito: este modal puede aparecer ENCIMA de "Configurar
+     presupuesto"/"Nueva meta de ahorro" cuando el formulario da error,
+     sin cerrar el formulario de atrás. */
+  .alerta-app-overlay{
+    display:none; position:fixed; inset:0; background:rgba(5,7,12,0.78);
+    z-index:1100; align-items:center; justify-content:center; padding:24px;
+  }
+  .alerta-app-overlay.abierto{ display:flex; }
+  .alerta-app-box{
+    position:relative; max-width:400px; width:100%;
+    /* Superficie elevada (2026-09-10): ver --surface-elevated arriba y el
+       mismo cambio en .modal-grafico-card -- el modal es la superficie
+       más cerca del usuario, así que arranca más clara, no más oscura. */
+    background: linear-gradient(180deg, var(--surface-elevated), var(--card-solid));
+    border:1px solid var(--card-border); border-radius:18px; padding:34px 28px 24px;
+    text-align:center; box-shadow: 0 24px 60px -20px rgba(0,0,0,0.6);
+    animation: alertaAppPop .18s ease;
+  }
+  @keyframes alertaAppPop{ from{ transform:scale(.94); opacity:0; } to{ transform:scale(1); opacity:1; } }
+  .alerta-app-cerrar{
+    position:absolute; top:12px; right:12px; width:28px; height:28px; border-radius:50%;
+    border:none; background:var(--bg-soft); color:var(--text-dim); cursor:pointer; font-size:13px;
+    display:flex; align-items:center; justify-content:center; font-family:inherit;
+  }
+  .alerta-app-cerrar:hover{ background:var(--card-hover); color:#fff; }
+  .alerta-app-icono{
+    width:52px; height:52px; border-radius:50%; margin:0 auto 16px;
+    display:flex; align-items:center; justify-content:center; font-size:24px; font-weight:700;
+  }
+  /* Colores de estado reusando las variables que ya definen el resto del
+     dashboard (--green/--red/--gold: ingresos/gastos/insights) en vez de
+     sumar hex nuevos -- el fondo translúcido no puede usar la variable
+     directo (no hay alpha en un hex plano), pero el valor de abajo es el
+     mismo --green/--red/--gold de este archivo convertido a rgba(). */
+  .alerta-app-icono.ok{ background:rgba(39,217,168,0.14); color: var(--green); }
+  .alerta-app-icono.error{ background:rgba(251,113,133,0.14); color: var(--red); }
+  .alerta-app-icono.confirmar{ background:rgba(251,191,36,0.14); color: var(--gold); }
+  .alerta-app-mensaje{ margin:0 0 24px; font-size:14px; color:var(--text); line-height:1.55; white-space:pre-line; }
+  .alerta-app-botones{ display:flex; gap:10px; justify-content:center; }
+  .alerta-app-botones .btn-primario, .alerta-app-botones .btn-secundario{ margin-top:0; flex:1; max-width:160px; }
 
   /* Tarjeta de perfil financiero personalizado */
   .perfil-card{
@@ -694,7 +760,25 @@
      vez de divs extra en el HTML (nada que calcular por tarjeta). */
   .tarjeta-card::before{
     content:''; position:absolute; inset:0; pointer-events:none;
-    background: radial-gradient(120% 80% at 12% -10%, rgba(255,255,255,0.22), transparent 55%);
+    /* Scrim de contraste (2026-09-10, ver requisitos/
+       investigacion_colores_apple_2026-09-10.md secc. 2.2): medido con la
+       fórmula de contraste WCAG, el nombre/dígitos en blanco sobre el
+       color de identidad puro caía hasta 1.67:1 en dorado -- muy por
+       debajo del mínimo 4.5:1. En vez de oscurecer TODA la tarjeta (mata
+       la identidad de color vívida que es justamente el punto de esto),
+       un scrim oscuro solo detrás de la franja superior (donde vive el
+       nombre/chip/dígitos) sube el contraste real ahí sin tocar el color
+       vivo del resto de la tarjeta -- mismo principio que un subtítulo
+       sobre una foto. rgba(0,0,0,.45) equivale a mezclar la tarjeta ~55%
+       con negro en esa franja: contraste medido con blanco encima >=5:1
+       en los 6 colores de identidad (peor caso: dorado, 5.1:1). Va como
+       PRIMERA capa del ::before (encima del degradé de color, detrás del
+       highlight blanco y del contenido real -- ::before pinta antes que
+       los hijos reales, ver orden de pintado CSS) para no competir con
+       ::after (el brillo decorativo de la esquina inferior). */
+    background:
+      linear-gradient(180deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.45) 42%, transparent 68%),
+      radial-gradient(120% 80% at 12% -10%, rgba(255,255,255,0.22), transparent 55%);
   }
   .tarjeta-card::after{
     content:''; position:absolute; right:-36px; bottom:-46px; width:160px; height:160px; border-radius:50%; pointer-events:none;
@@ -708,13 +792,14 @@
 
   .tarjeta-card-head{ position:relative; display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
   .tarjeta-card-titulo{ min-width:0; }
-  .tarjeta-card-nombre{ display:block; font-size:14.5px; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tarjeta-card-nombre{ display:block; font-size:14.5px; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 3px rgba(0,0,0,0.55); }
   .tarjeta-card-meta{ display:block; font-size:10.5px; font-weight:700; color:rgba(255,255,255,0.7); margin-top:3px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .tarjeta-card-chip{ flex-shrink:0; opacity:.9; }
 
   .tarjeta-card-digits{
     position:relative; font-family: ui-monospace, 'SF Mono', 'IBM Plex Mono', monospace;
     font-size:16px; font-weight:600; color:#fff; letter-spacing:.14em;
+    text-shadow:0 1px 3px rgba(0,0,0,0.55);
   }
 
   .tarjeta-card-footer{ position:relative; display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
@@ -1728,9 +1813,24 @@ const CAT_ICONS = {
 const catIcon = (c) => CAT_ICONS[c] || '📦';
 
 // Paleta de colores para categorías / series (cíclica)
-const PALETTE = ['#7c6cfb','#38bdf8','#27d9a8','#fb7185','#fbbf24','#f472b6','#a78bfa','#34d399',
-                  '#60a5fa','#fb923c','#f87171','#2dd4bf','#c084fc','#facc15','#4ade80','#818cf8',
-                  '#e879f9','#5eead4','#fda4af','#93c5fd'];
+// Curaduría de PALETTE (2026-09-10, ver requisitos/
+// investigacion_colores_apple_2026-09-10.md secc. 3.3): los primeros 8
+// valores son la paleta "primaria" -- REORDENADOS (no reemplazados, cero
+// hex nuevos, ninguno perdido) por separación de matiz entre sí, para
+// que 6-8 categorías simultáneas se distingan de un vistazo. Antes había
+// pares casi idénticos entre los primeros 8 (#27d9a8/#34d399 verde-teal,
+// #7c6cfb/#a78bfa violeta) -- ahora quedan de cola de respaldo, junto
+// con el resto del array (en su mismo orden relativo original), para el
+// caso raro de más de 8 categorías en un mismo gráfico. (El informe de
+// marketing-brand tenía acá un error de transcripción -- inventaba
+// '#f97316', que no existía en el array, y perdía '#f472b6', que sí --
+// corregido acá: el set de 20 valores es exactamente el mismo que antes,
+// solo reordenado.) Esto es solo la mitad de la defensa (WCAG 1.4.1:
+// nunca color solo) -- la otra mitad ya la cubre catIcon()/CAT_ICONS de
+// arriba en cada leyenda/tooltip.
+const PALETTE = ['#7c6cfb','#38bdf8','#fb923c','#27d9a8','#e879f9','#fbbf24','#60a5fa','#fb7185',
+                  '#f472b6','#a78bfa','#34d399','#f87171','#2dd4bf','#c084fc','#facc15','#4ade80',
+                  '#818cf8','#5eead4','#fda4af','#93c5fd'];
 const colorFor = (i) => PALETTE[i % PALETTE.length];
 
 // Configuración global de Chart.js para que combine con el tema oscuro
@@ -2105,16 +2205,18 @@ function actualizarSumaPctModal() {
 });
 document.getElementById('formPresupuesto')?.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const errEl = document.getElementById('formPresupuestoError');
-  errEl.hidden = true;
   const resultado = await postForm('/api/presupuesto/guardar', {
     pct_necesidades: document.getElementById('inputPctNecesidades').value,
     pct_gustos: document.getElementById('inputPctGustos').value,
     pct_ahorro_deudas: document.getElementById('inputPctAhorroDeudas').value,
   });
+  // ok/error entran al modal global (mostrarAlertaApp, ver el <script> al
+  // final del archivo) en vez de escribirse a mano en #formPresupuestoError
+  // -- mismo criterio ya aplicado en el resto de la app (ver tarjetas.html).
+  // El modal "Configurar presupuesto" se queda abierto detrás mientras el
+  // usuario lee el error (z-index de la alerta es mayor, ver CSS).
   if (!resultado.ok) {
-    errEl.textContent = resultado.error || 'No se pudo guardar el presupuesto.';
-    errEl.hidden = false;
+    mostrarAlertaApp('error', resultado.error || 'No se pudo guardar el presupuesto.');
     return;
   }
   PRESUPUESTO = resultado.presupuesto;
@@ -2190,8 +2292,6 @@ function cerrarModalMeta() {
 }
 document.getElementById('formMeta')?.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const errEl = document.getElementById('formMetaError');
-  errEl.hidden = true;
   const id = document.getElementById('inputMetaId').value;
   const btn = document.getElementById('btnGuardarMeta');
   btn.disabled = true;
@@ -2201,9 +2301,13 @@ document.getElementById('formMeta')?.addEventListener('submit', async (e) => {
     fecha_objetivo: document.getElementById('inputMetaFecha').value,
   });
   btn.disabled = false;
+  // ok/error entran al modal global (mostrarAlertaApp, ver el <script> al
+  // final del archivo) en vez de escribirse a mano en #formMetaError --
+  // mismo criterio ya aplicado en el resto de la app (ver tarjetas.html).
+  // El modal "Nueva/editar meta de ahorro" se queda abierto detrás mientras
+  // el usuario lee el error (z-index de la alerta es mayor, ver CSS).
   if (!resultado.ok) {
-    errEl.textContent = resultado.error || 'No se pudo guardar la meta.';
-    errEl.hidden = false;
+    mostrarAlertaApp('error', resultado.error || 'No se pudo guardar la meta.');
     return;
   }
   cerrarModalMeta();
@@ -2211,12 +2315,13 @@ document.getElementById('formMeta')?.addEventListener('submit', async (e) => {
 });
 async function archivarMeta(id) {
   const meta = METAS_AHORRO.find(m => m.id === id);
-  if (!confirm(`¿Archivar "${meta ? meta.nombre : 'esta meta'}"? Vas a conservar el historial de aportes, pero ya no vas a poder aportarle más ni la vas a ver entre tus metas activas.`)) return;
-  const errEl = document.getElementById('metasAhorroError');
-  if (errEl) errEl.hidden = true;
+  // confirm() nativo -> confirmarApp() (mismo modal global que el resto de
+  // la app, ver el <script> al final del archivo) -- no se cierra solo.
+  const ok = await confirmarApp(`¿Archivar "${meta ? meta.nombre : 'esta meta'}"? Vas a conservar el historial de aportes, pero ya no vas a poder aportarle más ni la vas a ver entre tus metas activas.`);
+  if (!ok) return;
   const resultado = await postForm(`/api/metas-ahorro/${id}/archivar`, {});
   if (!resultado.ok) {
-    if (errEl) { errEl.textContent = resultado.error || 'No se pudo archivar la meta.'; errEl.hidden = false; }
+    mostrarAlertaApp('error', resultado.error || 'No se pudo archivar la meta.');
     return;
   }
   await recargarMetas();
@@ -3500,6 +3605,12 @@ document.getElementById('modalInsight').addEventListener('click', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    // Si el modal global de alertas/confirmaciones está abierto ENCIMA de
+    // alguno de estos (ej. error al guardar una meta), este Escape es
+    // para ÉL -- su propio listener lo cierra. Si además cerráramos acá
+    // el modal de atrás, el usuario perdería lo que tenía tipeado en el
+    // formulario con un solo Escape pensado solo para la alerta.
+    if (document.getElementById('alertaAppOverlay')?.classList.contains('abierto')) return;
     cerrarModalGrafico(); cerrarModalInsight();
     cerrarModalPresupuesto(); cerrarModalCategorias(); cerrarModalMeta();
   }
@@ -3717,6 +3828,90 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
   </div>
 </div>
+
+<!-- ============================================================
+     MODAL GLOBAL DE ALERTAS/CONFIRMACIONES -- mismo componente que
+     src/templates/base.html (mostrarAlertaApp()/confirmarApp()), con su
+     propia copia acá porque este documento vive en un <iframe> aparte
+     (ver templates/dashboard.html) y no hereda nada de esa plantilla.
+     Reemplaza confirm() nativo y los form-error que se escribían a mano.
+     ============================================================ -->
+<div class="alerta-app-overlay" id="alertaAppOverlay" role="alertdialog" aria-modal="true" aria-labelledby="alertaAppMensaje">
+  <div class="alerta-app-box">
+    <button type="button" class="alerta-app-cerrar" id="alertaAppCerrar" aria-label="Cerrar">✕</button>
+    <div class="alerta-app-icono" id="alertaAppIcono" aria-hidden="true"></div>
+    <p class="alerta-app-mensaje" id="alertaAppMensaje"></p>
+    <div class="alerta-app-botones">
+      <button type="button" class="btn-secundario" id="alertaAppCancelar" hidden>Cancelar</button>
+      <button type="button" class="btn-primario" id="alertaAppOk">Ok</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// --- Modal global de alertas/confirmaciones (ver comentario en el CSS y
+// en el <div id="alertaAppOverlay"> de arriba) -- mismo contrato que
+// src/templates/base.html::mostrarAlertaApp()/confirmarApp(): las dos
+// devuelven una Promise que solo se resuelve cuando el usuario elige un
+// botón, la "X", clic afuera o Escape -- nunca solas con un timer. Este
+// <script> va DESPUÉS del <div id="alertaAppOverlay"> en el documento a
+// propósito: al ser un <script> normal (no async, no adentro de
+// iniciarDashboard), corre en cuanto el parser llega acá, y en ese
+// momento el div ya está parseado -- no hace falta esperar DOMContentLoaded.
+(function(){
+  const overlay = document.getElementById('alertaAppOverlay');
+  if (!overlay) return; // no debería pasar -- este archivo siempre lo incluye
+  const icono = document.getElementById('alertaAppIcono');
+  const mensajeEl = document.getElementById('alertaAppMensaje');
+  const btnOk = document.getElementById('alertaAppOk');
+  const btnCancelar = document.getElementById('alertaAppCancelar');
+  const btnCerrar = document.getElementById('alertaAppCerrar');
+
+  let resolverActual = null;
+  // Accesibilidad: un usuario de teclado que abre este modal y lo cierra
+  // no puede quedar "perdido" en el <body> -- el foco vuelve al elemento
+  // que lo abrió (el botón "Archivar", el submit del formulario, etc.).
+  let elementoQueAbrio = null;
+
+  function cerrar(resultado) {
+    overlay.classList.remove('abierto');
+    if (resolverActual) { const r = resolverActual; resolverActual = null; r(resultado); }
+    const previo = elementoQueAbrio;
+    elementoQueAbrio = null;
+    if (previo && document.contains(previo) && typeof previo.focus === 'function') previo.focus();
+  }
+
+  btnCerrar.addEventListener('click', () => cerrar(false));
+  btnOk.addEventListener('click', () => cerrar(true));
+  btnCancelar.addEventListener('click', () => cerrar(false));
+  // Clic afuera de la caja (en el fondo) -- este listener vive en el
+  // propio documento del iframe, alcanza sin ningún enganche especial.
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) cerrar(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay.classList.contains('abierto')) cerrar(false); });
+
+  const ICONOS = { ok: '✓', error: '✕', confirmar: '?' };
+
+  function abrir({ tipo, mensaje, textoBoton, conCancelar }) {
+    return new Promise((resolve) => {
+      elementoQueAbrio = document.activeElement;
+      resolverActual = resolve;
+      icono.className = 'alerta-app-icono ' + tipo;
+      icono.textContent = ICONOS[tipo] || 'ℹ';
+      mensajeEl.textContent = mensaje;
+      btnOk.textContent = textoBoton || (conCancelar ? 'Confirmar' : 'Ok');
+      btnCancelar.hidden = !conCancelar;
+      overlay.classList.add('abierto');
+      btnOk.focus();
+    });
+  }
+
+  window.mostrarAlertaApp = (tipo, mensaje, opts) =>
+    abrir({ tipo, mensaje, textoBoton: opts && opts.textoBoton, conCancelar: false });
+
+  window.confirmarApp = (mensaje, opts) =>
+    abrir({ tipo: 'confirmar', mensaje, conCancelar: true, textoBoton: opts && opts.textoBoton });
+})();
+</script>
 
 </body>
 </html>
