@@ -670,40 +670,86 @@
   @media (max-width: 1100px){ .tarjetas-grid{ grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 560px){ .tarjetas-grid{ grid-template-columns: 1fr; } }
 
+  /* Rediseño estilo Apple Wallet (2026-09-10, mockup "Tarjetas Wallet"
+     aprobado por el usuario -- dirección "grilla": funciona igual de bien
+     con 1 tarjeta que con muchas, sin necesitar el estado de "cuál está
+     al frente" que pediría la variante apilada). Cada tarjeta es un
+     .tarjeta-wrap: arriba la superficie de identidad (.tarjeta-card,
+     degradé con SU color fijo -- ver colorTarjeta() en el JS), abajo el
+     mismo panel de cifras exactas (cupo total/deuda actual/disponible)
+     que ya existía -- el mockup deliberadamente no mete montos en COP
+     adentro de la tarjeta (así luce Apple Wallet de verdad: la tarjeta es
+     identidad + % de un vistazo, el detalle vive aparte), pero acá nada
+     de información se pierde, solo se reordena. */
+  .tarjeta-wrap{ display:flex; flex-direction:column; gap:10px; min-width:0; }
+
   .tarjeta-card{
-    background: var(--card-solid); border:1px solid var(--card-border); border-radius: var(--radius-sm);
-    padding: 16px; min-width:0; /* min-width:0 -- mismo fix de overflow que .kpi (ver nota de .wrap arriba) */
+    position:relative; overflow:hidden; min-width:0; color:#fff;
+    border-radius:16px; padding:18px 20px; box-sizing:border-box;
+    aspect-ratio:1.6; display:flex; flex-direction:column; justify-content:space-between;
+    box-shadow: 0 16px 30px -16px var(--tarjeta-sombra, rgba(0,0,0,0.5)), 0 1px 0 rgba(255,255,255,0.08) inset;
   }
-  .tarjeta-card.nivel-amber{ border-color: rgba(251,191,36,0.45); }
-  .tarjeta-card.nivel-rojo{ border-color: rgba(251,113,133,0.55); }
-  .tarjeta-card.sin-asignar{ border-style:dashed; }
+  /* Brillo superior-izquierdo + resplandor inferior-derecho -- puramente
+     decorativos, mismos gradientes que el mockup, con ::before/::after en
+     vez de divs extra en el HTML (nada que calcular por tarjeta). */
+  .tarjeta-card::before{
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background: radial-gradient(120% 80% at 12% -10%, rgba(255,255,255,0.22), transparent 55%);
+  }
+  .tarjeta-card::after{
+    content:''; position:absolute; right:-36px; bottom:-46px; width:160px; height:160px; border-radius:50%; pointer-events:none;
+    background: radial-gradient(circle, rgba(255,255,255,0.10), transparent 70%);
+  }
+  /* El estado (normal/atención/sobregasto) se marca con un anillo fino
+     ENCIMA del color de identidad -- nunca lo reemplaza ni lo tapa, así
+     la tarjeta se sigue reconociendo por color aunque esté en alerta. */
+  .tarjeta-card.nivel-amber{ box-shadow: 0 0 0 2px var(--gold), 0 16px 30px -16px var(--tarjeta-sombra, rgba(0,0,0,0.5)); }
+  .tarjeta-card.nivel-rojo{ box-shadow: 0 0 0 2px var(--red), 0 16px 30px -16px var(--tarjeta-sombra, rgba(0,0,0,0.5)); }
 
-  .tarjeta-card-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+  .tarjeta-card-head{ position:relative; display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
   .tarjeta-card-titulo{ min-width:0; }
-  .tarjeta-card-nombre{ display:block; font-size:14px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .tarjeta-card-meta{ display:block; font-size:11.5px; color:var(--text-dim); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  /* Fix qa_reports/2026-09-07/ux_review_tarjetas_credito.md 🟠#2: el
-     nowrap+ellipsis de arriba está pensado para la línea corta de las
-     tarjetas normales ("Entidad · Terminada en XXXX"), no para la frase
-     más larga del bloque "Sin tarjeta asignada" ("No es un error -- es
-     deuda real todavía sin clasificar por tarjeta"), que se truncaba en
-     mobile/tablet ocultando el "por qué". Este bloque no compite por
-     espacio con un badge de % a la derecha como las tarjetas normales
-     (no tiene .tarjeta-card-pct), así que puede hacer wrap sin problema. */
-  .tarjeta-card-meta.tarjeta-card-meta-wrap{ white-space:normal; overflow:visible; text-overflow:clip; }
-  .tarjeta-card-pct{
-    flex-shrink:0; font-size:11.5px; font-weight:800; padding:3px 9px; border-radius:999px;
-    background: rgba(39,217,168,0.15); color: var(--green);
+  .tarjeta-card-nombre{ display:block; font-size:14.5px; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tarjeta-card-meta{ display:block; font-size:10.5px; font-weight:700; color:rgba(255,255,255,0.7); margin-top:3px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tarjeta-card-chip{ flex-shrink:0; opacity:.9; }
+
+  .tarjeta-card-digits{
+    position:relative; font-family: ui-monospace, 'SF Mono', 'IBM Plex Mono', monospace;
+    font-size:16px; font-weight:600; color:#fff; letter-spacing:.14em;
   }
-  .tarjeta-card.nivel-amber .tarjeta-card-pct{ background: rgba(251,191,36,0.2); color: var(--gold); }
-  .tarjeta-card.nivel-rojo .tarjeta-card-pct{ background: rgba(251,113,133,0.2); color: var(--red); }
 
-  .tarjeta-barra{ height:8px; border-radius:999px; background: var(--bg-soft); overflow:hidden; margin: 12px 0; }
-  .tarjeta-barra > span{ display:block; height:100%; border-radius:999px; background: var(--green); }
-  .tarjeta-card.nivel-amber .tarjeta-barra > span{ background: var(--gold); }
-  .tarjeta-card.nivel-rojo .tarjeta-barra > span{ background: var(--red); }
+  .tarjeta-card-footer{ position:relative; display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
+  .tarjeta-card-cupo{ flex:1; min-width:0; }
+  .tarjeta-card-cupo-label{ display:flex; justify-content:space-between; font-size:10px; font-weight:600; color:rgba(255,255,255,0.75); margin-bottom:6px; }
+  .tarjeta-card-cupo-label span:last-child{ font-variant-numeric:tabular-nums; }
 
-  .tarjeta-cifras{ display:flex; flex-direction:column; gap:6px; }
+  .tarjeta-barra{ height:6px; border-radius:999px; background: rgba(0,0,0,0.28); overflow:hidden; }
+  .tarjeta-barra > span{ display:block; height:100%; border-radius:999px; background: rgba(255,255,255,0.94); }
+
+  .tarjeta-card-alerta{
+    flex-shrink:0; display:flex; align-items:center; gap:5px; background:rgba(0,0,0,0.32);
+    border-radius:999px; padding:5px 10px 5px 7px; font-size:10px; font-weight:800; white-space:nowrap;
+  }
+  .tarjeta-card-alerta svg{ flex-shrink:0; }
+  .tarjeta-card.nivel-amber .tarjeta-card-alerta{ color: var(--gold); }
+  .tarjeta-card.nivel-rojo .tarjeta-card-alerta{ color: var(--red); }
+
+  /* "Sin tarjeta asignada" NUNCA es una tarjeta real -- se queda con la
+     superficie plana/punteada de siempre (nunca un degradé de identidad,
+     eso implicaría que es una tarjeta registrada) para que la distinción
+     "esto es un aviso, no una tarjeta" siga siendo obvia de un vistazo. */
+  .tarjeta-plana{
+    background: var(--card-solid); border:1px dashed var(--card-border); border-radius: var(--radius-sm);
+    padding: 16px; min-width:0;
+  }
+  .tarjeta-plana .tarjeta-card-nombre{ color: var(--text); }
+  .tarjeta-plana .tarjeta-card-meta{ color: var(--text-dim); text-transform:none; letter-spacing:normal; font-weight:400; font-size:11.5px; }
+  /* Fix qa_reports/2026-09-07/ux_review_tarjetas_credito.md 🟠#2: la frase
+     de este bloque ("No es un error -- es deuda real todavía sin
+     clasificar por tarjeta") es más larga que la línea corta de una
+     tarjeta normal y se truncaba en mobile/tablet ocultando el "por qué". */
+  .tarjeta-plana .tarjeta-card-meta-wrap{ white-space:normal; overflow:visible; text-overflow:clip; }
+
+  .tarjeta-cifras{ display:flex; flex-direction:column; gap:6px; padding:0 2px; }
   .tarjeta-cifras .fila{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:12px; color:var(--text-dim); }
   .tarjeta-cifras .fila b{
     color: var(--text); font-size:13.5px; font-weight:700; font-variant-numeric: tabular-nums;
@@ -713,7 +759,8 @@
   .tarjeta-cifras .fila.positivo b{ color: var(--green); }
 
   @media (max-width: 560px){
-    .tarjeta-card{ padding:12px; }
+    .tarjeta-card{ padding:14px 16px; }
+    .tarjeta-plana{ padding:12px; }
     .tarjeta-cifras .fila{ font-size:10.5px; }
     .tarjeta-cifras .fila b{ font-size:12px; }
   }
@@ -1539,19 +1586,47 @@ document.getElementById('lastUpdated').textContent = `Última actualización del
   // mal cargado) queda protegido con Math.max(0, ...) más abajo.
   const nivel = (pct) => pct >= 95 ? 'nivel-rojo' : (pct >= 80 ? 'nivel-amber' : '');
 
+  // Color de identidad por tarjeta (mockup "Tarjetas Wallet", 2026-09-10):
+  // fijo por tarjeta, independiente del estado de cupo -- no existe (ni
+  // hace falta agregar) una columna "color" en tarjetas_credito, así que
+  // se deriva de forma determinística del id (misma tarjeta -> mismo
+  // color siempre, entre recargas y entre navegadores).
+  const PALETA_IDENTIDAD_TARJETA = ['#7c6cfb', '#38bdf8', '#27d9a8', '#f97316', '#ec4899', '#fbbf24'];
+  const colorTarjeta = (id) => PALETA_IDENTIDAD_TARJETA[Math.abs(Number(id) || 0) % PALETA_IDENTIDAD_TARJETA.length];
+
+  const ICON_ALERTA = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M12 17h.01"></path><circle cx="12" cy="12" r="9"></circle></svg>';
+  const ICON_CHIP = '<svg width="30" height="22" viewBox="0 0 34 26" fill="none"><rect x="0.5" y="0.5" width="33" height="25" rx="5" fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.4)"></rect><line x1="0.5" y1="9" x2="33.5" y2="9" stroke="rgba(255,255,255,0.35)"></line><line x1="0.5" y1="17" x2="33.5" y2="17" stroke="rgba(255,255,255,0.35)"></line><line x1="11" y1="0.5" x2="11" y2="25.5" stroke="rgba(255,255,255,0.35)"></line><line x1="23" y1="0.5" x2="23" y2="25.5" stroke="rgba(255,255,255,0.35)"></line></svg>';
+
   const cardsHTML = activas.map(t => {
     const pct = Math.max(0, t.porcentaje_uso || 0);
+    const nivelActual = nivel(pct);
     const metaTexto = [t.entidad, t.ultimos4 ? `Terminada en ${t.ultimos4}` : null].filter(Boolean).join(' · ') || 'Tarjeta de crédito';
+    const color = colorTarjeta(t.id);
+    const digitosHTML = t.ultimos4
+      ? `<div class="tarjeta-card-digits">•••• •••• •••• ${t.ultimos4}</div>`
+      : '';
+    const alertaHTML = nivelActual
+      ? `<div class="tarjeta-card-alerta">${ICON_ALERTA}<span>${nivelActual === 'nivel-rojo' ? 'Te pasaste' : 'Cerca del límite'}</span></div>`
+      : '';
     return `
-    <div class="tarjeta-card ${nivel(pct)}" title="${t.nombre}">
-      <div class="tarjeta-card-head">
-        <div class="tarjeta-card-titulo">
-          <span class="tarjeta-card-nombre">${t.nombre}</span>
-          <span class="tarjeta-card-meta">${metaTexto}</span>
+    <div class="tarjeta-wrap">
+      <div class="tarjeta-card ${nivelActual}" title="${t.nombre}" style="background: linear-gradient(135deg, ${color} 0%, color-mix(in oklch, ${color} 60%, black) 100%); --tarjeta-sombra: color-mix(in srgb, ${color} 45%, transparent);">
+        <div class="tarjeta-card-head">
+          <div class="tarjeta-card-titulo">
+            <span class="tarjeta-card-nombre">${t.nombre}</span>
+            <span class="tarjeta-card-meta">${metaTexto}</span>
+          </div>
+          <div class="tarjeta-card-chip">${ICON_CHIP}</div>
         </div>
-        <span class="tarjeta-card-pct">${fmtPct(pct)}</span>
+        ${digitosHTML}
+        <div class="tarjeta-card-footer">
+          <div class="tarjeta-card-cupo">
+            <div class="tarjeta-card-cupo-label"><span>Cupo usado</span><span>${fmtPct(pct)}</span></div>
+            <div class="tarjeta-barra"><span style="width:${Math.min(pct, 100)}%"></span></div>
+          </div>
+          ${alertaHTML}
+        </div>
       </div>
-      <div class="tarjeta-barra"><span style="width:${Math.min(pct, 100)}%"></span></div>
       <div class="tarjeta-cifras">
         <div class="fila"><span>Cupo total</span><b>${fmtCOP(t.cupo_total)}</b></div>
         <div class="fila"><span>Deuda actual</span><b>${fmtCOP(t.deuda_actual)}</b></div>
@@ -1565,17 +1640,20 @@ document.getElementById('lastUpdated').textContent = `Última actualización del
   // si hay algo que mostrar (requisito: "si es > 0"). Incluye tanto
   // movimientos realmente sin tarjeta como los de cualquier tarjeta ya
   // archivada (ver el docstring de obtener_tarjetas_con_deuda() en
-  // db_finanzas.py para por qué se define así).
+  // db_finanzas.py para por qué se define así). Superficie plana/punteada
+  // a propósito -- ver comentario de .tarjeta-plana en el CSS.
   const sinAsignarHTML = sinAsignar > 0 ? `
-    <div class="tarjeta-card sin-asignar" title="Deuda de tarjeta sin vincular a ninguna tarjeta registrada">
-      <div class="tarjeta-card-head">
-        <div class="tarjeta-card-titulo">
-          <span class="tarjeta-card-nombre">🗂️ Sin tarjeta asignada</span>
-          <span class="tarjeta-card-meta tarjeta-card-meta-wrap">No es un error -- es deuda real todavía sin clasificar por tarjeta</span>
+    <div class="tarjeta-wrap">
+      <div class="tarjeta-plana" title="Deuda de tarjeta sin vincular a ninguna tarjeta registrada">
+        <div class="tarjeta-card-head">
+          <div class="tarjeta-card-titulo">
+            <span class="tarjeta-card-nombre">🗂️ Sin tarjeta asignada</span>
+            <span class="tarjeta-card-meta tarjeta-card-meta-wrap">No es un error -- es deuda real todavía sin clasificar por tarjeta</span>
+          </div>
         </div>
-      </div>
-      <div class="tarjeta-cifras" style="margin-top:12px;">
-        <div class="fila"><span>Deuda sin asignar</span><b>${fmtCOP(sinAsignar)}</b></div>
+        <div class="tarjeta-cifras" style="margin-top:12px;">
+          <div class="fila"><span>Deuda sin asignar</span><b>${fmtCOP(sinAsignar)}</b></div>
+        </div>
       </div>
     </div>` : '';
 
