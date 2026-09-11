@@ -1525,6 +1525,22 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
             (usuario_id,),
         )
     ]
+    if origen == "app_manual":
+        # Dos movimientos MANUALES con la misma fecha±1/monto/tipo no son
+        # necesariamente la misma transacción real -- a diferencia del caso
+        # que este motor fue diseñado para resolver (una fuente automática
+        # confirmando una fila manual ya cargada), acá no hay ninguna fuente
+        # "más confiable" avisando que de verdad es la misma. Tratarlas como
+        # duplicado descartaba en silencio una segunda compra real del mismo
+        # monto el mismo día -- bug real reportado 2026-09-10 (usuario
+        # registró 16.500000 y después 16.5: la segunda "desaparecía", el
+        # saldo de la tarjeta quedaba corto). El formulario ya protege
+        # contra doble-click (deshabilita el botón al enviar, ver
+        # templates/registrar.html), así que no hace falta este mecanismo
+        # para ese caso -- una fila manual existente solo puede seguir
+        # absorbiendo coincidencias que lleguen de una fuente automática
+        # (correo/PDF/Excel).
+        existentes = [e for e in existentes if e["origen"] != "app_manual"]
     disponibles: dict[tuple, list[dict]] = defaultdict(list)
     for e in existentes:
         disponibles[(e["moneda"], round(e["monto"]), e["tipo"])].append(e)

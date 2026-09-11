@@ -139,7 +139,17 @@ def test_datos_quedan_aislados_entre_usuarios(client, app_ctx):
     assert len(movs_user) == 0
 
 
-def test_dedup_no_duplica_mismo_dia_y_monto(client):
+def test_dos_registros_manuales_mismo_dia_y_monto_se_insertan_ambos(client):
+    """Regresión del bug real reportado 2026-09-10: un usuario registraba a
+    mano un movimiento de 16.500000 y después otro de 16.5 (incluso con
+    descripción distinta) y el segundo desaparecía en silencio -- el motor
+    de conciliación (pensado para que una fuente AUTOMÁTICA confirme una
+    fila manual ya cargada, ver db_finanzas.py::insertar_movimientos) lo
+    trataba como duplicado de la primera. Dos entradas manuales del mismo
+    monto/fecha son perfectamente plausibles como dos compras reales
+    distintas -- deben insertarse las dos. El doble-submit accidental ya
+    está cubierto aparte por el botón que se deshabilita al enviar (ver
+    templates/registrar.html), no por este mecanismo."""
     login(client, "admin_test", "clave-admin-123")
     datos = {
         "fecha": "2026-02-01", "tipo": "gasto", "monto": "5000",
@@ -151,7 +161,8 @@ def test_dedup_no_duplica_mismo_dia_y_monto(client):
     r2 = client.post("/api/registrar-movimiento", data=datos)
 
     assert r1.get_json()["nuevos"] == 1
-    assert r2.get_json()["duplicados"] == 1
+    assert r2.get_json()["nuevos"] == 1
+    assert r2.get_json()["duplicados"] == 0
 
 
 # ---------------------------------------------------------------------------

@@ -271,6 +271,98 @@ def test_reconciliacion_manual_correo_segunda_transaccion_y_re_escaneo(conn):
     assert len(filas) == 2
 
 
+# ============================================================================
+# Dos entradas MANUALES del mismo monto/fecha (bug real 2026-09-10): a
+# diferencia de automático<->manual (arriba), acá no hay ninguna fuente
+# "más confiable" confirmando que es la misma transacción -- dos compras
+# reales distintas del mismo monto el mismo día son perfectamente
+# plausibles y no deben perderse la una a la otra.
+# ============================================================================
+
+def test_dos_manuales_mismo_dia_monto_y_tipo_se_insertan_ambos_en_llamadas_separadas(conn):
+    """Reproduce el bug reportado: usuario registra a mano 16.500000 y
+    después, en OTRA llamada (otro submit del formulario), 16.5 -- mismo
+    valor numérico, mismo día, descripción distinta. Antes del fix, la
+    segunda se descartaba como "duplicado" de la primera; ahora deben
+    quedar las dos."""
+    uid = crear_usuario(conn, "ana")
+
+    stats1 = db.insertar_movimientos(
+        conn, [mov("2026-09-10", "gasto", "otros", 16.5, "Primer cafe")],
+        origen="app_manual", usuario_id=uid,
+    )
+    stats2 = db.insertar_movimientos(
+        conn, [mov("2026-09-10", "gasto", "otros", 16.5, "Segundo cafe, mismo monto")],
+        origen="app_manual", usuario_id=uid,
+    )
+
+    assert stats1["nuevos"] == 1
+    assert stats2["nuevos"] == 1
+    assert stats2["duplicados_bd"] == 0
+    assert len(db.obtener_movimientos(conn, usuario_id=uid)) == 2
+
+
+def test_dos_manuales_a_un_dia_de_diferencia_tambien_se_insertan_ambos(conn):
+    """Mismo caso que arriba pero con fechas a +-1 día -- la ventana de
+    _mejor_coincidencia() también matchearía estas fechas, así que tiene
+    que estar cubierto igual que el mismo día exacto."""
+    uid = crear_usuario(conn, "ana")
+
+    stats1 = db.insertar_movimientos(
+        conn, [mov("2026-09-10", "gasto", "otros", 16.5, "Cafe dia 10")],
+        origen="app_manual", usuario_id=uid,
+    )
+    stats2 = db.insertar_movimientos(
+        conn, [mov("2026-09-11", "gasto", "otros", 16.5, "Cafe dia 11")],
+        origen="app_manual", usuario_id=uid,
+    )
+
+    assert stats1["nuevos"] == 1
+    assert stats2["nuevos"] == 1
+    assert stats2["duplicados_bd"] == 0
+    assert len(db.obtener_movimientos(conn, usuario_id=uid)) == 2
+
+
+def test_tres_manuales_seguidas_mismo_monto_ninguna_se_pierde(conn):
+    """Tres entradas manuales del mismo monto/fecha, una por una -- las
+    tres tienen que sobrevivir, ninguna se pierde contra las anteriores."""
+    uid = crear_usuario(conn, "ana")
+
+    for descripcion in ("Compra 1", "Compra 2", "Compra 3"):
+        db.insertar_movimientos(
+            conn, [mov("2026-09-10", "gasto", "otros", 16.5, descripcion)],
+            origen="app_manual", usuario_id=uid,
+        )
+
+    filas = db.obtener_movimientos(conn, usuario_id=uid)
+    assert len(filas) == 3
+    assert {f["descripcion"] for f in filas} == {"Compra 1", "Compra 2", "Compra 3"}
+
+
+def test_manual_sigue_conciliando_contra_fila_manual_previa_cuando_lo_que_llega_es_automatico(conn):
+    """El fix es específico de manual<->manual -- una fila manual ya
+    cargada TODAVÍA tiene que poder ser absorbida/conciliada cuando lo
+    que llega es de una fuente automática (correo/PDF/Excel), que es el
+    caso central que este motor fue diseñado para resolver (ver
+    test_reconciliacion_manual_correo_segunda_transaccion_y_re_escaneo
+    arriba, que ya lo cubre en detalle -- este test solo confirma que el
+    fix de manual<->manual no lo rompió con un monto no-entero)."""
+    uid = crear_usuario(conn, "ana")
+    db.insertar_movimientos(
+        conn, [mov("2026-09-10", "gasto", "otros", 16.5, "Cafe")],
+        origen="app_manual", usuario_id=uid,
+    )
+
+    stats = db.insertar_movimientos(
+        conn, [mov("2026-09-10", "gasto", "otros", 16.5, "Compra tarjeta *2011 por $16.50")],
+        origen="correo_imap", usuario_id=uid,
+    )
+
+    assert stats["nuevos"] == 0
+    assert stats["duplicados_bd"] == 1
+    assert len(db.obtener_movimientos(conn, usuario_id=uid)) == 1
+
+
 def test_avance_de_credito_no_se_duplica_entre_corridas_por_reclasificacion_de_tipo(conn):
     """Bug corregido: enriquecer_movimiento() se aplica ANTES de armar la
     clave de match porque puede reclasificar 'tipo' (avance de crédito:
