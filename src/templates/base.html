@@ -3,43 +3,145 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Anti-flash de tema (2026-09-11): tiene que ejecutar ANTES de que el
+     <style> de abajo pinte nada -- si el usuario ya eligió tema a mano
+     (localStorage), se lo aplicamos ya mismo al <html>. Si nunca eligió,
+     no tocamos nada acá: el CSS de abajo ya sabe respetar
+     prefers-color-scheme por su cuenta (ver bloque @media más abajo). */
+<script>
+(function(){
+  try {
+    var t = localStorage.getItem('finanzas_theme');
+    if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+  } catch(e) {}
+})();
+</script>
 <title>{% block title %}Finanzas Personales{% endblock %}</title>
 <style>
+  /* ================================================================
+     SISTEMA DE DISEÑO -- reskin 2026-09-11
+     Identidad de marca "Cobre & Grafito" (2026-09-10) + soporte
+     completo de Modo Claro/Oscuro. Mismos NOMBRES de variable en los
+     dos temas -- cada plantilla sigue usando var(--card-solid), etc.
+     sin saber en qué tema está; solo cambia el valor detrás.
+
+     Modo oscuro es la base histórica de la app y el valor por
+     default de :root (usuarios de siempre no ven ningún cambio si
+     nunca tocan el interruptor). Modo claro se activa por:
+       1) preferencia del sistema operativo (prefers-color-scheme),
+          si el usuario nunca eligió nada a mano, o
+       2) el interruptor de tema del pie del menú (persiste en
+          localStorage como 'finanzas_theme': 'light' | 'dark').
+     Los 4 bloques de abajo (:root, @media, [data-theme=light],
+     [data-theme=dark]) son el patrón estándar para que las tres
+     fuentes de verdad (default, SO, elección manual) no compitan
+     entre sí -- ver comentario junto a cada uno.
+  ================================================================ */
   :root{
+    /* ---- Oscuro (default) ---- */
     --bg: #090c13;
     --bg-soft: #0d111b;
     --card-solid: #131928;
-    --card-border: rgba(255,255,255,0.07);
+    --card-border: rgba(255,255,255,0.08);
     --card-hover: #171e30;
-    --text: #e7ebf5;
-    --text-dim: #8d96ab;
-    --text-faint: #5b6379;
-    /* Identidad propia "Cobre & Grafito" (2026-09-10, feedback del
-       usuario: el violeta/celeste anterior era "el mismo color generico
-       de siempre", sin identidad de marca real). --accent es ahora el
-       tono NEUTRO de superficies interactivas (botones, foco, avatar) --
-       plano, sin degradado, a proposito (principio de contencion: un
-       acento se nota MAS si no compite con degradados por todos lados).
-       --accent-2 (cobre) es la UNICA chispa de color de marca -- reservada
-       a texto/indicadores puntuales (link activo del menu, ver mas abajo
-       los pocos usos reales) para que se note sin gritar. */
-    --accent: #5b6472;
-    --accent-2: #c68a4e;
-    /* Jerarquía de superficies estilo Apple/Copilot Money (2026-09-10,
-       ver requisitos/investigacion_colores_apple_2026-09-10.md secc. 3.2):
-       una superficie ELEVADA (modal, dropdown) debe leerse MÁS CERCA del
-       usuario -- más clara, no más oscura -- que la tarjeta de atrás.
-       13.81:1 de contraste con --text. */
-    --surface-elevated: #1b2338;
+    --surface-elevated: #1b2338; /* modal/dropdown -- más CERCA del usuario, más clara */
+    --text: #eef1f8;
+    --text-dim: #9aa3b8;
+    --text-faint: #6b7488;
+    --accent: #5b6472;   /* grafito -- superficies interactivas, plano en los dos temas */
+    --accent-2: #c68a4e; /* cobre -- única chispa de marca */
+    --green: #27d9a8;
+    --red: #fb7185;
+    --gold: #fbbf24;
+    --shadow-card: none;
+    --shadow-hover: 0 10px 24px -12px rgba(0,0,0,0.55);
+    --shadow-dropdown: 0 12px 32px -12px rgba(0,0,0,0.55);
+    --shadow-modal: 0 24px 60px -20px rgba(0,0,0,0.6);
     --sidebar-w: 226px;
     --sidebar-w-collapsed: 68px;
   }
+  /* El SO prefiere claro y el usuario nunca eligió nada a mano --
+     :not([data-theme="dark"]) deja pasar esto solo mientras no haya
+     una elección explícita guardada (ver script anti-flash arriba). */
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg: #f6f7fa;
+      --bg-soft: #eceff4;
+      --card-solid: #ffffff;
+      --card-border: rgba(15,23,42,0.10);
+      --card-hover: #f1f3f8;
+      --surface-elevated: #ffffff;
+      --text: #12151c;
+      --text-dim: #5b6472;
+      --text-faint: #6a7285;
+      --accent-2: #9c6530;
+      --green: #0a7a59;
+      --red: #c81e42;
+      --gold: #92660a;
+      --shadow-card: 0 1px 2px rgba(30,41,59,0.05), 0 1px 3px rgba(30,41,59,0.06);
+      --shadow-hover: 0 10px 24px -12px rgba(30,41,59,0.22);
+      --shadow-dropdown: 0 12px 32px -12px rgba(30,41,59,0.22);
+      --shadow-modal: 0 24px 60px -20px rgba(30,41,59,0.38);
+    }
+  }
+  /* Elección MANUAL guardada -- gana siempre, sin importar el SO. */
+  :root[data-theme="light"]{
+    --bg: #f6f7fa;
+    --bg-soft: #eceff4;
+    --card-solid: #ffffff;
+    --card-border: rgba(15,23,42,0.10);
+    --card-hover: #f1f3f8;
+    --surface-elevated: #ffffff;
+    --text: #12151c;
+    --text-dim: #5b6472;
+    --text-faint: #6a7285;
+    --accent-2: #9c6530;
+    --green: #0a7a59;
+    --red: #c81e42;
+    --gold: #92660a;
+    --shadow-card: 0 1px 2px rgba(30,41,59,0.05), 0 1px 3px rgba(30,41,59,0.06);
+    --shadow-hover: 0 10px 24px -12px rgba(30,41,59,0.22);
+    --shadow-dropdown: 0 12px 32px -12px rgba(30,41,59,0.22);
+    --shadow-modal: 0 24px 60px -20px rgba(30,41,59,0.38);
+  }
+  :root[data-theme="dark"]{
+    --bg: #090c13;
+    --bg-soft: #0d111b;
+    --card-solid: #131928;
+    --card-border: rgba(255,255,255,0.08);
+    --card-hover: #171e30;
+    --surface-elevated: #1b2338;
+    --text: #eef1f8;
+    --text-dim: #9aa3b8;
+    --text-faint: #6b7488;
+    --accent-2: #c68a4e;
+    --green: #27d9a8;
+    --red: #fb7185;
+    --gold: #fbbf24;
+    --shadow-card: none;
+    --shadow-hover: 0 10px 24px -12px rgba(0,0,0,0.55);
+    --shadow-dropdown: 0 12px 32px -12px rgba(0,0,0,0.55);
+    --shadow-modal: 0 24px 60px -20px rgba(0,0,0,0.6);
+  }
+
   *{ box-sizing: border-box; }
   html, body{ margin:0; height:100%; }
   body{
     background: var(--bg); color: var(--text);
     font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    transition: background-color .18s ease, color .18s ease;
   }
+  /* Todo lo que cambia de color entre temas transiciona parejo -- así
+     el toggle se siente como un "fundido" prolijo en vez de un
+     parpadeo. Los elementos con su propia animación de entrada
+     (modal, dropdowns) no se ven afectados: son propiedades distintas. */
+  .app-shell, .app-sidebar, .sidebar-brand, .sidebar-toggle, .sidebar-nav a,
+  .sidebar-footer, .card, .field-select, .field-input, .btn-primary,
+  .result-box, .alerta-app-box, .switcher-select, .switcher-buscador,
+  .switcher-buscador input, .switcher-opcion, .theme-toggle{
+    transition: background-color .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease;
+  }
+
   .app-shell{ display:flex; min-height:100vh; }
 
   .app-sidebar{
@@ -49,7 +151,7 @@
     border-right: 1px solid var(--card-border);
     display:flex; flex-direction:column;
     position: sticky; top:0; align-self:flex-start; height:100vh;
-    transition: width .18s ease;
+    transition: width .18s ease, background-color .18s ease, border-color .18s ease;
     overflow: hidden;
   }
   .app-sidebar.collapsed{ width: var(--sidebar-w-collapsed); }
@@ -63,10 +165,11 @@
   }
   .sidebar-brand .logo{
     width:32px; height:32px; border-radius:9px; flex-shrink:0;
-    background: var(--accent); /* plano, no degradado -- ver nota "Cobre & Grafito" arriba */
+    background: var(--accent); /* plano, no degradado -- identidad "Cobre & Grafito" */
     display:flex; align-items:center; justify-content:center;
-    font-size:16px;
+    color:#fff;
   }
+  .sidebar-brand .logo svg{ width:18px; height:18px; }
   .sidebar-brand span{ font-weight:700; font-size:14.5px; white-space:nowrap; }
   .app-sidebar.collapsed .sidebar-brand span{ display:none; }
 
@@ -76,33 +179,29 @@
     background: var(--card-solid); border:1px solid var(--card-border);
     color: var(--text-dim); cursor:pointer; z-index:5;
     display:flex; align-items:center; justify-content:center;
-    font-size:12px; line-height:1;
+    box-shadow: var(--shadow-card);
+    transition: background-color .15s ease, color .15s ease, transform .15s ease;
   }
-  .sidebar-toggle:hover{ color:#fff; background:var(--card-hover); }
+  .sidebar-toggle svg{ width:13px; height:13px; transition: transform .18s ease; }
+  .app-sidebar.collapsed .sidebar-toggle svg{ transform: rotate(180deg); }
+  .sidebar-toggle:hover{ color: var(--text); background:var(--card-hover); }
 
   .sidebar-nav{ flex:1; padding: 14px 10px; overflow-y:auto; overflow-x:hidden; }
   .sidebar-nav a{
     display:flex; align-items:center; gap:12px;
-    padding:10px 12px; margin-bottom:4px; border-radius:9px;
+    padding:10px 12px; margin-bottom:2px; border-radius:10px;
     color: var(--text-dim); text-decoration:none; font-size:13.5px;
     white-space:nowrap;
+    transition: background-color .15s ease, color .15s ease;
   }
   .sidebar-nav a svg{ width:18px; height:18px; flex-shrink:0; color: inherit; }
-  .sidebar-nav a:hover{ background: var(--card-hover); color:#fff; }
+  .sidebar-nav a:hover{ background: var(--card-hover); color: var(--text); }
   .sidebar-nav a.active{
     background: var(--card-solid); color: var(--accent-2); font-weight:600;
     box-shadow: inset 3px 0 0 var(--accent-2);
   }
   .app-sidebar.collapsed .sidebar-nav a{ justify-content:center; }
   .app-sidebar.collapsed .sidebar-nav a span{ display:none; }
-  /* Bug real (reporte usuario 2026-09-08 punto 4): el botón "Cuenta" del
-     final del nav está pensado EXCLUSIVAMENTE para mobile (ver su
-     comentario y el @media max-width:720px más abajo, que es el único
-     lugar que le pone `display:flex`) -- pero nunca tuvo un `display:none`
-     por defecto acá arriba, así que en desktop/tablet caía en el
-     `display: inline-block` de un <button> sin estilos y aparecía suelto
-     al final del menú lateral, sin ningún propósito (en esos anchos el
-     footer de abajo ya está siempre visible). */
   .sidebar-nav-account-toggle{ display:none; }
 
   .sidebar-footer{
@@ -114,16 +213,50 @@
   .app-sidebar.collapsed .sidebar-footer .full-text{ display:none; }
   .app-sidebar.collapsed .sidebar-footer .dot-text{ display:inline; }
   .sidebar-footer .dot-text{ display:none; }
-  /* Flecha propia para los <select> -- la del sistema operativo se ve
-     inconsistente (y a veces torcida) sobre fondo oscuro según el
-     navegador, así que la reemplazamos por una nuestra, siempre igual. */
+
+  /* Interruptor de tema -- vive en el pie del menú, junto a los datos
+     de la cuenta. Sol/luna en un solo <svg> (dos grupos, se muestra
+     uno u otro según el tema activo -- sin JS que arme markup nuevo). */
+  .theme-toggle{
+    display:flex; align-items:center; gap:8px; width:100%;
+    margin: 10px 0 12px; padding: 8px 10px; border-radius: 9px;
+    background: var(--card-solid); border:1px solid var(--card-border);
+    color: var(--text-dim); font-family:inherit; font-size:11.5px; font-weight:600;
+    cursor:pointer;
+  }
+  .theme-toggle:hover{ background: var(--card-hover); color: var(--text); }
+  .theme-toggle svg{ width:15px; height:15px; flex-shrink:0; }
+  .theme-toggle .icon-luna{ display:none; }
+  :root[data-theme="light"] .theme-toggle .icon-sol{ display:none; }
+  :root[data-theme="light"] .theme-toggle .icon-luna{ display:block; }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]) .theme-toggle .icon-sol{ display:none; }
+    :root:not([data-theme="dark"]) .theme-toggle .icon-luna{ display:block; }
+  }
+  .app-sidebar.collapsed .theme-toggle span{ display:none; }
+  .app-sidebar.collapsed .theme-toggle{ justify-content:center; }
+
   .switcher-select, .field-select{
     appearance: none; -webkit-appearance: none; -moz-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238d96ab' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239aa3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 10px center;
     background-size: 14px;
     padding-right: 30px;
+  }
+  /* El SVG de la flecha de arriba va incrustado como texto (data-URI) --
+     su color queda fijo en el momento en que el navegador arma el
+     background-image, no puede leer variables CSS. Le damos una
+     versión con trazo oscuro para fondos claros. */
+  :root[data-theme="light"] .switcher-select,
+  :root[data-theme="light"] .field-select{
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235b6472' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]) .switcher-select,
+    :root:not([data-theme="dark"]) .field-select{
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235b6472' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    }
   }
 
   .switcher-select{
@@ -131,22 +264,10 @@
     background-color: var(--card-solid); color: var(--text);
     border:1px solid var(--card-border); border-radius:6px;
   }
-  /* El trigger (más de 5 cuentas) es un <button> pero se ve IDÉNTICO al
-     <select> de siempre -- reusa .switcher-select (mismo fondo/flecha
-     de fondo) y solo ajusta lo que un <button> no hereda por defecto
-     (texto centrado, cursor). Su propio <svg> de flecha queda oculto:
-     la de fondo de .switcher-select ya alcanza. */
   .switcher-trigger{ display:block; text-align:left; cursor:pointer; }
   .switcher-trigger svg{ display:none; }
-  .switcher-trigger[hidden]{ display:none; } /* [hidden] del navegador pierde contra el display:block de arriba sin esto */
+  .switcher-trigger[hidden]{ display:none; }
 
-  /* Buscador de "Viendo perfil de" -- solo aparece con más de 5 cuentas
-     (ver el <select> simple arriba para 5 o menos), y solo mientras el
-     trigger de arriba está desplegado (JS). Una sola caja (buscador +
-     lista fusionados, mismo fondo/borde) -- la lista recortada a
-     exactamente 2 filas de alto (scrollea para ver el resto) para que
-     el conjunto completo (buscador + 2 filas) ocupe lo mismo que 3
-     opciones de un <select>. */
   .switcher-buscador{
     border:1px solid var(--card-border); border-radius:6px; overflow:hidden;
     background-color: var(--card-solid);
@@ -158,9 +279,6 @@
     outline:none; -webkit-appearance:none; appearance:none;
   }
   .switcher-buscador input::placeholder{ color: var(--text-faint); }
-  /* Chrome ignora background-color en un input que decide autocompletar
-     (a veces incluso con autocomplete="off") y lo pinta blanco -- este
-     es el único override que de verdad lo evita. */
   .switcher-buscador input:-webkit-autofill,
   .switcher-buscador input:-webkit-autofill:hover,
   .switcher-buscador input:-webkit-autofill:focus{
@@ -168,7 +286,7 @@
     -webkit-text-fill-color: var(--text) !important;
     caret-color: var(--text);
   }
-  .switcher-lista{ max-height:56px; overflow-y:auto; } /* 56px = 2 filas de 28px */
+  .switcher-lista{ max-height:56px; overflow-y:auto; }
   .switcher-opcion{
     display:block; box-sizing:border-box; width:100%; height:28px; line-height:28px;
     padding:0 8px; text-align:left; font-size:11.5px; font-family:inherit;
@@ -176,40 +294,37 @@
     background-color: var(--card-solid); background-image:none; border:none;
     color: var(--text-dim); cursor:pointer; -webkit-appearance:none; appearance:none;
   }
-  .switcher-opcion:hover{ background-color: var(--card-hover); color:#fff; }
+  .switcher-opcion:hover{ background-color: var(--card-hover); color: var(--text); }
   .switcher-opcion.activa{ color: var(--accent-2); font-weight:600; }
   .switcher-opcion[hidden]{ display:none; }
 
   .app-main{ flex:1; min-width:0; }
 
-  /* Ícono de "mi perfil" -- fijo, aparece en todas las páginas, siempre
-     representa a QUIEN INICIÓ SESIÓN (no al perfil que un admin esté
-     viendo, para no confundir "mi cuenta" con la de otro). */
   .profile-icon{
     position: fixed; top: 16px; right: 20px; z-index: 200;
     width: 38px; height: 38px; border-radius: 50%;
-    background: var(--accent); /* plano, no degradado -- ver nota "Cobre & Grafito" arriba */
+    background: var(--accent); /* plano, no degradado -- identidad "Cobre & Grafito" */
     color: #fff; display:flex; align-items:center; justify-content:center;
     font-weight:700; font-size:15px; text-decoration:none;
     border: 2px solid var(--bg-soft);
     box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+    transition: filter .15s ease, transform .15s ease;
   }
-  .profile-icon:hover{ filter: brightness(1.12); }
+  .profile-icon:hover{ filter: brightness(1.12); transform: translateY(-1px); }
   @media (max-width: 720px){
     .profile-icon{ top: 10px; right: 10px; width: 32px; height: 32px; font-size: 13px; }
   }
 
-  /* ---- Estilos compartidos por las páginas de formulario (Registrar
-     movimiento, Cargar extractos) -- un solo lugar, no duplicado ---- */
   .page-wrap{ max-width: 1200px; margin: 0 auto; padding: 32px 28px 60px; }
   .page-header h1{ font-size: 24px; margin: 0 0 6px; }
   .page-header p{ margin:0; color: var(--text-dim); font-size: 13.5px; max-width: 640px; }
 
   .card{
-    background: linear-gradient(180deg, var(--card-solid), #10141f);
+    background: var(--card-solid);
     border: 1px solid var(--card-border);
     border-radius: 16px;
     padding: 24px;
+    box-shadow: var(--shadow-card);
   }
 
   .field-label{ display:block; font-size: 12.5px; color: var(--text-dim); margin: 18px 0 6px; font-weight:600; }
@@ -219,88 +334,90 @@
     background-color: var(--bg-soft); color: var(--text);
     border: 1px solid var(--card-border); border-radius: 10px;
     font-family: inherit;
+    transition: border-color .15s ease, box-shadow .15s ease;
   }
-  .field-select:focus, .field-input:focus{ outline:none; border-color: var(--accent); }
-  .field-select{ padding-right: 30px; } /* deja lugar para la flecha propia, sin que la pise el padding de arriba */
+  .field-select:focus, .field-input:focus{
+    outline:none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+  .field-select{ padding-right: 30px; }
   .field-row{ display:grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
   .btn-primary{
     margin-top: 20px; padding: 11px 24px; border-radius: 10px; border:none;
-    background: var(--accent); /* plano, no degradado -- ver nota "Cobre & Grafito" arriba */
+    background: var(--accent); /* plano, no degradado -- identidad "Cobre & Grafito" */
     color:#fff; font-weight:700; font-size:13.5px; cursor:pointer;
     font-family: inherit;
+    transition: filter .15s ease, transform .1s ease, box-shadow .15s ease;
   }
-  .btn-primary:hover{ filter: brightness(1.08); }
-  .btn-primary:disabled{ opacity:.5; cursor:not-allowed; }
+  .btn-primary:hover{ filter: brightness(1.08); box-shadow: var(--shadow-hover); }
+  .btn-primary:active{ transform: translateY(1px); }
+  .btn-primary:disabled{ opacity:.5; cursor:not-allowed; transform:none; box-shadow:none; }
 
   .result-box{
     margin-top: 18px; padding: 12px 14px; border-radius: 10px;
     font-size: 13px; border-left: 3px solid var(--text-faint);
     background: var(--bg-soft); white-space:pre-line;
+    animation: resultBoxIn .16s ease;
   }
-  .result-box.ok{ border-left-color:#34d399; color:#34d399; }
-  .result-box.error{ border-left-color:#f87171; color:#f87171; }
+  @keyframes resultBoxIn{ from{ opacity:0; transform:translateY(-3px); } to{ opacity:1; transform:translateY(0); } }
+  .result-box.ok{ border-left-color: var(--green); color: var(--green); }
+  .result-box.error{ border-left-color: var(--red); color: var(--red); }
   .result-box.loading{ border-left-color: var(--accent-2); color: var(--text-dim); }
-
-  /* ---- Modal global de alertas/confirmaciones (2026-09-10) ----
-     Reemplaza alert()/confirm() nativos (sin estilo propio, y el
-     navegador los puede autocompletar/cerrar de formas raras) y unifica
-     el "resultado ok/error" que cada página venía mostrando en su propio
-     result-box -- esos avisos se podían perder si algo disparaba un
-     location.reload() antes de que el usuario alcanzara a leerlos (bug
-     real reportado 2026-09-10 con el botón "Sincronizar ahora" de la
-     sección de correo). Este modal NUNCA se cierra solo: solo por click en el botón
-     centrado, la "X", clic afuera o Escape -- ver mostrarAlertaApp()/
-     confirmarApp() al final de este archivo. El "loading" transitorio de
-     cada formulario se queda igual que antes (inline, no es una alerta
-     que haga falta confirmar). */
-  .alerta-app-overlay{
-    display:none; position:fixed; inset:0; background:rgba(5,7,12,0.78);
-    z-index:1000; align-items:center; justify-content:center; padding:24px;
+  /* Spinner del estado "cargando" -- reemplaza el texto suelto por un
+     indicador visual, más moderno y más claro de leer de un vistazo. */
+  .result-box.loading{ display:flex; align-items:center; gap:10px; }
+  .result-box.loading::before{
+    content:""; flex-shrink:0; width:14px; height:14px; border-radius:50%;
+    border:2px solid var(--card-border); border-top-color: var(--accent-2);
+    animation: girar .7s linear infinite;
   }
+  @keyframes girar{ to{ transform: rotate(360deg); } }
+
+  /* ---- Modal global de alertas/confirmaciones ---- */
+  .alerta-app-overlay{
+    display:none; position:fixed; inset:0; background:rgba(5,7,12,0.6);
+    backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    z-index:1000; align-items:center; justify-content:center; padding:24px;
+    animation: alertaAppFondoIn .16s ease;
+  }
+  @keyframes alertaAppFondoIn{ from{ opacity:0; } to{ opacity:1; } }
   .alerta-app-overlay.abierto{ display:flex; }
   .alerta-app-box{
     position:relative; max-width:400px; width:100%;
-    /* Superficie elevada (2026-09-10): antes degradaba hacia #10141f, MÁS
-       oscuro que --card-solid -- al revés de "lo más cerca se ve más
-       claro" (ver --surface-elevated arriba). El modal es la superficie
-       más flotante de toda la pila, así que ahora es la más clara. */
-    background: linear-gradient(180deg, var(--surface-elevated), var(--card-solid));
+    background: var(--surface-elevated);
     border:1px solid var(--card-border); border-radius:18px; padding:34px 28px 24px;
-    text-align:center; box-shadow: 0 24px 60px -20px rgba(0,0,0,0.6);
-    animation: alertaAppPop .18s ease;
+    text-align:center; box-shadow: var(--shadow-modal);
+    animation: alertaAppPop .18s cubic-bezier(.2,.9,.3,1.2);
   }
   @keyframes alertaAppPop{ from{ transform:scale(.94); opacity:0; } to{ transform:scale(1); opacity:1; } }
   .alerta-app-cerrar{
     position:absolute; top:12px; right:12px; width:28px; height:28px; border-radius:50%;
-    border:none; background:var(--bg-soft); color:var(--text-dim); cursor:pointer; font-size:13px;
+    border:none; background:var(--bg-soft); color:var(--text-dim); cursor:pointer;
     display:flex; align-items:center; justify-content:center; font-family:inherit;
+    transition: background-color .15s ease, color .15s ease;
   }
-  .alerta-app-cerrar:hover{ background:var(--card-hover); color:#fff; }
+  .alerta-app-cerrar svg{ width:13px; height:13px; }
+  .alerta-app-cerrar:hover{ background:var(--card-hover); color: var(--text); }
   .alerta-app-icono{
-    width:52px; height:52px; border-radius:50%; margin:0 auto 16px;
-    display:flex; align-items:center; justify-content:center; font-size:24px; font-weight:700;
+    width:56px; height:56px; border-radius:50%; margin:0 auto 16px;
+    display:flex; align-items:center; justify-content:center;
   }
-  .alerta-app-icono.ok{ background:rgba(52,211,153,0.14); color:#34d399; }
-  .alerta-app-icono.error{ background:rgba(248,113,113,0.14); color:#f87171; }
-  .alerta-app-icono.confirmar{ background:rgba(251,191,36,0.14); color:#fbbf24; }
+  .alerta-app-icono svg{ width:26px; height:26px; }
+  .alerta-app-icono.ok{ background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--green); }
+  .alerta-app-icono.error{ background: color-mix(in srgb, var(--red) 16%, transparent); color: var(--red); }
+  .alerta-app-icono.confirmar{ background: color-mix(in srgb, var(--gold) 16%, transparent); color: var(--gold); }
   .alerta-app-mensaje{ margin:0 0 24px; font-size:14px; color:var(--text); line-height:1.55; white-space:pre-line; }
   .alerta-app-botones{ display:flex; gap:10px; justify-content:center; }
   .alerta-app-botones .btn-primary{ margin-top:0; flex:1; max-width:160px; }
-  /* No depende de .btn-secundario (esa clase la define cada página que
-     la necesita en su propio <style>, no vive acá en base.html) -- este
-     modal aparece en TODAS las páginas, así que su botón "Cancelar"
-     necesita su propio estilo autocontenido. */
   .alerta-app-btn-secundario{
     flex:1; max-width:160px; padding: 11px 20px; border-radius: 10px;
     border:1px solid var(--card-border); background: var(--bg-soft); color: var(--text);
     font-weight:600; font-size:13.5px; cursor:pointer; font-family: inherit;
+    transition: background-color .15s ease;
   }
   .alerta-app-btn-secundario:hover{ background: var(--card-hover); }
 
-  /* Pantallas chicas (celular/tablet en vertical): el menú lateral pasa a
-     ser una barra inferior fija, tipo app nativa -- nada de sidebar de
-     226px comiéndose la pantalla. */
   @media (max-width: 720px){
     .app-shell{ flex-direction: column; }
     .app-sidebar, .app-sidebar.collapsed{
@@ -310,16 +427,6 @@
       z-index: 100;
     }
     .sidebar-brand{ display: none; }
-    /* QA 2026-09-06/07: .sidebar-nav medía scrollWidth=506px contra un
-       viewport de 375px ("Crear usuario" cortado y "Ocultar vistas"
-       directamente fuera de pantalla, SIN scroll para alcanzarlo --
-       overflow-x era "visible", no "auto"). flex-wrap deja que los ítems
-       que no entran en una fila bajen a una segunda en vez de desbordar
-       horizontalmente. La altura de la barra ya no es un número fijo:
-       ver --mobile-nav-h (JS al final del archivo), que la recalcula
-       cada vez que el contenido de la barra cambia de alto (1 fila vs 2,
-       admin vs no-admin) para que el padding del contenido y el alto del
-       iframe siempre coincidan con la barra real. */
     .sidebar-nav{
       display: flex; flex-direction: row; flex-wrap: wrap; padding: 6px 8px;
       justify-content: center; column-gap: 4px; row-gap: 2px; overflow: visible;
@@ -329,46 +436,32 @@
       padding: 6px 10px; font-size: 10.5px; margin-bottom: 0;
     }
     .sidebar-nav a span, .sidebar-nav-account-toggle span{ display: block !important; white-space: nowrap; }
-    .sidebar-nav a.nav-cargar{ display: none !important; } /* subir archivos desde el celular no es el caso de uso -- solo queda Dashboard */
-    .sidebar-nav a.nav-correo{ display: none !important; } /* configurar IMAP/contraseñas de aplicación desde el celular tampoco */
+    .sidebar-nav a.nav-cargar{ display: none !important; }
+    .sidebar-nav a.nav-correo{ display: none !important; }
 
-    /* Botón "Cuenta" -- solo existe en mobile (en desktop/tablet el
-       footer de abajo ya está siempre visible). Se ve igual que los
-       demás ítems de la barra inferior. */
     .sidebar-nav-account-toggle{
       display: flex; background: none; border: none; cursor: pointer;
       color: var(--text-dim); font-family: inherit; border-radius: 9px;
     }
     .sidebar-nav-account-toggle svg{ width: 18px; height: 18px; flex-shrink: 0; }
     .sidebar-nav-account-toggle:hover,
-    .sidebar-nav-account-toggle[aria-expanded="true"]{ background: var(--card-hover); color: #fff; }
+    .sidebar-nav-account-toggle[aria-expanded="true"]{ background: var(--card-hover); color: var(--text); }
 
-    /* QA 2026-09-06/07: .sidebar-footer se ocultaba ENTERO (display:none)
-       por debajo de 720px, y con él "Cerrar sesión" y "Viendo perfil de"
-       -- un admin en el celular no tenía NINGUNA forma de cerrar sesión
-       ni cambiar de perfil. En vez de ocultarlo, se convierte en un panel
-       flotante que abre/cierra el botón "Cuenta" de la barra inferior
-       (mismo contenido de siempre, sin duplicar el markup del servidor).
-       Arranca fuera de pantalla (translateY) en vez de con display:none
-       para poder animar la entrada/salida. */
     .sidebar-footer{
       position: fixed; left: 8px; right: 8px;
       bottom: calc(var(--mobile-nav-h, 62px) + 8px);
       background: var(--card-solid); border: 1px solid var(--card-border);
-      border-radius: 14px; box-shadow: 0 -6px 20px rgba(0,0,0,0.4);
+      border-radius: 14px; box-shadow: var(--shadow-dropdown);
       padding: 14px 16px; white-space: normal; overflow: visible;
       transform: translateY(calc(100% + 24px)); opacity: 0; pointer-events: none;
       transition: transform .18s ease, opacity .18s ease;
       z-index: 150;
     }
     .sidebar-footer.abierto{ transform: translateY(0); opacity: 1; pointer-events: auto; }
-    /* El estado "collapsed" del sidebar (desktop) no tiene sentido acá --
-       si alguien colapsó el menú en desktop y después achica la ventana,
-       el panel mobile no puede quedarse mostrando solo el "●". */
     .sidebar-footer .full-text{ display: block !important; }
     .sidebar-footer .dot-text{ display: none !important; }
 
-    .app-main{ padding-bottom: calc(var(--mobile-nav-h, 62px) + 4px); } /* deja ver el contenido por encima de la barra */
+    .app-main{ padding-bottom: calc(var(--mobile-nav-h, 62px) + 4px); }
     .app-main iframe{ height: calc(100vh - var(--mobile-nav-h, 62px) - 4px) !important; }
   }
 </style>
@@ -379,9 +472,15 @@
 <div class="app-shell">
   <nav class="app-sidebar" id="appSidebar">
     <div class="sidebar-brand">
-      <div class="logo">💰</div>
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+        </svg>
+      </div>
       <span>Finanzas</span>
-      <button class="sidebar-toggle" id="sidebarToggle" title="Colapsar/expandir menú">‹</button>
+      <button class="sidebar-toggle" id="sidebarToggle" title="Colapsar/expandir menú">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </button>
     </div>
 
     <div class="sidebar-nav">
@@ -444,9 +543,6 @@
         <span>Ocultar vistas</span>
       </a>
       {% endif %}
-      <!-- Solo visible en mobile (ver @media max-width:720px) -- abre el
-           panel de abajo (#appSidebarFooter), que en mobile deja de ser
-           un footer siempre visible y pasa a ser un panel flotante. -->
       <button type="button" class="sidebar-nav-account-toggle" id="mobileAccountToggle"
               aria-haspopup="true" aria-expanded="false" aria-controls="appSidebarFooter">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -458,17 +554,20 @@
     </div>
 
     <div class="sidebar-footer" id="appSidebarFooter">
+      <button type="button" class="theme-toggle full-text" id="themeToggle" title="Cambiar tema">
+        <svg class="icon-sol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"></circle>
+          <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+        </svg>
+        <svg class="icon-luna" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path>
+        </svg>
+        <span>Cambiar tema</span>
+      </button>
       {% if usuario_rol == 'admin' and usuarios_disponibles|length > 1 %}
       <div class="full-text" style="margin-bottom:8px;">
         <label style="display:block; font-size:10.5px; color:var(--text-faint); margin-bottom:3px;">Viendo perfil de</label>
         {% if usuarios_disponibles|length > 5 %}
-        <!-- Más de 5 cuentas: cerrado se ve IGUAL que el <select> simple
-             de abajo (nombre actual + flecha) -- al hacer click se
-             despliega en su lugar el buscador + lista filtrable (2
-             filas visibles, scroll para el resto). La cuenta propia
-             del admin siempre aparece primero (ver
-             auth.py::inyectar_globales), así que sigue siendo fácil
-             volver a la propia aunque la lista crezca mucho. -->
         <button type="button" class="switcher-select switcher-trigger" id="switcherTrigger">
           <span>{{ usuario_viendo_nombre }}</span>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
@@ -507,14 +606,11 @@
   </div>
 </div>
 
-<!-- Modal global de alertas/confirmaciones -- ver mostrarAlertaApp()/
-     confirmarApp() en el <script> de abajo y su comentario en el CSS de
-     arriba. Vive una sola vez acá porque TODAS las páginas que arman
-     esta plantilla lo comparten (el Dashboard es la excepción: corre
-     dentro de un <iframe>, documento aparte -- tiene su propia copia). -->
 <div class="alerta-app-overlay" id="alertaAppOverlay" role="alertdialog" aria-modal="true">
   <div class="alerta-app-box">
-    <button type="button" class="alerta-app-cerrar" id="alertaAppCerrar" aria-label="Cerrar">✕</button>
+    <button type="button" class="alerta-app-cerrar" id="alertaAppCerrar" aria-label="Cerrar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+    </button>
     <div class="alerta-app-icono" id="alertaAppIcono"></div>
     <p class="alerta-app-mensaje" id="alertaAppMensaje"></p>
     <div class="alerta-app-botones">
@@ -531,10 +627,7 @@
   let colapsado = false;
   try { colapsado = localStorage.getItem('finanzas_sidebar_colapsado') === '1'; } catch(e) {}
 
-  const aplicar = () => {
-    sidebar.classList.toggle('collapsed', colapsado);
-    toggle.textContent = colapsado ? '›' : '‹';
-  };
+  const aplicar = () => { sidebar.classList.toggle('collapsed', colapsado); };
   aplicar();
 
   toggle.addEventListener('click', () => {
@@ -544,19 +637,10 @@
   });
 })();
 
-// El Dashboard vive adentro de un <iframe> (mismo origen -- ver
-// templates/dashboard.html) que es un documento APARTE: un click ahí
-// adentro NUNCA burbujea al `document` de esta página de afuera. Todo
-// panel flotante de este archivo (buscador de "Viendo perfil de", panel
-// de cuenta en mobile) que necesite cerrarse "al hacer click afuera"
-// tiene que enganchar el mismo handler también en el documento del
-// iframe (accesible por ser mismo origen) o se queda abierto para
-// siempre en cuanto el usuario toca el dashboard. Un solo helper acá
-// para no repetir esa mecánica en cada panel.
 function alHacerClickEnCualquierDocumento(handler) {
   document.addEventListener('click', handler);
   function enganchar(frame) {
-    try { frame.contentDocument.addEventListener('click', handler); } catch (e) {} // si algún día deja de ser mismo origen, no romper nada por esto
+    try { frame.contentDocument.addEventListener('click', handler); } catch (e) {}
   }
   document.querySelectorAll('.app-main iframe').forEach((frame) => {
     if (frame.contentDocument && frame.contentDocument.readyState === 'complete') enganchar(frame);
@@ -564,13 +648,57 @@ function alHacerClickEnCualquierDocumento(handler) {
   });
 }
 
-// Buscador de "Viendo perfil de" (solo existe en el DOM con más de 5
-// cuentas -- ver base.html arriba). Filtra la lista por substring
-// (sin distinguir mayúsculas) y, al elegir una, manda el form.
+// Interruptor de tema claro/oscuro (2026-09-11). Guarda la elección en
+// localStorage (misma clave que lee el script anti-flash del <head>) y
+// la refleja también adentro del <iframe> del Dashboard -- es un
+// documento aparte con su PROPIO <html>, así que necesita que se lo
+// digamos explícitamente (mismo mecanismo de "mismo origen" que ya usa
+// alHacerClickEnCualquierDocumento de arriba). El Dashboard además
+// escucha window.__aplicarTemaFinanzas__ (si existe) para poder
+// re-pintar sus gráficos de Chart.js, que no son CSS y no cambian solos.
+(function(){
+  const boton = document.getElementById('themeToggle');
+  if (!boton) return;
+
+  function temaActual() {
+    const guardado = document.documentElement.getAttribute('data-theme');
+    if (guardado === 'light' || guardado === 'dark') return guardado;
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+
+  function aplicarEnIframes(tema) {
+    document.querySelectorAll('.app-main iframe').forEach((frame) => {
+      try {
+        frame.contentDocument.documentElement.setAttribute('data-theme', tema);
+        if (typeof frame.contentWindow.__aplicarTemaFinanzas__ === 'function') {
+          frame.contentWindow.__aplicarTemaFinanzas__(tema);
+        }
+      } catch (e) {} // si algún día deja de ser mismo origen, no romper nada por esto
+    });
+  }
+
+  boton.addEventListener('click', () => {
+    const nuevo = temaActual() === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', nuevo);
+    try { localStorage.setItem('finanzas_theme', nuevo); } catch(e) {}
+    aplicarEnIframes(nuevo);
+  });
+
+  // El iframe del Dashboard puede terminar de cargar DESPUÉS de este
+  // script (documento aparte, su propia carga) -- si el usuario ya
+  // había elegido tema, hay que empujárselo apenas esté listo, no solo
+  // en el próximo click del interruptor.
+  document.querySelectorAll('.app-main iframe').forEach((frame) => {
+    const empujar = () => aplicarEnIframes(temaActual());
+    if (frame.contentDocument && frame.contentDocument.readyState === 'complete') empujar();
+    frame.addEventListener('load', empujar);
+  });
+})();
+
 (function(){
   const trigger = document.getElementById('switcherTrigger');
   const buscador = document.getElementById('buscadorViendoPerfil');
-  if (!trigger || !buscador) return; // 5 cuentas o menos: se usa el <select> simple, nada que hacer acá
+  if (!trigger || !buscador) return;
 
   const panel = document.getElementById('switcherBuscador');
   const lista = document.getElementById('listaViendoPerfil');
@@ -592,8 +720,6 @@ function alHacerClickEnCualquierDocumento(handler) {
 
   trigger.addEventListener('click', (e) => { e.stopPropagation(); abrir(); });
 
-  // Click afuera de la caja (sin elegir nada, ya sea en esta página o
-  // dentro del iframe del dashboard) -- vuelve al estado cerrado.
   alHacerClickEnCualquierDocumento((e) => {
     if (!panel.hidden && !panel.contains(e.target) && e.target !== trigger) cerrar();
   });
@@ -611,20 +737,11 @@ function alHacerClickEnCualquierDocumento(handler) {
   opciones.forEach(op => {
     op.addEventListener('click', () => {
       inputId.value = op.dataset.id;
-      form.submit(); // recarga la página igual que el <select> simple -- no hace falta "cerrar" a mano
+      form.submit();
     });
   });
 })();
 
-// Panel de cuenta en mobile (botón "Cuenta" de la barra inferior --
-// ver @media max-width:720px arriba). Por debajo de 720px
-// .sidebar-footer deja de ser un footer siempre visible (no hay
-// espacio) y pasa a ser este panel flotante -- con el MISMO markup que
-// ya renderiza el servidor (nombre+modo, selector "Viendo perfil de" si
-// aplica, Cerrar sesión), nada se duplica: solo se muestra/oculta.
-// QA 2026-09-06/07: antes .sidebar-footer tenía display:none fijo en
-// mobile y con él desaparecían "Cerrar sesión" y el switcher sin ningún
-// reemplazo -- un admin en el celular no podía cerrar sesión.
 (function(){
   const toggle = document.getElementById('mobileAccountToggle');
   const panel = document.getElementById('appSidebarFooter');
@@ -653,14 +770,6 @@ function alHacerClickEnCualquierDocumento(handler) {
   });
 })();
 
-// Alto real de la barra inferior en mobile -- puede variar (1 fila si
-// entran todos los ítems, 2 si flex-wrap los apila por tener más ítems
-// -- admin ve "Crear usuario"/"Ocultar vistas" de más, ver QA
-// 2026-09-06/07 arriba). --mobile-nav-h alimenta el padding-bottom de
-// .app-main, el alto del iframe y en qué "piso" flota el panel de
-// cuenta -- todo eso necesita el número real, no un valor fijo
-// hardcodeado que se desactualiza en cuanto cambia la cantidad de
-// ítems del menú.
 (function(){
   const sidebar = document.getElementById('appSidebar');
   const actualizar = () => {
@@ -669,21 +778,14 @@ function alHacerClickEnCualquierDocumento(handler) {
   if (window.ResizeObserver) {
     new ResizeObserver(actualizar).observe(sidebar);
   } else {
-    window.addEventListener('resize', actualizar); // navegador muy viejo sin ResizeObserver
+    window.addEventListener('resize', actualizar);
   }
   actualizar();
 })();
 
-// --- Modal global de alertas/confirmaciones (ver comentario en el CSS y
-// en el <div id="alertaAppOverlay"> de arriba) --------------------------
-// mostrarAlertaApp(tipo, mensaje) reemplaza los result-box de ok/error
-// que cada página mostraba a mano (loading se queda como estaba, no es
-// una alerta). confirmarApp(mensaje) reemplaza confirm() nativo. Las dos
-// devuelven una Promise que solo se resuelve cuando el usuario elige un
-// botón, la "X", clic afuera o Escape -- nunca solas con un timer.
 (function(){
   const overlay = document.getElementById('alertaAppOverlay');
-  if (!overlay) return; // no debería pasar -- esta plantilla siempre lo incluye
+  if (!overlay) return;
   const icono = document.getElementById('alertaAppIcono');
   const mensajeEl = document.getElementById('alertaAppMensaje');
   const btnOk = document.getElementById('alertaAppOk');
@@ -700,21 +802,22 @@ function alHacerClickEnCualquierDocumento(handler) {
   btnCerrar.addEventListener('click', () => cerrar(false));
   btnOk.addEventListener('click', () => cerrar(true));
   btnCancelar.addEventListener('click', () => cerrar(false));
-  // Mismo enganche que el resto de paneles flotantes de este archivo --
-  // hace falta también en el contentDocument del iframe del Dashboard
-  // para que un clic ahí adentro cierre este modal si estuviera abierto
-  // encima (en la práctica el Dashboard no lo usa, tiene el suyo propio,
-  // pero no cuesta nada dejarlo consistente).
   alHacerClickEnCualquierDocumento((e) => { if (e.target === overlay) cerrar(false); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay.classList.contains('abierto')) cerrar(false); });
 
-  const ICONOS = { ok: '✓', error: '✕', confirmar: '?' };
+  // Iconos SVG en vez de glifos de texto sueltos (reskin 2026-09-11) --
+  // mismo lenguaje visual (trazo, sin relleno) que el resto de la app.
+  const ICONOS = {
+    ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>',
+    error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>',
+    confirmar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 1.7-2.2 1.8-2.5 3.5"></path><circle cx="12" cy="17" r="0.4" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="9"></circle></svg>'
+  };
 
   function abrir({ tipo, mensaje, textoBoton, conCancelar }) {
     return new Promise((resolve) => {
       resolverActual = resolve;
       icono.className = 'alerta-app-icono ' + tipo;
-      icono.textContent = ICONOS[tipo] || 'ℹ';
+      icono.innerHTML = ICONOS[tipo] || '';
       mensajeEl.textContent = mensaje;
       btnOk.textContent = textoBoton || (conCancelar ? 'Confirmar' : 'Ok');
       btnCancelar.hidden = !conCancelar;
