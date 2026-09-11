@@ -876,3 +876,75 @@ def test_procesar_cuenta_sin_aplicar_no_toca_la_bd(correo_ctx, monkeypatch):
         conn.close()
     fila = config_de(id_maria)
     assert fila["ultima_corrida_ok"] is None
+
+
+def test_procesar_cuenta_con_aplicar_guarda_el_detalle_tecnico_de_la_corrida(correo_ctx, monkeypatch):
+    """2026-09-10 -- 'Última corrida' ahora guarda, además de ok/error, el
+    detalle de qué encontró/insertó esta corrida puntual (ver
+    db_finanzas.py::actualizar_estado_correo). Se verifica acá, no solo en
+    test_db_correo_config.py, porque es procesar_cuenta() quien arma el
+    contenido real del diccionario (categorías, duplicados, muestra de
+    movimientos) -- la capa de datos solo lo serializa tal cual."""
+    import json
+
+    id_maria = crear_usuario("maria")
+    crear_config(id_maria)
+    config = config_de(id_maria)
+
+    monkeypatch.setattr(lc, "buscar_movimientos_correo", lambda dias, config: list(MOVIMIENTOS_PRUEBA))
+
+    lc.procesar_cuenta(config, dias=7, aplicar=True)
+
+    fila = config_de(id_maria)
+    assert fila["ultima_corrida_ok"] == 1
+    detalle = json.loads(fila["ultima_corrida_detalle"])
+    assert detalle["dias_revisados"] == 7
+    assert detalle["correos_encontrados"] == 2
+    assert detalle["nuevos"] == 2
+    assert detalle["duplicados_bd"] == 0
+    assert detalle["duplicados_lote"] == 0
+    assert detalle["categorias"] == {"supermercado": 1, "salario": 1}
+    assert detalle["duracion_seg"] >= 0
+    assert len(detalle["movimientos"]) == 2
+    assert detalle["movimientos"][0]["descripcion"] == "Compra en EXITO con T.Deb *5360"
+
+
+def test_procesar_cuenta_corrida_repetida_cuenta_los_duplicados_en_el_detalle(correo_ctx, monkeypatch):
+    """Insertar los mismos movimientos dos veces seguidas -- la segunda
+    corrida debe reflejar 0 nuevos y 2 duplicados_bd en su propio
+    detalle (no arrastra los números de la corrida anterior)."""
+    import json
+
+    id_maria = crear_usuario("maria")
+    crear_config(id_maria)
+    config = config_de(id_maria)
+    monkeypatch.setattr(lc, "buscar_movimientos_correo", lambda dias, config: list(MOVIMIENTOS_PRUEBA))
+
+    lc.procesar_cuenta(config, dias=7, aplicar=True)
+    lc.procesar_cuenta(config, dias=7, aplicar=True)
+
+    detalle = json.loads(config_de(id_maria)["ultima_corrida_detalle"])
+    assert detalle["nuevos"] == 0
+    assert detalle["duplicados_bd"] == 2
+
+
+def test_procesar_cuenta_sin_movimientos_guarda_detalle_en_ceros(correo_ctx, monkeypatch):
+    """Sin movimientos encontrados, el detalle no debe reventar (no hay
+    'stats' de insertar_movimientos porque nunca se llama) -- todo en 0,
+    sin categorías ni movimientos."""
+    import json
+
+    id_maria = crear_usuario("maria")
+    crear_config(id_maria)
+    config = config_de(id_maria)
+    monkeypatch.setattr(lc, "buscar_movimientos_correo", lambda dias, config: [])
+
+    lc.procesar_cuenta(config, dias=7, aplicar=True)
+
+    detalle = json.loads(config_de(id_maria)["ultima_corrida_detalle"])
+    assert detalle["correos_encontrados"] == 0
+    assert detalle["nuevos"] == 0
+    assert detalle["duplicados_bd"] == 0
+    assert detalle["duplicados_lote"] == 0
+    assert detalle["categorias"] == {}
+    assert detalle["movimientos"] == []

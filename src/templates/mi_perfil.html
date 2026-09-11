@@ -42,17 +42,16 @@ document.getElementById('formPerfil').addEventListener('submit', async (e) => {
   try {
     const res = await fetch('/api/actualizar-perfil', { method: 'POST', body: datos });
     const json = await res.json();
+    resultado.style.display = 'none';
     if (!res.ok || !json.ok) {
-      resultado.className = 'result-box error';
-      resultado.textContent = '❌ ' + (json.error || 'Error desconocido');
+      await mostrarAlertaApp('error', '❌ ' + (json.error || 'Error desconocido'));
       return;
     }
-    resultado.className = 'result-box ok';
-    resultado.textContent = '✅ Perfil actualizado.';
+    await mostrarAlertaApp('ok', '✅ Perfil actualizado.');
     e.target.querySelector('[name="password"]').value = '';
   } catch (err) {
-    resultado.className = 'result-box error';
-    resultado.textContent = '❌ No se pudo conectar con el servidor.';
+    resultado.style.display = 'none';
+    await mostrarAlertaApp('error', '❌ No se pudo conectar con el servidor.');
   } finally {
     btn.disabled = false;
   }
