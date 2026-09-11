@@ -467,22 +467,52 @@ def test_main_con_usuario_id_forzado_usa_el_valor_de_cli_directo_sin_calcular(co
 
 # ----------------------------- calcular_dias_a_revisar() -----------------------------
 
-def test_calcular_dias_a_revisar_sin_ultima_corrida_usa_dias_primera_corrida_si_es_mayor(correo_ctx):
-    ahora = datetime.datetime(2026, 9, 5, 12, 0, 0)
+def test_calcular_dias_a_revisar_sin_ultima_corrida_busca_desde_el_1_de_enero(correo_ctx):
+    """2026-09-10: la primera corrida de una cuenta (sin `ultima_corrida`
+    todavía) ya NO usa un tope fijo de días -- busca desde el 1 de enero
+    del año en curso hasta `ahora`, para no perderse meses de historial
+    real (ver el pedido del usuario: con el tope fijo anterior de 30
+    días, su primera corrida real solo trajo 26 movimientos)."""
+    ahora = datetime.datetime(2026, 9, 5, 12, 0, 0)  # día 248 del año 2026 (no bisiesto)
     config = {"ultima_corrida": None}
 
-    resultado = lc.calcular_dias_a_revisar(config, ahora, dias_minimo=7)
+    resultado = lc.calcular_dias_a_revisar(config, ahora, dias_minimo=2)
 
-    assert resultado == lc.DIAS_PRIMERA_CORRIDA
+    assert resultado == 248
 
 
-def test_calcular_dias_a_revisar_sin_ultima_corrida_usa_dias_minimo_si_supera_primera_corrida(correo_ctx):
-    ahora = datetime.datetime(2026, 9, 5, 12, 0, 0)
+def test_calcular_dias_a_revisar_sin_ultima_corrida_el_1_de_enero_devuelve_un_dia(correo_ctx):
+    """Corriendo por primera vez el propio 1 de enero: cubre ese día
+    completo (no cero)."""
+    ahora = datetime.datetime(2026, 1, 1, 9, 0, 0)
+    config = {"ultima_corrida": None}
+
+    resultado = lc.calcular_dias_a_revisar(config, ahora, dias_minimo=2)
+
+    assert resultado == 2  # dias_minimo (2) supera lo que da el cálculo de enero (1)
+
+
+def test_calcular_dias_a_revisar_sin_ultima_corrida_respeta_dias_minimo_si_es_mayor(correo_ctx):
+    """Si --dias (dias_minimo) pedido por CLI es mayor que lo que va del
+    año, sigue ganando dias_minimo -- mismo criterio de "piso" que ya
+    regía antes para este caso."""
+    ahora = datetime.datetime(2026, 1, 10, 12, 0, 0)  # apenas 10 días de año corrido
     config = {"ultima_corrida": None}
 
     resultado = lc.calcular_dias_a_revisar(config, ahora, dias_minimo=45)
 
     assert resultado == 45
+
+
+def test_calcular_dias_a_revisar_sin_ultima_corrida_funciona_en_anio_bisiesto(correo_ctx):
+    """2028 es bisiesto -- el cálculo debe seguir siendo 'días
+    transcurridos desde el 1 de enero', sin asumir 365 días fijos."""
+    ahora = datetime.datetime(2028, 3, 1, 12, 0, 0)  # 31 (enero) + 29 (febrero bisiesto) + 1 = día 61
+    config = {"ultima_corrida": None}
+
+    resultado = lc.calcular_dias_a_revisar(config, ahora, dias_minimo=2)
+
+    assert resultado == 61
 
 
 def test_calcular_dias_a_revisar_hueco_chico_devuelve_el_minimo(correo_ctx):
