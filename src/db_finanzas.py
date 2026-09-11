@@ -349,6 +349,17 @@ def conectar() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # journal_mode = DELETE (no WAL) a propósito: `data/` está montado
+    # como bind mount de Docker Desktop en Windows, y WAL necesita memoria
+    # compartida (mmap) entre procesos que ese tipo de montaje no soporta
+    # bien -- cada vez que el contenedor se recreaba, la conexión fallaba
+    # con "disk I/O error" al no poder abrir/mapear el -shm (causó una
+    # caída real de `dev` el 2026-09-10). DELETE usa el journal clásico,
+    # sin mmap, 100% compatible con bind mounts. Es un no-op si el archivo
+    # ya está en DELETE (el caso normal); si algo lo vuelve a poner en WAL
+    # (ej. una herramienta externa como DB Browser), esta línea lo corrige
+    # solo en la siguiente conexión.
+    conn.execute("PRAGMA journal_mode = DELETE")
     return conn
 
 

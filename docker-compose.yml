@@ -17,4 +17,13 @@ services:
       # cuenta -- este montaje es solo para poder editarlo sin
       # reconstruir la imagen, no para "regenerar" nada (eso ya no existe).
       - ./dashboard:/app/dashboard
-    restart: unless-stopped   # si Docker se reinicia o el contenedor se cae, vuelve a levantarse solo
+    # "always" (no "unless-stopped"): a propósito -- el 2026-09-08 el
+    # contenedor de prod quedó detenido a mano (verificación manual tras
+    # un deploy) y, al reiniciarse Docker/la PC más tarde, "unless-stopped"
+    # respetó ese estado "detenido a mano" y NO lo volvió a levantar (dev sí
+    # volvió solo, porque a ese nunca se lo había detenido a mano). Con
+    # "always", un reinicio de Docker/la PC vuelve a levantar el contenedor
+    # sin importar si alguien lo había detenido antes -- evita que esto se
+    # repita. Solo un `docker stop` explícito mientras Docker sigue
+    # corriendo lo deja apagado hasta que alguien lo levante a mano.
+    restart: always
