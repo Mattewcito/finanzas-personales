@@ -5,6 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Dashboard Financiero Personal</title>
 
+<!-- Anti-flash de tema (2026-09-11, mismo mecanismo que src/templates/
+     base.html) -- tiene que ejecutar ANTES de que el <style> de abajo
+     pinte nada. Este archivo es un documento HTML APARTE (se sirve suelto
+     en /vista/dashboard y templates/dashboard.html lo mete en un <iframe>
+     same-origin) -- no hereda nada del <html> del padre, así que necesita
+     su PROPIA copia de este script para no nacer en el tema equivocado
+     tanto si se abre suelto como si el iframe hace un F5 solo. -->
+<script>
+(function(){
+  try {
+    var t = localStorage.getItem('finanzas_theme');
+    if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+  } catch(e) {}
+})();
+</script>
+
 <!-- Google Fonts: Inter -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -32,49 +48,56 @@
 
 <style>
   /* ===========================================================
-     1) DESIGN TOKENS — paleta "fintech oscuro premium"
+     1) DESIGN TOKENS -- Modo Claro/Oscuro (reskin 2026-09-11)
+     -----------------------------------------------------------------
+     Mismo patrón de 4 bloques que src/templates/base.html (mismos
+     NOMBRES de variable en los dos temas -- el resto del CSS de este
+     archivo sigue usando var(--card-solid), etc. sin saber en qué tema
+     está, solo cambia el valor detrás). Este documento vive en un
+     <iframe> same-origin dentro de templates/dashboard.html: el toggle
+     de tema (en base.html, FUERA del iframe) setea data-theme en el
+     <html> de ESTE documento y llama a window.__aplicarTemaFinanzas__
+     (ver el <script> de más abajo) para repintar los <canvas> de
+     Chart.js, que no son CSS y no reaccionan solos a estas variables.
+
+     Modo oscuro sigue siendo la base histórica de este dashboard (valor
+     default de :root -- nadie que nunca toque el interruptor ve un
+     cambio). Los balances --balde-necesidades/--balde-gustos NO tenían
+     versión clara -- se agregó una con contraste verificado (fórmula de
+     luminancia relativa WCAG 2.1, ver contraste.py del reskin):
+     #1e50c4 (7.0:1 contra #ffffff) y #8a2196 (7.67:1 contra #ffffff),
+     ambos muy por encima del mínimo 4.5:1 para texto/ícono informativo.
      =========================================================== */
   :root{
+    /* ---- Oscuro (default) ---- */
     --bg: #090c13;
     --bg-soft: #0d111b;
-    --card: #12172400;
     --card-solid: #131928;
+    --card-solid-2: #10141f; /* extremo del degradé de .kpi -- un paso más oscuro que --card-solid */
     --card-border: rgba(255,255,255,0.07);
     --card-hover: #171e30;
+    --surface-elevated: #1b2338; /* modal/dropdown -- más CERCA del usuario, más clara (ver comentario histórico abajo) */
     --text: #eef1f8;
     --text-dim: #8d96ab;
-    /* 2026-09-07: subido de #5b6379 (contraste real 2.93:1 / 3.15:1, por
-       debajo del mínimo WCAG AA de 4.5:1 para texto normal) a #949cb2.
-       Medido con la fórmula de luminancia relativa del propio WCAG contra
-       los dos fondos donde se usa: 6.4:1 contra rgb(19,25,40) (tarjeta,
-       .sub) y 6.88:1 contra rgb(13,17,27) (página, .aviso/.last-updated/
-       th) -- ambos superan 4.5:1 con margen. Sigue siendo visualmente más
-       tenue que --text (rgb(238,241,248), casi blanco), así que la
-       jerarquía tipográfica entre texto principal y secundario no se
-       pierde. Una sola variable, los 4 usos (.sub, .aviso, .last-updated,
-       th) heredan el cambio automáticamente. */
     --text-faint: #949cb2;
-
-    /* Identidad propia "Cobre & Grafito" (2026-09-10, mismo cambio que
-       base.html -- feedback del usuario: el violeta/celeste anterior no
-       tenia identidad de marca, "el mismo color generico de siempre").
-       --accent: grafito plano para superficies interactivas (botones,
-       foco) -- SIN degradado, a proposito. --accent-2: cobre, la unica
-       chispa de color de marca, reservada a texto/indicadores puntuales. */
-    --accent: #5b6472;      /* grafito -- superficies interactivas, plano */
-    --accent-2: #c68a4e;    /* cobre -- unica chispa de marca */
+    --accent: #5b6472;      /* grafito -- superficies interactivas, plano en los dos temas */
+    --accent-rgb: 91,100,114; /* mismo valor en los dos temas -- para rgba(var(--accent-rgb),alpha) */
+    --accent-2: #c68a4e;    /* cobre -- única chispa de marca */
+    --accent-2-rgb: 198,138,78;
     --green: #27d9a8;       /* ingresos / positivo */
+    --green-rgb: 39,217,168;
     --red: #fb7185;         /* gastos / negativo */
+    --red-rgb: 251,113,133;
     --gold: #fbbf24;        /* insights / highlights */
-
-    /* Jerarquía de superficies estilo Apple/Copilot Money (2026-09-10,
-       ver requisitos/investigacion_colores_apple_2026-09-10.md secc. 3.2):
-       una superficie ELEVADA (modal, dropdown) debe leerse MÁS CERCA del
-       usuario -- más clara, no más oscura. Antes los modales degradaban
-       hacia #10141f (más oscuro que --card-solid, al revés del principio).
-       Mismo matiz azul-violeta que el resto de la paleta, un paso más
-       claro que --card-solid -- 13.81:1 de contraste con --text. */
-    --surface-elevated: #1b2338;
+    --gold-rgb: 251,191,36;
+    --shadow-card: none;
+    --shadow-hover: 0 10px 26px -12px rgba(0,0,0,0.55);
+    --shadow-dropdown: 0 12px 32px -12px rgba(0,0,0,0.55);
+    --shadow-modal: 0 24px 60px -20px rgba(0,0,0,0.6);
+    --shadow-sticky-col: -8px 0 8px -8px rgba(0,0,0,0.55); /* columna "pegada" de .table-scroll */
+    --icon-badge-bg: rgba(255,255,255,0.07);  /* fondo neutro de .icon-badge sin accent-* */
+    --panel-tint: rgba(255,255,255,0.035);    /* superficie sutil dentro de una tarjeta (.kpi-detalle) */
+    --scrollbar-thumb: #232a3d;
 
     /* Presupuesto por baldes -- identidad (2026-09-08, ver qa_reports/
        2026-09-08/marketing_paleta_presupuesto.md secciones 3 y 7). Color de
@@ -92,7 +115,108 @@
 
     --radius: 16px;
     --radius-sm: 10px;
-    --shadow: 0 8px 30px rgba(0,0,0,0.35);
+  }
+  /* El SO prefiere claro y el usuario nunca eligió nada a mano --
+     :not([data-theme="dark"]) deja pasar esto solo mientras no haya una
+     elección explícita guardada (ver script anti-flash en el <head>). */
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg: #f6f7fa;
+      --bg-soft: #eceff4;
+      --card-solid: #ffffff;
+      --card-solid-2: #eef1f6;
+      --card-border: rgba(15,23,42,0.10);
+      --card-hover: #f1f3f8;
+      --surface-elevated: #ffffff;
+      --text: #12151c;
+      --text-dim: #5b6472;
+      --text-faint: #6a7285;
+      --accent-2: #9c6530;
+      --accent-2-rgb: 156,101,48;
+      --green: #0a7a59;
+      --green-rgb: 10,122,89;
+      --red: #c81e42;
+      --red-rgb: 200,30,66;
+      --gold: #92660a;
+      --gold-rgb: 146,102,10;
+      --shadow-card: 0 1px 2px rgba(30,41,59,0.05), 0 1px 3px rgba(30,41,59,0.06);
+      --shadow-hover: 0 10px 24px -12px rgba(30,41,59,0.22);
+      --shadow-dropdown: 0 12px 32px -12px rgba(30,41,59,0.22);
+      --shadow-modal: 0 24px 60px -20px rgba(30,41,59,0.38);
+      --shadow-sticky-col: -8px 0 8px -8px rgba(30,41,59,0.18);
+      --icon-badge-bg: rgba(15,23,42,0.06);
+      --panel-tint: rgba(15,23,42,0.035);
+      --scrollbar-thumb: #b6bcc8;
+      --balde-necesidades: #1e50c4;
+      --balde-gustos: #8a2196;
+      --balde-necesidades-bg: rgba(30,80,196,0.12);
+      --balde-gustos-bg: rgba(138,33,150,0.12);
+    }
+  }
+  /* Elección MANUAL guardada -- gana siempre, sin importar el SO. */
+  :root[data-theme="light"]{
+    --bg: #f6f7fa;
+    --bg-soft: #eceff4;
+    --card-solid: #ffffff;
+    --card-solid-2: #eef1f6;
+    --card-border: rgba(15,23,42,0.10);
+    --card-hover: #f1f3f8;
+    --surface-elevated: #ffffff;
+    --text: #12151c;
+    --text-dim: #5b6472;
+    --text-faint: #6a7285;
+    --accent-2: #9c6530;
+    --accent-2-rgb: 156,101,48;
+    --green: #0a7a59;
+    --green-rgb: 10,122,89;
+    --red: #c81e42;
+    --red-rgb: 200,30,66;
+    --gold: #92660a;
+    --gold-rgb: 146,102,10;
+    --shadow-card: 0 1px 2px rgba(30,41,59,0.05), 0 1px 3px rgba(30,41,59,0.06);
+    --shadow-hover: 0 10px 24px -12px rgba(30,41,59,0.22);
+    --shadow-dropdown: 0 12px 32px -12px rgba(30,41,59,0.22);
+    --shadow-modal: 0 24px 60px -20px rgba(30,41,59,0.38);
+    --shadow-sticky-col: -8px 0 8px -8px rgba(30,41,59,0.18);
+    --icon-badge-bg: rgba(15,23,42,0.06);
+    --panel-tint: rgba(15,23,42,0.035);
+    --scrollbar-thumb: #b6bcc8;
+    --balde-necesidades: #1e50c4;
+    --balde-gustos: #8a2196;
+    --balde-necesidades-bg: rgba(30,80,196,0.12);
+    --balde-gustos-bg: rgba(138,33,150,0.12);
+  }
+  :root[data-theme="dark"]{
+    --bg: #090c13;
+    --bg-soft: #0d111b;
+    --card-solid: #131928;
+    --card-solid-2: #10141f;
+    --card-border: rgba(255,255,255,0.07);
+    --card-hover: #171e30;
+    --surface-elevated: #1b2338;
+    --text: #eef1f8;
+    --text-dim: #8d96ab;
+    --text-faint: #949cb2;
+    --accent-2: #c68a4e;
+    --accent-2-rgb: 198,138,78;
+    --green: #27d9a8;
+    --green-rgb: 39,217,168;
+    --red: #fb7185;
+    --red-rgb: 251,113,133;
+    --gold: #fbbf24;
+    --gold-rgb: 251,191,36;
+    --shadow-card: none;
+    --shadow-hover: 0 10px 26px -12px rgba(0,0,0,0.55);
+    --shadow-dropdown: 0 12px 32px -12px rgba(0,0,0,0.55);
+    --shadow-modal: 0 24px 60px -20px rgba(0,0,0,0.6);
+    --shadow-sticky-col: -8px 0 8px -8px rgba(0,0,0,0.55);
+    --icon-badge-bg: rgba(255,255,255,0.07);
+    --panel-tint: rgba(255,255,255,0.035);
+    --scrollbar-thumb: #232a3d;
+    --balde-necesidades: #5f8ff7;
+    --balde-gustos: #e26bf5;
+    --balde-necesidades-bg: rgba(95,143,247,0.16);
+    --balde-gustos-bg: rgba(226,107,245,0.16);
   }
 
   *{ box-sizing: border-box; }
@@ -100,12 +224,26 @@
   body{
     margin:0;
     background:
-      radial-gradient(1100px 550px at 12% -10%, rgba(91,100,114,0.16), transparent 60%),
-      radial-gradient(900px 500px at 100% 0%, rgba(198,138,78,0.10), transparent 55%),
+      radial-gradient(1100px 550px at 12% -10%, rgba(var(--accent-rgb),0.16), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, rgba(var(--accent-2-rgb),0.10), transparent 55%),
       var(--bg);
     color: var(--text);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     line-height: 1.45;
+    transition: background-color .18s ease, color .18s ease;
+  }
+  /* Todo lo que cambia de color entre temas transiciona parejo -- mismo
+     criterio que src/templates/base.html (el toggle se siente como un
+     "fundido" prolijo, no un parpadeo). Los elementos con su propia
+     animación de entrada (modales, dropdowns) no se ven afectados: son
+     propiedades CSS distintas (transform/opacity). */
+  .kpi, .chart-card, .table-card, .perfil-card, .insight, .tarjeta-plana,
+  .balde-card, .meta-card, .modal-grafico-card, .alerta-app-box,
+  .pill, .pill-select, .view-toggle button, .field-select, .form-row input,
+  .form-row select, .btn-primario, .btn-secundario, .side-nav a, .btn-subir,
+  .switch-toggle .switch-slider, thead th, tbody td, .tab-btn,
+  .categoria-balde-row select{
+    transition: background-color .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease;
   }
 
   /* min-width:0 es el fix real del overflow horizontal en mobile/tablet
@@ -213,7 +351,7 @@
   .empty-state{
     display:flex; align-items:center; gap:10px;
     padding:12px 16px; margin:4px 0;
-    background: rgba(91,100,114,0.08); border:1px solid rgba(91,100,114,0.22);
+    background: rgba(var(--accent-rgb),0.08); border:1px solid rgba(var(--accent-rgb),0.22);
     border-radius: var(--radius-sm); color: var(--text-dim); font-size:13px;
   }
   .empty-state b{ color: var(--text); }
@@ -224,6 +362,19 @@
     appearance:none; -webkit-appearance:none; -moz-appearance:none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238d96ab' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
     background-repeat:no-repeat; background-position: right 10px center; background-size:13px;
+  }
+  /* El SVG de la flecha de arriba va incrustado como data-URI -- su color
+     queda fijo en el momento en que el navegador arma el
+     background-image, no puede leer variables CSS. Versión con trazo
+     oscuro para fondos claros (mismo criterio que .switcher-select/
+     .field-select en src/templates/base.html). */
+  :root[data-theme="light"] .pill-select{
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235b6472' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]) .pill-select{
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235b6472' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    }
   }
   .pill-select:hover{ border-color: var(--accent); }
   /* Requisito 2026-09-08 punto 5: antes, fuera de "Personalizado", los
@@ -272,7 +423,7 @@
   }
   .view-toggle button:hover{ border-color: var(--accent); color: var(--text); }
   .view-toggle button.active{
-    background: rgba(91,100,114,0.14); border-color: var(--accent); color: var(--text); font-weight:600;
+    background: rgba(var(--accent-rgb),0.14); border-color: var(--accent); color: var(--text); font-weight:600;
   }
   /* flex-wrap + sin nowrap: el badge de rango de fechas ("Desde ... hasta
      ...") es el único uso de .pill y en mobile es más largo que el
@@ -311,15 +462,16 @@
   @media (max-width: 560px){ .kpi-grid{ grid-template-columns: 1fr; gap: 8px; } }
 
   .kpi{
-    background: linear-gradient(180deg, var(--card-solid), #10141f);
+    background: linear-gradient(180deg, var(--card-solid), var(--card-solid-2));
     border: 1px solid var(--card-border);
     border-radius: var(--radius);
     padding: 18px 18px 16px;
     position: relative;
     overflow: hidden;
-    transition: transform .15s ease, border-color .15s ease;
+    box-shadow: var(--shadow-card);
+    transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease, background-color .18s ease;
   }
-  .kpi:hover{ transform: translateY(-2px); border-color: rgba(91,100,114,0.35); }
+  .kpi:hover{ transform: translateY(-2px); border-color: rgba(var(--accent-rgb),0.35); box-shadow: var(--shadow-hover); }
   /* Ícono envuelto en badge circular (antes: .icon suelto a 20px, sin
      fondo -- se veía chico y perdido junto al label). El badge reutiliza
      el mismo criterio de color que ya existe para .value en las tarjetas
@@ -328,7 +480,7 @@
   .kpi .icon-badge{
     width: 46px; height: 46px; border-radius: 50%; flex-shrink:0;
     display:flex; align-items:center; justify-content:center;
-    background: rgba(255,255,255,0.07);
+    background: var(--icon-badge-bg);
   }
   .kpi .icon{ font-size: 30px; line-height:1; opacity:1; }
   /* Requisito 2026-09-08 punto 6: los íconos fijos de estas tarjetas
@@ -355,10 +507,10 @@
     width:100%; height:100%; display:flex; align-items:center; justify-content:center;
   }
   .kpi .icon-badge svg{ width: 56%; height: 56%; display:block; }
-  .kpi .icon-badge{ color: rgba(255,255,255,0.82); }
-  .kpi.accent-green .icon-badge{ background: rgba(39,217,168,0.18); color: var(--green); }
-  .kpi.accent-red .icon-badge{ background: rgba(251,113,133,0.18); color: var(--red); }
-  .kpi.accent-purple .icon-badge{ background: rgba(91,100,114,0.18); color: var(--accent); }
+  .kpi .icon-badge{ color: var(--text-dim); }
+  .kpi.accent-green .icon-badge{ background: rgba(var(--green-rgb),0.18); color: var(--green); }
+  .kpi.accent-red .icon-badge{ background: rgba(var(--red-rgb),0.18); color: var(--red); }
+  .kpi.accent-purple .icon-badge{ background: rgba(var(--accent-rgb),0.18); color: var(--accent); }
   .kpi .label{ color: var(--text-dim); font-size: 12.5px; margin-top:10px; font-weight:500; }
   .kpi .value{ font-size: 22px; font-weight: 800; margin-top: 4px; letter-spacing:-0.01em; }
   .kpi .sub{ color: var(--text-faint); font-size: 11.5px; margin-top: 6px; }
@@ -380,7 +532,7 @@
     font-family:inherit; font-size: 11.5px; font-weight:600; color: var(--accent-2);
     display:inline-flex; align-items:center; gap:4px;
   }
-  .kpi-detalle-btn:hover{ color:#fff; }
+  .kpi-detalle-btn:hover{ color: var(--text); }
   .kpi-detalle-btn .chev{ font-size:9px; transition: transform .15s ease; display:inline-block; }
   .kpi-detalle-btn[aria-expanded="true"] .chev{ transform: rotate(180deg); }
   /* Reporte usuario 2026-09-08 ("los detalles son básicos"): un
@@ -391,7 +543,7 @@
      vez de una línea suelta. */
   .kpi-detalle{
     margin-top:10px; padding:10px 12px;
-    background: rgba(255,255,255,0.035); border:1px solid var(--card-border);
+    background: var(--panel-tint); border:1px solid var(--card-border);
     border-radius: 10px;
     font-size:12px; color:var(--text-dim); line-height:1.5;
   }
@@ -402,7 +554,7 @@
   .kpi.kpi-hero .kpi-detalle{ font-size:12.5px; }
   .kpi::after{
     content:''; position:absolute; right:-30px; top:-30px; width:100px; height:100px;
-    background: radial-gradient(circle, rgba(91,100,114,0.15), transparent 70%);
+    background: radial-gradient(circle, rgba(var(--accent-rgb),0.15), transparent 70%);
   }
 
   /* --- Jerarquía de tarjetas KPI (requisito 2026-09-07) ---------------
@@ -531,7 +683,7 @@
     border: 1px solid var(--card-border);
     border-radius: var(--radius);
     padding: 18px 18px 10px;
-    box-shadow: var(--shadow);
+    box-shadow: var(--shadow-card);
     /* Mismo fix que .wrap (ver comentario ahí): .chart-card es grid item
        de .charts-grid (columnas 1fr), y sin min-width:0 su ancho mínimo
        automático queda atado al <canvas> de Chart.js -- que Chart.js
@@ -585,7 +737,7 @@
   /* Gráficos expandibles: click en la tarjeta para verla en grande con
      una tabla de detalle debajo (ver modal más abajo). */
   .chart-card.expandible{ cursor: pointer; position: relative; transition: transform .15s ease, box-shadow .15s ease; }
-  .chart-card.expandible:hover{ transform: translateY(-2px); box-shadow: 0 10px 26px rgba(0,0,0,0.28); }
+  .chart-card.expandible:hover{ transform: translateY(-2px); box-shadow: var(--shadow-hover); }
   .chart-card.expandible::after{
     content: '🔍 Ver en grande';
     position: absolute; top: 16px; right: 18px;
@@ -599,7 +751,7 @@
      expandibles -- solo título por defecto (menos texto de entrada),
      click abre el detalle completo en un modal (ver JS: abrirModalInsight). */
   .insight.expandible{ cursor: pointer; position:relative; transition: transform .15s ease, box-shadow .15s ease; }
-  .insight.expandible:hover{ transform: translateY(-2px); box-shadow: 0 10px 26px rgba(0,0,0,0.28); }
+  .insight.expandible:hover{ transform: translateY(-2px); box-shadow: var(--shadow-hover); }
   .insight.expandible::after{
     content: '👁️ Ver detalle'; position: absolute; top: 14px; right: 16px;
     font-size: 10.5px; color: var(--text-dim); background: var(--card-hover);
@@ -623,7 +775,7 @@
     background: linear-gradient(180deg, var(--surface-elevated), var(--card-solid));
     border: 1px solid var(--card-border); border-radius: var(--radius);
     width: min(920px, 100%); max-height: 88vh; display:flex; flex-direction:column; overflow:hidden;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+    box-shadow: var(--shadow-modal);
   }
   .modal-grafico-header{ display:flex; align-items:center; justify-content:space-between; padding: 16px 22px; border-bottom: 1px solid var(--card-border); flex-shrink:0; }
   .modal-grafico-header h3{ margin:0; font-size: 15px; }
@@ -662,7 +814,7 @@
        más cerca del usuario, así que arranca más clara, no más oscura. */
     background: linear-gradient(180deg, var(--surface-elevated), var(--card-solid));
     border:1px solid var(--card-border); border-radius:18px; padding:34px 28px 24px;
-    text-align:center; box-shadow: 0 24px 60px -20px rgba(0,0,0,0.6);
+    text-align:center; box-shadow: var(--shadow-modal);
     animation: alertaAppPop .18s ease;
   }
   @keyframes alertaAppPop{ from{ transform:scale(.94); opacity:0; } to{ transform:scale(1); opacity:1; } }
@@ -671,19 +823,20 @@
     border:none; background:var(--bg-soft); color:var(--text-dim); cursor:pointer; font-size:13px;
     display:flex; align-items:center; justify-content:center; font-family:inherit;
   }
-  .alerta-app-cerrar:hover{ background:var(--card-hover); color:#fff; }
+  .alerta-app-cerrar:hover{ background:var(--card-hover); color:var(--text); }
   .alerta-app-icono{
     width:52px; height:52px; border-radius:50%; margin:0 auto 16px;
-    display:flex; align-items:center; justify-content:center; font-size:24px; font-weight:700;
+    display:flex; align-items:center; justify-content:center;
   }
+  .alerta-app-icono svg{ width:24px; height:24px; }
   /* Colores de estado reusando las variables que ya definen el resto del
      dashboard (--green/--red/--gold: ingresos/gastos/insights) en vez de
      sumar hex nuevos -- el fondo translúcido no puede usar la variable
      directo (no hay alpha en un hex plano), pero el valor de abajo es el
      mismo --green/--red/--gold de este archivo convertido a rgba(). */
-  .alerta-app-icono.ok{ background:rgba(39,217,168,0.14); color: var(--green); }
-  .alerta-app-icono.error{ background:rgba(251,113,133,0.14); color: var(--red); }
-  .alerta-app-icono.confirmar{ background:rgba(251,191,36,0.14); color: var(--gold); }
+  .alerta-app-icono.ok{ background:rgba(var(--green-rgb),0.14); color: var(--green); }
+  .alerta-app-icono.error{ background:rgba(var(--red-rgb),0.14); color: var(--red); }
+  .alerta-app-icono.confirmar{ background:rgba(var(--gold-rgb),0.14); color: var(--gold); }
   .alerta-app-mensaje{ margin:0 0 24px; font-size:14px; color:var(--text); line-height:1.55; white-space:pre-line; }
   .alerta-app-botones{ display:flex; gap:10px; justify-content:center; }
   .alerta-app-botones .btn-primario, .alerta-app-botones .btn-secundario{ margin-top:0; flex:1; max-width:160px; }
@@ -691,14 +844,14 @@
   /* Tarjeta de perfil financiero personalizado */
   .perfil-card{
     background: var(--card-solid); border: 1px solid var(--card-border); border-radius: var(--radius);
-    padding: 20px 22px; box-shadow: var(--shadow); display:flex; flex-direction:column; gap:10px;
+    padding: 20px 22px; box-shadow: var(--shadow-card); display:flex; flex-direction:column; gap:10px;
   }
   .perfil-card .arquetipo{ font-size: 16px; font-weight:800; display:flex; align-items:center; gap:8px; }
   .perfil-card .descripcion{ margin:0; font-size: 13px; color: var(--text-dim); max-width: 780px; }
   .perfil-card .consejos{ list-style:none; margin: 6px 0 0; padding:0; display:flex; flex-direction:column; gap:8px; }
   .perfil-card .consejos li{
-    font-size: 12.5px; color: var(--text); background: rgba(91,100,114,0.08);
-    border: 1px solid rgba(91,100,114,0.22); border-radius: var(--radius-sm);
+    font-size: 12.5px; color: var(--text); background: rgba(var(--accent-rgb),0.08);
+    border: 1px solid rgba(var(--accent-rgb),0.22); border-radius: var(--radius-sm);
     padding: 9px 12px; display:flex; gap:8px; align-items:flex-start;
   }
   .perfil-card .aviso{ margin: 4px 0 0; font-size: 10.5px; color: var(--text-faint); }
@@ -716,6 +869,12 @@
     width:24px; height:24px; border-radius:7px; display:flex; align-items:center; justify-content:center;
     font-size:11px; font-weight:800; flex-shrink:0; background: var(--card-hover); color: var(--text-dim);
   }
+  /* Colores de medalla (oro/plata/bronce) -- decisión de diseño 2026-09-11:
+     quedan FIJOS a propósito en los dos temas, igual que el color de
+     identidad de una tarjeta de crédito (ver .tarjeta-card más abajo):
+     es un degradé brillante con texto oscuro encima, el contraste no se
+     degrada en modo claro y cambiarlo con el tema le quitaría el
+     reconocimiento inmediato de "medalla" que es el punto del componente. */
   .lb-rank.top1{ background: linear-gradient(135deg,#fbbf24,#f59e0b); color:#1a1200; }
   .lb-rank.top2{ background: linear-gradient(135deg,#cbd5e1,#94a3b8); color:#1a1a1a; }
   .lb-rank.top3{ background: linear-gradient(135deg,#f0a06a,#c2703a); color:#1a0f00; }
@@ -755,6 +914,15 @@
      de información se pierde, solo se reordena. */
   .tarjeta-wrap{ display:flex; flex-direction:column; gap:10px; min-width:0; }
 
+  /* Decisión de diseño (reskin 2026-09-11): TODOS los colores de esta
+     tarjeta (scrim, texto blanco, brillos rgba(0/255,...)) quedan FIJOS a
+     propósito en los dos temas, igual que .lb-rank.top*/top2/top3 más
+     arriba -- es una tarjeta de crédito "física" con su propio color de
+     identidad (ver colorTarjeta() en el JS, PALETA_IDENTIDAD_TARJETA), no
+     una superficie de la interfaz: cambiar su paleta con el modo
+     claro/oscuro rompería la ilusión de "es SIEMPRE la misma tarjeta". El
+     contraste texto blanco/scrim ya está verificado contra los 6 colores
+     de identidad (ver comentario histórico junto a .tarjeta-card::before). */
   .tarjeta-card{
     position:relative; overflow:hidden; min-width:0; color:#fff;
     border-radius:16px; padding:18px 20px; box-sizing:border-box;
@@ -878,7 +1046,7 @@
   .aviso-amber{
     display:flex; align-items:center; gap:10px;
     padding:12px 16px; margin:4px 0 14px;
-    background: rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.35);
+    background: rgba(var(--gold-rgb),0.1); border:1px solid rgba(var(--gold-rgb),0.35);
     border-radius: var(--radius-sm); color: var(--text); font-size:13px;
   }
   .aviso-amber svg{ width:18px; height:18px; flex-shrink:0; color: var(--gold); }
@@ -906,7 +1074,7 @@
   .balde-card-icon svg{ width:56%; height:56%; display:block; }
   .balde-card.identidad-necesidades .balde-card-icon{ background: var(--balde-necesidades-bg); color: var(--balde-necesidades); }
   .balde-card.identidad-gustos .balde-card-icon{ background: var(--balde-gustos-bg); color: var(--balde-gustos); }
-  .balde-card.identidad-ahorro_deudas .balde-card-icon{ background: rgba(198,138,78,0.16); color: var(--accent-2); }
+  .balde-card.identidad-ahorro_deudas .balde-card-icon{ background: rgba(var(--accent-2-rgb),0.16); color: var(--accent-2); }
 
   .balde-card-nombre{ font-size:14px; font-weight:700; color: var(--text); }
   .balde-card-pct{ font-size:11px; color: var(--text-dim); margin-top:1px; }
@@ -918,9 +1086,9 @@
     border-radius:999px; display:inline-flex; align-items:center; gap:4px; white-space:nowrap;
   }
   .balde-card-estado svg{ width:12px; height:12px; flex-shrink:0; }
-  .balde-card.estado-verde .balde-card-estado{ background: rgba(39,217,168,0.15); color: var(--green); }
-  .balde-card.estado-amber .balde-card-estado{ background: rgba(251,191,36,0.2); color: var(--gold); }
-  .balde-card.estado-rojo .balde-card-estado{ background: rgba(251,113,133,0.2); color: var(--red); }
+  .balde-card.estado-verde .balde-card-estado{ background: rgba(var(--green-rgb),0.15); color: var(--green); }
+  .balde-card.estado-amber .balde-card-estado{ background: rgba(var(--gold-rgb),0.2); color: var(--gold); }
+  .balde-card.estado-rojo .balde-card-estado{ background: rgba(var(--red-rgb),0.2); color: var(--red); }
 
   .balde-barra{ height:8px; border-radius:999px; background: var(--bg-soft); overflow:hidden; margin: 12px 0; }
   .balde-barra > span{ display:block; height:100%; border-radius:999px; background: var(--green); }
@@ -953,7 +1121,7 @@
     background: var(--card-solid); border:1px solid var(--card-border); border-radius: var(--radius-sm);
     padding: 16px; min-width:0;
   }
-  .meta-card.alcanzada{ border-color: rgba(39,217,168,0.45); }
+  .meta-card.alcanzada{ border-color: rgba(var(--green-rgb),0.45); }
 
   .meta-card-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
   .meta-card-nombre{ font-size:14px; font-weight:700; color: var(--text); word-break: break-word; }
@@ -971,7 +1139,7 @@
   .meta-card-alcanzada-badge{
     margin-top:10px; display:inline-flex; align-items:center; gap:5px;
     font-size:11px; font-weight:800; color: var(--green);
-    background: rgba(39,217,168,0.15); padding:4px 9px; border-radius:999px;
+    background: rgba(var(--green-rgb),0.15); padding:4px 9px; border-radius:999px;
   }
   .meta-card-alcanzada-badge svg{ width:12px; height:12px; }
 
@@ -979,8 +1147,9 @@
   .meta-card-acciones button{
     background:none; border:none; padding:0; cursor:pointer; font-family:inherit;
     font-size:11.5px; font-weight:600; color: var(--accent-2);
+    transition: color .15s ease;
   }
-  .meta-card-acciones button:hover{ color:#fff; }
+  .meta-card-acciones button:hover{ color: var(--text); }
 
   /* ===========================================================
      5e) BOTONES SECUNDARIOS/PRIMARIOS Y FORMULARIOS EN MODAL (2026-09-08)
@@ -997,9 +1166,10 @@
   .btn-primario{
     background: var(--accent); border:1px solid var(--accent); color:#fff;
     font-family:inherit; font-size:12.5px; font-weight:700; padding:9px 16px; border-radius:999px; cursor:pointer;
+    transition: filter .15s ease, box-shadow .15s ease;
   }
-  .btn-primario:hover{ background:#6d5ef0; }
-  .btn-primario:disabled{ opacity:.55; cursor:not-allowed; }
+  .btn-primario:hover{ filter: brightness(1.12); box-shadow: var(--shadow-hover); }
+  .btn-primario:disabled{ opacity:.55; cursor:not-allowed; filter:none; box-shadow:none; }
 
   .form-row{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
   .form-row label{ font-size:12px; font-weight:600; color: var(--text-dim); }
@@ -1041,7 +1211,7 @@
   .insight .ic{
     width: 34px; height:34px; border-radius:10px; flex-shrink:0;
     display:flex; align-items:center; justify-content:center; font-size:16px;
-    background: rgba(91,100,114,0.14); border:1px solid rgba(91,100,114,0.25);
+    background: rgba(var(--accent-rgb),0.14); border:1px solid rgba(var(--accent-rgb),0.25);
   }
   .insight .body h4{ margin:0 0 4px; font-size: 13px; font-weight:700; }
   .insight .body p{ margin:0; font-size: 12.5px; color: var(--text-dim); }
@@ -1052,7 +1222,7 @@
      =========================================================== */
   .table-card{
     background: var(--card-solid); border:1px solid var(--card-border); border-radius: var(--radius);
-    box-shadow: var(--shadow); overflow:hidden;
+    box-shadow: var(--shadow-card); overflow:hidden;
   }
   .tabs{ display:flex; gap:4px; padding: 10px 10px 0; flex-wrap:wrap; }
   .tab-btn{
@@ -1060,7 +1230,7 @@
     font-size: 12.5px; font-weight:600; padding: 9px 14px; border-radius: 9px 9px 0 0; cursor:pointer;
     transition: background .15s, color .15s;
   }
-  .tab-btn:hover{ color: var(--text); background: rgba(255,255,255,0.03); }
+  .tab-btn:hover{ color: var(--text); background: var(--card-hover); }
   .tab-btn.active{ color: var(--text); background: var(--bg-soft); }
   .table-scroll{ overflow-x:auto; }
   table{ width:100%; border-collapse: collapse; min-width: 640px; }
@@ -1069,7 +1239,7 @@
     color: var(--text-faint); padding: 12px 16px; border-bottom: 1px solid var(--card-border);
     background: var(--bg-soft);
   }
-  tbody td{ padding: 11px 16px; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  tbody td{ padding: 11px 16px; font-size: 13px; border-bottom: 1px solid var(--card-border); }
   tbody tr:last-child td{ border-bottom:none; }
   tbody tr:hover{ background: var(--card-hover); }
   td.num{ text-align:right; font-variant-numeric: tabular-nums; font-weight:600; }
@@ -1088,14 +1258,14 @@
   .table-scroll table th:last-child,
   .table-scroll table td:last-child{
     position: sticky; right: 0;
-    box-shadow: -8px 0 8px -8px rgba(0,0,0,0.55);
+    box-shadow: var(--shadow-sticky-col);
   }
   .table-scroll table th:last-child{ background: var(--bg-soft); }
   .table-scroll table td:last-child{ background: var(--card-solid); }
   .table-scroll table tbody tr:hover td:last-child{ background: var(--card-hover); }
   .tag-tipo{ font-size: 10.5px; padding: 3px 8px; border-radius:999px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; }
-  .tag-tipo.ingreso{ background: rgba(39,217,168,0.15); color: var(--green); }
-  .tag-tipo.gasto{ background: rgba(251,113,133,0.15); color: var(--red); }
+  .tag-tipo.ingreso{ background: rgba(var(--green-rgb),0.15); color: var(--green); }
+  .tag-tipo.gasto{ background: rgba(var(--red-rgb),0.15); color: var(--red); }
   .cat-chip{ font-size:11.5px; color: var(--text-dim); text-transform:capitalize; }
   .pane{ display:none; }
   .pane.active{ display:block; }
@@ -1127,7 +1297,7 @@
   footer a{ color: var(--text-dim); }
 
   ::-webkit-scrollbar{ height:8px; width:8px; }
-  ::-webkit-scrollbar-thumb{ background: #232a3d; border-radius:8px; }
+  ::-webkit-scrollbar-thumb{ background: var(--scrollbar-thumb); border-radius:8px; }
 
   /* Menú de navegación entre secciones -- ANTES flotaba con position:fixed
      adivinando si había margen libre a la derecha de .wrap (eso se
@@ -1160,7 +1330,7 @@
     white-space: nowrap;
     text-align: right;
   }
-  .side-nav a:hover{ background: var(--card-hover); color:#fff; }
+  .side-nav a:hover{ background: var(--card-hover); color: var(--text); }
   .side-nav a.active{ background: var(--card-solid); border-color: var(--card-border); color: var(--accent-2); font-weight:600; }
   /* Por debajo de este ancho ya no entran .wrap (1360px) + el gap + esta
      columna sin apretar el contenido principal -- se oculta en vez de
@@ -1182,7 +1352,7 @@
     color: var(--text-dim);
     background: var(--card-solid);
     border: 1px solid var(--card-border);
-    box-shadow: var(--shadow);
+    box-shadow: var(--shadow-card);
     cursor: pointer;
     font-family: inherit;
     opacity: 0;
@@ -1191,7 +1361,7 @@
     transition: opacity .2s, transform .2s;
   }
   .btn-subir.visible{ opacity: 1; pointer-events: auto; transform: none; }
-  .btn-subir:hover{ background: var(--card-hover); color:#fff; }
+  .btn-subir:hover{ background: var(--card-hover); color: var(--text); }
 </style>
 </head>
 <body>
@@ -1232,7 +1402,13 @@
          quitaba espacio y protagonismo a los KPIs de abajo) -- mismo
          <select> de siempre, mismo id, solo se reubicó el markup. -->
     <div class="header-meta">
-      <div class="movimientos-info" id="movimientosInfo"></div>
+      <!-- aria-live: es el único texto que SIEMPRE cambia al aplicar un
+           filtro de período (cuenta de movimientos + rango) -- incluido el
+           caso "0 movimientos", que es la única señal de que el filtro no
+           encontró nada. No hace falta en cada gráfico/tarjeta individual
+           (serían demasiados anuncios por un mismo cambio de filtro), pero
+           sí acá. -->
+      <div class="movimientos-info" id="movimientosInfo" aria-live="polite"></div>
       <div class="badge-row" id="periodoSelectsWrap">
         <select id="filtroAnio" class="pill-select" aria-label="Año"></select>
         <select id="filtroMes" class="pill-select" aria-label="Mes"></select>
@@ -1279,7 +1455,7 @@
        ocultarSubvistas() como perfil/deuda/analisis/insights/movimientos.
        ============================================================ -->
   <div class="section-title" id="presupuesto">
-    <h2><span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5.2"></circle><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"></circle></svg></span> Presupuesto por baldes</h2>
+    <h2><span class="section-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5.2"></circle><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"></circle></svg></span> Presupuesto por baldes</h2>
     <div class="line"></div>
     <span class="tag">Necesidades / Gustos / Ahorro-deudas</span>
   </div>
@@ -1300,7 +1476,7 @@
        archivar una meta, nunca en cada cambio de período.
        ============================================================ -->
   <div class="section-title" id="metasAhorro">
-    <h2><span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg></span> Metas de ahorro</h2>
+    <h2><span class="section-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg></span> Metas de ahorro</h2>
     <div class="line"></div>
     <span class="tag" id="metasAhorroCount"></span>
   </div>
@@ -1508,6 +1684,186 @@
    viendo el perfil de otra cuenta, esa misma). Nada de "regenerar" ni
    de archivos por usuario en disco.
 ================================================================= */
+
+/* =================================================================
+   PUENTE DE TEMA CLARO/OSCURO PARA CHART.JS (2026-09-11)
+   -----------------------------------------------------------------
+   Chart.js dibuja en <canvas> -- no es CSS, no reacciona solo a que
+   cambiemos data-theme en el <html>. src/templates/base.html (el toggle
+   de tema, FUERA de este <iframe>) hace dos cosas cuando el usuario
+   cambia de tema:
+     1) setea data-theme en el <html> de ESTE documento (mismo origen).
+     2) si existe window.__aplicarTemaFinanzas__, la llama con 'light' o
+        'dark' -- ese es el gancho de más abajo.
+   GRAFICOS_REGISTRY/modalChartInstance viven ACÁ ARRIBA (no dentro de
+   iniciarDashboard(), donde vivían antes) a propósito: iniciarDashboard()
+   es async (espera un fetch) y solo termina de crear los gráficos
+   DESPUÉS de que resuelva -- pero el padre puede intentar empujarnos un
+   tema elegido apenas termine de cargar el <iframe> (evento 'load', que
+   dispara ANTES de que el fetch resuelva). Si __aplicarTemaFinanzas__
+   solo existiera recién adentro de iniciarDashboard(), ese primer empujón
+   del padre encontraría `undefined` y se perdería en silencio (el padre
+   lo llama dentro de un try/catch). Declarando todo esto en el nivel
+   superior del script, la función ya existe apenas el parser llega acá
+   -- mucho antes de que el <iframe> dispare 'load'.
+================================================================= */
+const GRAFICOS_REGISTRY = {};
+let modalChartInstance = null;
+// Qué canvasId original representa el gráfico abierto en el modal "ver en
+// grande" ahora mismo (o null si no hay ninguno, o si es el leaderboard
+// sin canvas) -- para poder recolorear también SUS datasets si el usuario
+// cambia de tema con el modal abierto (ver abrirModalGrafico() más abajo).
+let modalGraficoCanvasIdActual = null;
+
+function esTemaClaroActivo() {
+  const guardado = document.documentElement.getAttribute('data-theme');
+  if (guardado === 'light' || guardado === 'dark') return guardado === 'light';
+  // Mismo fallback que el script anti-flash del <head>: sin elección
+  // manual guardada, seguimos la preferencia del sistema operativo.
+  return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+}
+
+// Única fuente de verdad de los colores de Chart.js -- MISMOS valores que
+// los tokens --green/--red/--gold/--accent/--accent-2/--card-solid de
+// :root en el <style> de este archivo (si tocás un color ahí, tocá
+// también el que le corresponde acá).
+function coloresTema() {
+  return esTemaClaroActivo() ? {
+    texto: '#5b6472', grid: 'rgba(15,23,42,0.08)',
+    superficie: '#ffffff', tooltipBg: '#ffffff', tooltipTexto: '#12151c', tooltipBorde: 'rgba(15,23,42,0.12)',
+    verde: '#0a7a59', rojo: '#c81e42', oro: '#92660a', accent: '#5b6472', accent2: '#9c6530',
+  } : {
+    texto: '#8d96ab', grid: 'rgba(255,255,255,0.05)',
+    superficie: '#131928', tooltipBg: '#131928', tooltipTexto: '#eef1f8', tooltipBorde: 'rgba(255,255,255,0.08)',
+    verde: '#27d9a8', rojo: '#fb7185', oro: '#fbbf24', accent: '#5b6472', accent2: '#c68a4e',
+  };
+}
+
+// '#rrggbb' + alpha -> 'rgba(r,g,b,alpha)' -- para reusar los mismos hex
+// de coloresTema() en los rellenos translúcidos (área bajo la línea, etc.)
+// sin mantener una segunda copia de cada color a mano.
+function conAlpha(hex, alpha) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16), g = parseInt(h.substring(2, 4), 16), b = parseInt(h.substring(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Tooltip modernizado (esquinas redondeadas, padding generoso, colores del
+// tema activo) -- una sola función para las 8 configuraciones de gráfico
+// de más abajo, así ninguna se queda con el tooltip default de Chart.js.
+function tooltipBase(CT, callbacks) {
+  return {
+    backgroundColor: CT.tooltipBg, titleColor: CT.tooltipTexto, bodyColor: CT.tooltipTexto,
+    borderColor: CT.tooltipBorde, borderWidth: 1, cornerRadius: 10, padding: 10,
+    displayColors: false, callbacks,
+  };
+}
+
+(function aplicarTemaInicialAChartDefaults() {
+  const CT = coloresTema();
+  Chart.defaults.color = CT.texto;
+  Chart.defaults.font.family = "'Inter', sans-serif";
+  Chart.defaults.borderColor = CT.grid;
+  Chart.defaults.animation.duration = 500; // más ágil que el default (1000ms) sin sentirse instantáneo
+})();
+
+// Gancho que llama base.html después de cambiar data-theme -- repinta
+// TODOS los <canvas> de Chart.js ya creados (grid, ticks, leyenda,
+// tooltip) y los datasets cuyo color es verde/rojo/oro/accent/accent-2.
+// Las paletas categóricas PALETTE/PALETA_IDENTIDAD_TARJETA (más abajo) son
+// decorativas y a propósito NO cambian con el tema -- mismo criterio que
+// el color de identidad fijo de una tarjeta de crédito real (ver CSS).
+window.__aplicarTemaFinanzas__ = function (tema) {
+  const CT = coloresTema();
+  Chart.defaults.color = CT.texto;
+  Chart.defaults.borderColor = CT.grid;
+
+  function recolorearOpciones(opciones) {
+    if (!opciones) return;
+    if (opciones.scales) {
+      Object.values(opciones.scales).forEach((eje) => {
+        if (eje.ticks) eje.ticks.color = CT.texto;
+        if (eje.grid && 'color' in eje.grid) eje.grid.color = CT.grid;
+      });
+    }
+    if (opciones.plugins) {
+      if (opciones.plugins.legend && opciones.plugins.legend.labels) opciones.plugins.legend.labels.color = CT.texto;
+      if (opciones.plugins.tooltip) {
+        opciones.plugins.tooltip.backgroundColor = CT.tooltipBg;
+        opciones.plugins.tooltip.titleColor = CT.tooltipTexto;
+        opciones.plugins.tooltip.bodyColor = CT.tooltipTexto;
+        opciones.plugins.tooltip.borderColor = CT.tooltipBorde;
+      }
+    }
+  }
+
+  function recolorearDatasetsPorId(chart, id) {
+    const ds = chart.data.datasets;
+    if (!ds || !ds.length) return;
+    if (id === 'chartDeudaEvolucion') {
+      ds[0].borderColor = CT.oro; ds[0].backgroundColor = conAlpha(CT.oro, 0.12);
+    } else if (id === 'chartIngresosGastos' || id === 'chartIngresosGastosCompact') {
+      ds[0].backgroundColor = [CT.verde, CT.rojo];
+    } else if (id === 'chartMoneda') {
+      ds[0].backgroundColor = [CT.accent, CT.oro]; ds[0].borderColor = CT.superficie;
+    } else if (id === 'chartEvolucion') {
+      ds[0].borderColor = CT.accent2; ds[0].backgroundColor = conAlpha(CT.accent2, 0.12);
+    } else if (id === 'chartDistribucion') {
+      ds[0].borderColor = CT.superficie;
+    } else if (id === 'chartTendenciaMensual') {
+      ds[0].borderColor = CT.verde; ds[0].backgroundColor = conAlpha(CT.verde, 0.12);
+      if (ds[1]) { ds[1].borderColor = CT.rojo; ds[1].backgroundColor = conAlpha(CT.rojo, 0.12); }
+    } else if (id === 'chartEntidades') {
+      ds[0].backgroundColor = CT.accent;
+    }
+  }
+
+  Object.keys(GRAFICOS_REGISTRY).forEach((id) => {
+    const chart = Chart.getChart(id);
+    if (!chart) return;
+    recolorearOpciones(chart.options);
+    recolorearDatasetsPorId(chart, id);
+    chart.update('none');
+  });
+
+  // Gráfico del modal "ver en grande" -- instancia aparte (ver
+  // abrirModalGrafico() más abajo), no vive en GRAFICOS_REGISTRY.
+  if (modalChartInstance) {
+    recolorearOpciones(modalChartInstance.options);
+    if (modalGraficoCanvasIdActual) recolorearDatasetsPorId(modalChartInstance, modalGraficoCanvasIdActual);
+    modalChartInstance.update('none');
+  }
+};
+
+/* =================================================================
+   FOCO DE LOS MODALES "modal-grafico-overlay" (2026-09-11, checklist de
+   accesibilidad) -- abarca los 5: gráfico expandido/leaderboard
+   (#modalGrafico), detalle de insight (#modalInsight), configurar
+   presupuesto (#modalPresupuesto), reasignar categorías
+   (#modalCategorias) y nueva/editar meta (#modalMeta). Un usuario de
+   teclado que abre uno de estos tiene que encontrar el foco DENTRO (el
+   botón "Cerrar"), y al cerrarlo tiene que volver exactamente a donde
+   estaba antes -- nunca perdido en el <body>. Mismo criterio que ya
+   tiene el modal global de alertas (#alertaAppOverlay, ver su propio
+   <script> al final de este archivo, con su propia copia de
+   "elementoQueAbrio" porque es un componente completamente aparte).
+================================================================= */
+const FOCO_MODALES = {};
+function enfocarModal(modalId) {
+  FOCO_MODALES[modalId] = document.activeElement;
+  const modal = document.getElementById(modalId);
+  const botonCerrar = modal && modal.querySelector('.modal-grafico-cerrar');
+  // rAF: el caller ya puso la clase "open" (display:flex) antes de llamar
+  // a esto, pero un frame de margen asegura que el navegador considere al
+  // botón realmente focuseable (visible, con layout calculado).
+  requestAnimationFrame(() => { if (botonCerrar) botonCerrar.focus(); });
+}
+function devolverFocoModal(modalId) {
+  const previo = FOCO_MODALES[modalId];
+  FOCO_MODALES[modalId] = null;
+  if (previo && document.contains(previo) && typeof previo.focus === 'function') previo.focus();
+}
+
 async function iniciarDashboard() {
   const contenedorCarga = document.getElementById('cargandoDashboard');
   let datosApi;
@@ -1685,8 +2041,8 @@ document.getElementById('lastUpdated').textContent = `Última actualización del
   const PALETA_IDENTIDAD_TARJETA = ['#7c6cfb', '#38bdf8', '#27d9a8', '#f97316', '#ec4899', '#fbbf24'];
   const colorTarjeta = (id) => PALETA_IDENTIDAD_TARJETA[Math.abs(Number(id) || 0) % PALETA_IDENTIDAD_TARJETA.length];
 
-  const ICON_ALERTA = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M12 17h.01"></path><circle cx="12" cy="12" r="9"></circle></svg>';
-  const ICON_CHIP = '<svg width="30" height="22" viewBox="0 0 34 26" fill="none"><rect x="0.5" y="0.5" width="33" height="25" rx="5" fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.4)"></rect><line x1="0.5" y1="9" x2="33.5" y2="9" stroke="rgba(255,255,255,0.35)"></line><line x1="0.5" y1="17" x2="33.5" y2="17" stroke="rgba(255,255,255,0.35)"></line><line x1="11" y1="0.5" x2="11" y2="25.5" stroke="rgba(255,255,255,0.35)"></line><line x1="23" y1="0.5" x2="23" y2="25.5" stroke="rgba(255,255,255,0.35)"></line></svg>';
+  const ICON_ALERTA = '<svg aria-hidden="true" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"></path><path d="M12 17h.01"></path><circle cx="12" cy="12" r="9"></circle></svg>';
+  const ICON_CHIP = '<svg aria-hidden="true" width="30" height="22" viewBox="0 0 34 26" fill="none"><rect x="0.5" y="0.5" width="33" height="25" rx="5" fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.4)"></rect><line x1="0.5" y1="9" x2="33.5" y2="9" stroke="rgba(255,255,255,0.35)"></line><line x1="0.5" y1="17" x2="33.5" y2="17" stroke="rgba(255,255,255,0.35)"></line><line x1="11" y1="0.5" x2="11" y2="25.5" stroke="rgba(255,255,255,0.35)"></line><line x1="23" y1="0.5" x2="23" y2="25.5" stroke="rgba(255,255,255,0.35)"></line></svg>';
 
   const cardsHTML = activas.map(t => {
     const pct = Math.max(0, t.porcentaje_uso || 0);
@@ -1762,17 +2118,23 @@ document.getElementById('lastUpdated').textContent = `Última actualización del
 // decenas de categorías, cada emoji ya funciona como distintivo visual
 // rápido por categoría, y reconstruir todos como SVG no es proporcional
 // al resto de esta ronda de cambios.
+// aria-hidden="true" horneado en cada SVG (2026-09-11, checklist de
+// accesibilidad): estos íconos SIEMPRE aparecen pegados a un texto que ya
+// dice lo mismo (el .label de la tarjeta KPI, o el <span> de al lado en
+// .aviso-amber/.tarjeta-card-alerta/etc.) -- son decorativos, nunca la
+// única forma de entender algo, así que un lector de pantalla no debería
+// anunciarlos por separado.
 const ICONS_KPI = {
-  check:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9 12l2 2 4-4"></path></svg>',
-  warning:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>',
-  arrowDown:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v7"></path><path d="M9 12l3 3 3-3"></path></svg>',
-  arrowUp:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 16V9"></path><path d="M9 12l3-3 3 3"></path></svg>',
-  card:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg>',
-  list:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>',
-  calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4"></path><path d="M8 2v4"></path><path d="M3 10h18"></path></svg>',
-  bank:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M5 21V10l7-6 7 6v11"></path><path d="M9 21v-7h6v7"></path></svg>',
-  exchange: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3l4 4-4 4"></path><path d="M20 7H8"></path><path d="M8 21l-4-4 4-4"></path><path d="M4 17h12"></path></svg>',
-  bag:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg>',
+  check:    '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M9 12l2 2 4-4"></path></svg>',
+  warning:  '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>',
+  arrowDown:'<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v7"></path><path d="M9 12l3 3 3-3"></path></svg>',
+  arrowUp:  '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 16V9"></path><path d="M9 12l3-3 3 3"></path></svg>',
+  card:     '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"></rect><path d="M2 10h20"></path></svg>',
+  list:     '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>',
+  calendar: '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4"></path><path d="M8 2v4"></path><path d="M3 10h18"></path></svg>',
+  bank:     '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M5 21V10l7-6 7 6v11"></path><path d="M9 21v-7h6v7"></path></svg>',
+  exchange: '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3l4 4-4 4"></path><path d="M20 7H8"></path><path d="M8 21l-4-4 4-4"></path><path d="M4 17h12"></path></svg>',
+  bag:      '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg>',
 };
 
 // Íconos de IDENTIDAD de cada balde (2026-09-08) -- mismo lenguaje SVG de
@@ -1784,9 +2146,9 @@ const ICONS_KPI = {
 // bolsa"; se elige "bolsa" para reusar un ícono ya verificado en vez de
 // sumar un path nuevo sin poder previsualizarlo antes del QA visual.
 const ICONS_BALDE = {
-  necesidades:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M9 21v-6h6v6"></path></svg>',
-  gustos:        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg>',
-  ahorro_deudas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>',
+  necesidades:   '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M9 21v-6h6v6"></path></svg>',
+  gustos:        '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg>',
+  ahorro_deudas: '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>',
 };
 
 // Catálogo de baldes -- MISMO id/orden/label que db_finanzas.BALDES_PRESUPUESTO.
@@ -1839,11 +2201,6 @@ const PALETTE = ['#7c6cfb','#38bdf8','#fb923c','#27d9a8','#e879f9','#fbbf24','#6
                   '#818cf8','#5eead4','#fda4af','#93c5fd'];
 const colorFor = (i) => PALETTE[i % PALETTE.length];
 
-// Configuración global de Chart.js para que combine con el tema oscuro
-Chart.defaults.color = '#8d96ab';
-Chart.defaults.font.family = "'Inter', sans-serif";
-Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
-
 /* =================================================================
    RENDERIZADO DEL DASHBOARD (parametrizado por período)
    -----------------------------------------------------------------
@@ -1853,15 +2210,14 @@ Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
    sin recargar la página. Usa los mismos nombres "DATA"/"DEUDA_TARJETAS"
    que el resto del código ya esperaba, así que nada de la lógica interna
    cambió -- solo quedó envuelta.
-================================================================= */
-// Guarda la config ORIGINAL (plana, sin mutar por Chart.js) de cada
-// gráfico creado con crearGrafico() -- así el modal de "ver en grande"
-// puede reconstruirlo desde cero en vez de reutilizar el objeto interno
-// ya resuelto de la instancia viva (eso rompía a Chart.js con un error
-// críptico). Vive afuera de renderDashboard() para sobrevivir entre
-// renders -- cada llamada a crearGrafico() la va pisando sola.
-const GRAFICOS_REGISTRY = {};
 
+   GRAFICOS_REGISTRY (config ORIGINAL, plana, de cada gráfico creado con
+   crearGrafico() -- así el modal de "ver en grande" puede reconstruirlo
+   desde cero) y Chart.defaults.* ahora viven arriba de iniciarDashboard(),
+   junto con el resto del "puente de tema" -- ver el comentario largo ahí
+   para el porqué (window.__aplicarTemaFinanzas__ necesita leerlos antes
+   de que este fetch async resuelva).
+================================================================= */
 // gastoPorCategoria vive DENTRO de renderDashboard() (se recalcula en
 // cada render según el filtro) -- el modal del ranking de categorías se
 // abre desde afuera de esa función, así que necesita su propia copia
@@ -2192,9 +2548,11 @@ function abrirModalPresupuesto() {
   document.getElementById('inputPctAhorroDeudas').value = PRESUPUESTO.pct_ahorro_deudas;
   actualizarSumaPctModal();
   document.getElementById('modalPresupuesto').classList.add('open');
+  enfocarModal('modalPresupuesto');
 }
 function cerrarModalPresupuesto() {
   document.getElementById('modalPresupuesto').classList.remove('open');
+  devolverFocoModal('modalPresupuesto');
 }
 function actualizarSumaPctModal() {
   const n = parseFloat(document.getElementById('inputPctNecesidades').value) || 0;
@@ -2244,9 +2602,11 @@ function abrirModalCategorias() {
       </div>`).join('')
     : '<div class="empty-state">Todavía no tenés categorías registradas.</div>';
   document.getElementById('modalCategorias').classList.add('open');
+  enfocarModal('modalCategorias');
 }
 function cerrarModalCategorias() {
   document.getElementById('modalCategorias').classList.remove('open');
+  devolverFocoModal('modalCategorias');
 }
 async function cambiarBaldeCategoria(selectEl) {
   const categoria = selectEl.dataset.categoria;
@@ -2292,9 +2652,11 @@ function abrirModalMeta(id) {
   setValorMonto(document.getElementById('inputMetaMonto'), meta ? meta.monto_objetivo : '');
   document.getElementById('inputMetaFecha').value = meta && meta.fecha_objetivo ? meta.fecha_objetivo : '';
   document.getElementById('modalMeta').classList.add('open');
+  enfocarModal('modalMeta');
 }
 function cerrarModalMeta() {
   document.getElementById('modalMeta').classList.remove('open');
+  devolverFocoModal('modalMeta');
 }
 document.getElementById('formMeta')?.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -2364,6 +2726,14 @@ document.getElementById('modalMeta')?.addEventListener('click', (e) => {
 });
 
 function renderDashboard(DATA, DEUDA_TARJETAS) {
+
+// Colores del tema activo AHORA MISMO -- una sola foto tomada al principio
+// de este render, para que los gráficos que arma esta pasada (más abajo)
+// nazcan ya pintados del tema correcto. Si el usuario cambia de tema
+// DESPUÉS, es window.__aplicarTemaFinanzas__ (ver arriba de
+// iniciarDashboard()) quien los repinta -- no hace falta volver a llamar
+// a renderDashboard() para eso.
+const CT = coloresTema();
 
 // "Todos los movimientos" (switch): vuelve a página 1 en cada cambio de
 // filtro y se re-renderiza si está prendido -- si está apagado no hace
@@ -2469,7 +2839,7 @@ if (todosMovActivo) renderTodosMovimientos(DATA);
   }
 
   document.getElementById('movimientosInfo').innerHTML =
-    `<span class="dot"></span> <b>${DATA.length}</b> movimiento${DATA.length === 1 ? '' : 's'} cargado${DATA.length === 1 ? '' : 's'} ${periodoTxt}`;
+    `<span class="dot" aria-hidden="true"></span> <b>${DATA.length}</b> movimiento${DATA.length === 1 ? '' : 's'} cargado${DATA.length === 1 ? '' : 's'} ${periodoTxt}`;
   document.getElementById('rangoTotalBadge').innerHTML = rangoHTML;
 }
 
@@ -2686,7 +3056,7 @@ function kpiDetalle(id, htmlInterno) {
 const kpiGrid = document.getElementById('kpiGrid');
 kpiGrid.innerHTML = `
   <div class="kpi kpi-hero ${balanceCajaReal >= 0 ? 'accent-green' : 'accent-red'}">
-    <div class="icon-badge"><div class="icon">${ICONS_KPI[balanceCajaReal >= 0 ? 'check' : 'warning']}</div></div>
+    <div class="icon-badge" aria-hidden="true"><div class="icon">${ICONS_KPI[balanceCajaReal >= 0 ? 'check' : 'warning']}</div></div>
     <!-- Requisito 2026-09-08 punto 7: "Balance de caja real" sonaba
          técnico -- "Dinero disponible" es lo mismo dicho en el lenguaje
          que usaría cualquiera que no maneje jerga contable. -->
@@ -2704,7 +3074,7 @@ kpiGrid.innerHTML = `
 
   <div class="kpi-support-grid">
     <div class="kpi accent-green">
-      <div class="icon-badge"><div class="icon">${ICONS_KPI.arrowDown}</div></div>
+      <div class="icon-badge" aria-hidden="true"><div class="icon">${ICONS_KPI.arrowDown}</div></div>
       <!-- Requisito 2026-09-08 punto 9: "Ingresos reales" sonaba a que
            existen "ingresos falsos" -- se nombra directamente qué es. -->
       <div class="label">Dinero que entró</div>
@@ -2713,7 +3083,7 @@ kpiGrid.innerHTML = `
     </div>
 
     <div class="kpi accent-red">
-      <div class="icon-badge"><div class="icon">${ICONS_KPI.arrowUp}</div></div>
+      <div class="icon-badge" aria-hidden="true"><div class="icon">${ICONS_KPI.arrowUp}</div></div>
       <div class="label">Dinero que salió</div>
       <div class="value">${fmtCOP(totalGastoReal)}</div>
       ${kpiDetalle('detalleGasto', `<p>Se contaron ${gastosReales.length} movimiento${gastosReales.length===1?'':'s'}. Es lo que de verdad salió de tus cuentas -- no incluye compras a crédito que todavía no pagaste.</p>`)}
@@ -2721,7 +3091,7 @@ kpiGrid.innerHTML = `
 
     ${deudaVisibleArriba ? `
     <div class="kpi ${deudaActual > 0 ? 'accent-red' : 'accent-green'}">
-      <div class="icon-badge"><div class="icon">${ICONS_KPI.card}</div></div>
+      <div class="icon-badge" aria-hidden="true"><div class="icon">${ICONS_KPI.card}</div></div>
       <div class="label">Deuda actual estimada</div>
       <div class="value">${fmtCOP(deudaActual)}</div>
       ${kpiDetalle('detalleDeuda', `<p>Es lo que debés hoy en tus tarjetas de crédito: se suman tus compras y adelantos, y se resta lo que ya pagaste.</p>`)}
@@ -2743,28 +3113,28 @@ kpiGrid.innerHTML = `
   </div>
 
   <div class="kpi kpi-compact accent-purple">
-    <div class="icon-badge"><div class="icon">${ICONS_KPI.list}</div></div>
+    <div class="icon-badge" aria-hidden="true"><div class="icon">${ICONS_KPI.list}</div></div>
     <div class="label">Transacciones totales</div>
     <div class="value">${fmtNum(DATA.length)}</div>
     <div class="sub">${gastosCOP.length + dataUSD.length} gastos · ${ingresosCOP.length} ingresos</div>
   </div>
 
   <div class="kpi kpi-compact">
-    <div class="icon-badge"><div class="icon">${catIcon(catTop)}</div></div>
+    <div class="icon-badge" aria-hidden="true"><div class="icon">${catIcon(catTop)}</div></div>
     <div class="label">Categoría con mayor gasto</div>
     <div class="value" style="text-transform:capitalize;">${catTop}</div>
     <div class="sub">${fmtCOP(catTopMonto)} · ${fmtPct(totalGastosCOP ? catTopMonto/totalGastosCOP*100 : 0)} del consumo total (incl. crédito)</div>
   </div>
 
   <div class="kpi kpi-compact">
-    <div class="icon-badge"><div class="icon">${ICONS_KPI.calendar}</div></div>
+    <div class="icon-badge" aria-hidden="true"><div class="icon">${ICONS_KPI.calendar}</div></div>
     <div class="label">Promedio mensual de gasto real</div>
     <div class="value">${fmtCOP(promedioMensualGasto)}</div>
     <div class="sub">calculado sobre ${mesesPresentes.length} meses con datos · solo caja real</div>
   </div>
 
   <div class="kpi kpi-compact">
-    <div class="icon-badge"><div class="icon">${ICONS_KPI.bank}</div></div>
+    <div class="icon-badge" aria-hidden="true"><div class="icon">${ICONS_KPI.bank}</div></div>
     <div class="label">Entidad más utilizada</div>
     <div class="value">${entidadTop}</div>
     <div class="sub">${entidadCount[0]?.[1] || 0} movimientos · ${fmtCOP(entidadMonto.find(e=>e[0]===entidadTop)?.[1]||0)}</div>
@@ -2772,7 +3142,7 @@ kpiGrid.innerHTML = `
 
   ${!haySoloUnaMoneda ? `
   <div class="kpi">
-    <div class="icon-badge"><div class="icon">${ICONS_KPI.exchange}</div></div>
+    <div class="icon-badge" aria-hidden="true"><div class="icon">${ICONS_KPI.exchange}</div></div>
     <div class="label">Distribución por moneda</div>
     <div class="mini-rows">
       ${[...monedaCount.entries()].map(([m,c])=>`<div class="row"><span>${m}</span><b>${c} mov. (${fmtPct(c/DATA.length*100)})</b></div>`).join('')}
@@ -2792,28 +3162,28 @@ crearGrafico('chartIngresosGastosCompact', configIngresosVsGastos({ compacto: tr
 const _kpiGridDeuda = document.getElementById('kpiGridDeuda'); // null si "deuda" está oculta -- ver ocultarSubvistas()
 if (_kpiGridDeuda) _kpiGridDeuda.innerHTML = `
   <div class="kpi ${deudaActual > 0 ? 'accent-red' : 'accent-green'}">
-    <div class="icon-badge"><div class="icon">${ICONS_KPI.card}</div></div>
+    <div class="icon-badge" aria-hidden="true"><div class="icon">${ICONS_KPI.card}</div></div>
     <div class="label">Deuda actual estimada</div>
     <div class="value">${fmtCOP(deudaActual)}</div>
     <div class="sub">saldo acumulado: compras a crédito + avances − pagos</div>
   </div>
 
   <div class="kpi">
-    <div class="icon-badge"><div class="icon">${ICONS_KPI.bag}</div></div>
+    <div class="icon-badge" aria-hidden="true"><div class="icon">${ICONS_KPI.bag}</div></div>
     <div class="label">Gasto con tarjeta de crédito</div>
     <div class="value">${fmtCOP(totalGastoCredito)}</div>
     <div class="sub">${gastosCredito.length} compras · ${fmtPct(totalGastosCOP ? totalGastoCredito/totalGastosCOP*100 : 0)} de todo lo que gastaste</div>
   </div>
 
   <div class="kpi">
-    <div class="icon-badge"><div class="icon">${ICONS_KPI.arrowDown}</div></div>
+    <div class="icon-badge" aria-hidden="true"><div class="icon">${ICONS_KPI.arrowDown}</div></div>
     <div class="label">Avances de crédito recibidos</div>
     <div class="value">${fmtCOP(totalAvancesCredito)}</div>
     <div class="sub">${avancesCredito.length} adelanto(s) de efectivo — es deuda, no ingreso real</div>
   </div>
 
   <div class="kpi accent-green">
-    <div class="icon-badge"><div class="icon">${ICONS_KPI.check}</div></div>
+    <div class="icon-badge" aria-hidden="true"><div class="icon">${ICONS_KPI.check}</div></div>
     <div class="label">Pagos a tarjetas de crédito</div>
     <div class="value">${fmtCOP(totalPagosTarjeta)}</div>
     <div class="sub">${pagosTarjeta.length} pago(s) registrados que abonan la deuda</div>
@@ -2863,8 +3233,8 @@ if (DEUDA_TARJETAS.length) {
       datasets: [{
         label: 'Saldo deuda tarjetas de crédito',
         data: dataDeuda,
-        borderColor: '#fbbf24',
-        backgroundColor: 'rgba(251,191,36,0.12)',
+        borderColor: CT.oro,
+        backgroundColor: conAlpha(CT.oro, 0.12),
         fill: true, tension: 0.3, borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 6,
         stepped: false
       }]
@@ -2873,7 +3243,7 @@ if (DEUDA_TARJETAS.length) {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display:false },
-        tooltip: { callbacks: {
+        tooltip: tooltipBase(CT, {
           label: (ctx) => `Saldo: ${fmtCOP(ctx.parsed.y)}`,
           // En modo agregado (por mes) el punto ya no representa un solo
           // movimiento -- mostrar tipo/monto/descripción de un movimiento
@@ -2886,11 +3256,11 @@ if (DEUDA_TARJETAS.length) {
                 const etiqueta = { credito:'Compra a crédito', avance_credito:'Avance de crédito', pago_tarjeta_credito:'Pago a tarjeta' }[d.tipo_movimiento] || d.tipo_movimiento;
                 return `${etiqueta}: ${fmtCOP(d.monto)} — ${d.descripcion}`;
               }
-        } }
+        })
       },
       scales: {
-        x: { ticks:{ maxRotation:60, minRotation:60, autoSkip:true, maxTicksLimit:20 }, grid:{ display:false } },
-        y: { ticks:{ callback:(v)=> fmtNum(v) }, grid:{ color:'rgba(255,255,255,0.05)' } }
+        x: { ticks:{ maxRotation:60, minRotation:60, autoSkip:true, maxTicksLimit:20, color: CT.texto }, grid:{ display:false } },
+        y: { ticks:{ callback:(v)=> fmtNum(v), color: CT.texto }, grid:{ color: CT.grid } }
       }
     }
   });
@@ -2920,11 +3290,11 @@ crearGrafico('chartCategorias', {
     responsive: true, maintainAspectRatio: false,
     plugins: {
       legend: { display:false },
-      tooltip: { callbacks: { label: (ctx)=> fmtCOP(ctx.parsed.x) } }
+      tooltip: tooltipBase(CT, { label: (ctx)=> fmtCOP(ctx.parsed.x) })
     },
     scales: {
-      x: { ticks: { callback:(v)=> fmtNum(v) }, grid: { color:'rgba(255,255,255,0.05)' } },
-      y: { grid: { display:false } }
+      x: { ticks: { callback:(v)=> fmtNum(v), color: CT.texto }, grid: { color: CT.grid } },
+      y: { ticks: { color: CT.texto }, grid: { display:false } }
     }
   }
 });
@@ -2948,7 +3318,7 @@ function configIngresosVsGastos({ compacto = false } = {}) {
       labels: ['Ingresos reales', 'Gasto real (caja)'],
       datasets: [{
         data: [totalIngresosReales, totalGastoReal],
-        backgroundColor: ['#27d9a8', '#fb7185'],
+        backgroundColor: [CT.verde, CT.rojo],
         borderRadius: compacto ? 6 : 10,
         barThickness: compacto ? 22 : 60
       }]
@@ -2961,14 +3331,14 @@ function configIngresosVsGastos({ compacto = false } = {}) {
       responsive: true, maintainAspectRatio: false,
       plugins: {
         legend: { display:false },
-        tooltip: { callbacks: { label:(ctx)=> fmtCOP(compacto ? ctx.parsed.x : ctx.parsed.y) } }
+        tooltip: tooltipBase(CT, { label:(ctx)=> fmtCOP(compacto ? ctx.parsed.x : ctx.parsed.y) })
       },
       scales: compacto ? {
-        x: { ticks: { callback:(v)=> fmtNum(v), font:{ size:9 } }, grid: { color:'rgba(255,255,255,0.05)' } },
-        y: { ticks: { font:{ size:9 } }, grid: { display:false } }
+        x: { ticks: { callback:(v)=> fmtNum(v), font:{ size:9 }, color: CT.texto }, grid: { color: CT.grid } },
+        y: { ticks: { font:{ size:9 }, color: CT.texto }, grid: { display:false } }
       } : {
-        y: { ticks: { callback:(v)=> fmtNum(v) }, grid: { color:'rgba(255,255,255,0.05)' } },
-        x: { grid: { display:false } }
+        y: { ticks: { callback:(v)=> fmtNum(v), color: CT.texto }, grid: { color: CT.grid } },
+        x: { ticks: { color: CT.texto }, grid: { display:false } }
       }
     }
   };
@@ -2994,17 +3364,17 @@ if (haySoloUnaMoneda) {
       labels: [...monedaCount.keys()],
       datasets: [{
         data: [...monedaCount.values()],
-        backgroundColor: ['#5b6472', '#fbbf24'],
-        borderColor: '#131928',
-        borderWidth: 3
+        backgroundColor: [CT.accent, CT.oro],
+        borderColor: CT.superficie,
+        borderWidth: 2
       }]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      cutout: '68%',
+      cutout: '70%',
       plugins: {
-        legend: { position:'bottom', labels:{ boxWidth:10, padding:14 } },
-        tooltip: { callbacks: { label:(ctx)=> `${ctx.label}: ${ctx.parsed} movimiento(s)` } }
+        legend: { position:'bottom', labels:{ boxWidth:10, padding:14, color: CT.texto } },
+        tooltip: tooltipBase(CT, { label:(ctx)=> `${ctx.label}: ${ctx.parsed} movimiento(s)` })
       }
     }
   });
@@ -3039,8 +3409,8 @@ crearGrafico('chartEvolucion', {
     datasets: [{
       label: labelSerieEvolucion,
       data: dataEvolucion,
-      borderColor: '#c68a4e',
-      backgroundColor: 'rgba(198,138,78,0.12)',
+      borderColor: CT.accent2,
+      backgroundColor: conAlpha(CT.accent2, 0.12),
       fill: true,
       tension: 0.35,
       pointRadius: 2,
@@ -3050,10 +3420,10 @@ crearGrafico('chartEvolucion', {
   },
   options: {
     responsive: true, maintainAspectRatio: false,
-    plugins: { legend:{ display:false }, tooltip:{ callbacks:{ label:(ctx)=> fmtCOP(ctx.parsed.y) } } },
+    plugins: { legend:{ display:false }, tooltip: tooltipBase(CT, { label:(ctx)=> fmtCOP(ctx.parsed.y) }) },
     scales: {
-      x: { ticks:{ maxRotation:60, minRotation:60, autoSkip:true, maxTicksLimit:20 }, grid:{ display:false } },
-      y: { ticks:{ callback:(v)=> fmtNum(v) }, grid:{ color:'rgba(255,255,255,0.05)' } }
+      x: { ticks:{ maxRotation:60, minRotation:60, autoSkip:true, maxTicksLimit:20, color: CT.texto }, grid:{ display:false } },
+      y: { ticks:{ callback:(v)=> fmtNum(v), color: CT.texto }, grid:{ color: CT.grid } }
     }
   }
 });
@@ -3087,16 +3457,16 @@ crearGrafico('chartDistribucion', {
     datasets: [{
       data: gastoPorCategoria.map(([,v])=>v),
       backgroundColor: gastoPorCategoria.map((_,i)=>colorFor(i)),
-      borderColor: '#131928',
+      borderColor: CT.superficie,
       borderWidth: 2
     }]
   },
   options: {
     responsive: true, maintainAspectRatio: false,
-    cutout: '55%',
+    cutout: '62%',
     plugins: {
       legend: { display:false },
-      tooltip: { callbacks: { label:(ctx)=> `${ctx.label}: ${fmtPct(totalGastosCOP ? ctx.parsed/totalGastosCOP*100 : 0)} (${fmtCOP(ctx.parsed)})` } }
+      tooltip: tooltipBase(CT, { label:(ctx)=> `${ctx.label}: ${fmtPct(totalGastosCOP ? ctx.parsed/totalGastosCOP*100 : 0)} (${fmtCOP(ctx.parsed)})` })
     }
   }
 });
@@ -3118,13 +3488,13 @@ crearGrafico('chartTendenciaMensual', {
       {
         label: 'Ingresos',
         data: mesesOrdenados.map(m => ingresoPorMes.get(m)||0),
-        borderColor:'#27d9a8', backgroundColor:'rgba(39,217,168,0.12)',
+        borderColor: CT.verde, backgroundColor: conAlpha(CT.verde, 0.12),
         fill:false, tension:0.3, borderWidth:2.5, pointRadius:4
       },
       {
         label: 'Gastos',
         data: mesesOrdenados.map(m => gastoPorMes.get(m)||0),
-        borderColor:'#fb7185', backgroundColor:'rgba(251,113,133,0.12)',
+        borderColor: CT.rojo, backgroundColor: conAlpha(CT.rojo, 0.12),
         fill:false, tension:0.3, borderWidth:2.5, pointRadius:4
       }
     ]
@@ -3132,12 +3502,12 @@ crearGrafico('chartTendenciaMensual', {
   options: {
     responsive: true, maintainAspectRatio: false,
     plugins: {
-      legend: { position:'top', align:'end', labels:{ boxWidth:10 } },
-      tooltip: { callbacks: { label:(ctx)=> `${ctx.dataset.label}: ${fmtCOP(ctx.parsed.y)}` } }
+      legend: { position:'top', align:'end', labels:{ boxWidth:10, color: CT.texto } },
+      tooltip: tooltipBase(CT, { label:(ctx)=> `${ctx.dataset.label}: ${fmtCOP(ctx.parsed.y)}` })
     },
     scales: {
-      y: { ticks:{ callback:(v)=> fmtNum(v) }, grid:{ color:'rgba(255,255,255,0.05)' } },
-      x: { grid:{ display:false } }
+      y: { ticks:{ callback:(v)=> fmtNum(v), color: CT.texto }, grid:{ color: CT.grid } },
+      x: { ticks:{ color: CT.texto }, grid:{ display:false } }
     }
   }
 });
@@ -3153,7 +3523,7 @@ crearGrafico('chartEntidades', {
       {
         label: 'Monto movilizado (COP)',
         data: entidadMonto.map(([,v])=>v),
-        backgroundColor: '#5b6472',
+        backgroundColor: CT.accent,
         borderRadius: 8,
         yAxisID: 'y',
         barThickness: 40
@@ -3164,15 +3534,15 @@ crearGrafico('chartEntidades', {
     responsive: true, maintainAspectRatio: false,
     plugins: {
       legend: { display:false },
-      tooltip: { callbacks: { label: (ctx) => {
+      tooltip: tooltipBase(CT, { label: (ctx) => {
         const entidad = ctx.label;
         const cnt = [...entidadCount].find(e=>e[0]===entidad)?.[1] || 0;
         return [`Monto: ${fmtCOP(ctx.parsed.y)}`, `Movimientos: ${cnt}`];
-      } } }
+      } })
     },
     scales: {
-      y: { ticks:{ callback:(v)=> fmtNum(v) }, grid:{ color:'rgba(255,255,255,0.05)' } },
-      x: { grid:{ display:false } }
+      y: { ticks:{ callback:(v)=> fmtNum(v), color: CT.texto }, grid:{ color: CT.grid } },
+      x: { ticks:{ color: CT.texto }, grid:{ display:false } }
     }
   }
 });
@@ -3519,13 +3889,15 @@ if (toggleTodosMovimientos) {
    objeto data/options del gráfico original, por referencia -- así los
    tooltips y colores quedan idénticos sin duplicar configuración por
    gráfico, y agregar un gráfico nuevo a futuro no requiere tocar esto.
+   modalChartInstance/modalGraficoCanvasIdActual viven arriba de
+   iniciarDashboard() junto con el resto del "puente de tema" -- ver el
+   comentario ahí.
 ================================================================= */
-let modalChartInstance = null;
-
 function abrirModalGrafico(canvasId, titulo) {
   const config = GRAFICOS_REGISTRY[canvasId];
   if (!config) return; // ej. gráfico de deuda cuando el período no tiene movimientos de tarjeta
 
+  modalGraficoCanvasIdActual = canvasId;
   document.getElementById('modalGraficoTitulo').textContent = titulo;
   document.getElementById('modalGrafico').classList.add('open');
   document.getElementById('modalGraficoCanvasHolder').style.display = '';
@@ -3538,6 +3910,7 @@ function abrirModalGrafico(canvasId, titulo) {
   });
 
   document.getElementById('modalGraficoTabla').innerHTML = tablaDetalleDesdeConfig(config);
+  enfocarModal('modalGrafico');
 }
 
 function tablaDetalleDesdeConfig(config) {
@@ -3558,10 +3931,12 @@ function tablaDetalleDesdeConfig(config) {
 }
 
 function abrirModalLeaderboard() {
+  modalGraficoCanvasIdActual = null; // este modal no tiene canvas -- ver __aplicarTemaFinanzas__
   document.getElementById('modalGraficoTitulo').textContent = '🏆 Ranking completo de categorías por gasto';
   document.getElementById('modalGrafico').classList.add('open');
   document.getElementById('modalGraficoCanvasHolder').style.display = 'none';
   if (modalChartInstance) { modalChartInstance.destroy(); modalChartInstance = null; }
+  enfocarModal('modalGrafico');
 
   if (!GASTO_POR_CATEGORIA_ACTUAL.length) {
     document.getElementById('modalGraficoTabla').innerHTML = '<p class="desc">Sin datos suficientes para mostrar el detalle.</p>';
@@ -3584,6 +3959,8 @@ function abrirModalLeaderboard() {
 function cerrarModalGrafico() {
   document.getElementById('modalGrafico').classList.remove('open');
   if (modalChartInstance) { modalChartInstance.destroy(); modalChartInstance = null; }
+  modalGraficoCanvasIdActual = null;
+  devolverFocoModal('modalGrafico');
 }
 
 function abrirModalInsight(i) {
@@ -3592,10 +3969,12 @@ function abrirModalInsight(i) {
   document.getElementById('modalInsightTitulo').textContent = `${ins.icon} ${ins.title}`;
   document.getElementById('modalInsightTexto').innerHTML = ins.text;
   document.getElementById('modalInsight').classList.add('open');
+  enfocarModal('modalInsight');
 }
 
 function cerrarModalInsight() {
   document.getElementById('modalInsight').classList.remove('open');
+  devolverFocoModal('modalInsight');
 }
 
 // Sin DOMContentLoaded acá: este código corre recién después del
@@ -3714,7 +4093,7 @@ document.addEventListener('DOMContentLoaded', () => {
 <!-- ============================================================
      MODAL DE GRÁFICO EXPANDIDO (ver JS: abrirModalGrafico/abrirModalLeaderboard)
      ============================================================ -->
-<div class="modal-grafico-overlay" id="modalGrafico">
+<div class="modal-grafico-overlay" id="modalGrafico" role="dialog" aria-modal="true" aria-labelledby="modalGraficoTitulo">
   <div class="modal-grafico-card">
     <div class="modal-grafico-header">
       <h3 id="modalGraficoTitulo"></h3>
@@ -3734,7 +4113,7 @@ document.addEventListener('DOMContentLoaded', () => {
      mismas clases modal-grafico-* que el de arriba, para que se vea
      igual, pero sin canvas -- el detalle es solo texto.
      ============================================================ -->
-<div class="modal-grafico-overlay" id="modalInsight">
+<div class="modal-grafico-overlay" id="modalInsight" role="dialog" aria-modal="true" aria-labelledby="modalInsightTitulo">
   <div class="modal-grafico-card" style="width: min(560px, 100%);">
     <div class="modal-grafico-header">
       <h3 id="modalInsightTitulo"></h3>
@@ -3750,10 +4129,10 @@ document.addEventListener('DOMContentLoaded', () => {
      MODAL "CONFIGURAR PRESUPUESTO" (ver JS: abrirModalPresupuesto) --
      mismas clases modal-grafico-* que los modales de arriba.
      ============================================================ -->
-<div class="modal-grafico-overlay" id="modalPresupuesto">
+<div class="modal-grafico-overlay" id="modalPresupuesto" role="dialog" aria-modal="true" aria-labelledby="modalPresupuestoTitulo">
   <div class="modal-grafico-card" style="width: min(460px, 100%);">
     <div class="modal-grafico-header">
-      <h3>Configurar presupuesto</h3>
+      <h3 id="modalPresupuestoTitulo">Configurar presupuesto</h3>
       <button type="button" class="modal-grafico-cerrar" onclick="cerrarModalPresupuesto()" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-grafico-body">
@@ -3784,10 +4163,10 @@ document.addEventListener('DOMContentLoaded', () => {
      un <select> por categoría, se guarda al instante (criterio de
      aceptación: "sin tocar código ni pedirnos ayuda").
      ============================================================ -->
-<div class="modal-grafico-overlay" id="modalCategorias">
+<div class="modal-grafico-overlay" id="modalCategorias" role="dialog" aria-modal="true" aria-labelledby="modalCategoriasTitulo">
   <div class="modal-grafico-card" style="width: min(520px, 100%);">
     <div class="modal-grafico-header">
-      <h3>Reasignar categorías a un balde</h3>
+      <h3 id="modalCategoriasTitulo">Reasignar categorías a un balde</h3>
       <button type="button" class="modal-grafico-cerrar" onclick="cerrarModalCategorias()" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-grafico-body">
@@ -3803,7 +4182,7 @@ document.addEventListener('DOMContentLoaded', () => {
      si venís de "Nueva meta de ahorro" o de "Editar" en una meta ya
      existente, ver abrirModalMeta()).
      ============================================================ -->
-<div class="modal-grafico-overlay" id="modalMeta">
+<div class="modal-grafico-overlay" id="modalMeta" role="dialog" aria-modal="true" aria-labelledby="modalMetaTitulo">
   <div class="modal-grafico-card" style="width: min(440px, 100%);">
     <div class="modal-grafico-header">
       <h3 id="modalMetaTitulo">Nueva meta de ahorro</h3>
@@ -3895,14 +4274,20 @@ document.addEventListener('DOMContentLoaded', () => {
   overlay.addEventListener('click', (e) => { if (e.target === overlay) cerrar(false); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay.classList.contains('abierto')) cerrar(false); });
 
-  const ICONOS = { ok: '✓', error: '✕', confirmar: '?' };
+  // Iconos SVG en vez de glifos de texto sueltos (reskin 2026-09-11) --
+  // mismo lenguaje visual (trazo, sin relleno) que src/templates/base.html.
+  const ICONOS = {
+    ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>',
+    error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>',
+    confirmar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 1.7-2.2 1.8-2.5 3.5"></path><circle cx="12" cy="17" r="0.4" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="9"></circle></svg>',
+  };
 
   function abrir({ tipo, mensaje, textoBoton, conCancelar }) {
     return new Promise((resolve) => {
       elementoQueAbrio = document.activeElement;
       resolverActual = resolve;
       icono.className = 'alerta-app-icono ' + tipo;
-      icono.textContent = ICONOS[tipo] || 'ℹ';
+      icono.innerHTML = ICONOS[tipo] || '';
       mensajeEl.textContent = mensaje;
       btnOk.textContent = textoBoton || (conCancelar ? 'Confirmar' : 'Ok');
       btnCancelar.hidden = !conCancelar;
