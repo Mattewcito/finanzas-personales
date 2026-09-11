@@ -16,6 +16,12 @@
     --text-faint: #5b6379;
     --accent: #7c6cfb;
     --accent-2: #38bdf8;
+    /* Jerarquía de superficies estilo Apple/Copilot Money (2026-09-10,
+       ver requisitos/investigacion_colores_apple_2026-09-10.md secc. 3.2):
+       una superficie ELEVADA (modal, dropdown) debe leerse MÁS CERCA del
+       usuario -- más clara, no más oscura -- que la tarjeta de atrás.
+       13.81:1 de contraste con --text. */
+    --surface-elevated: #1b2338;
     --sidebar-w: 226px;
     --sidebar-w-collapsed: 68px;
   }
@@ -246,7 +252,11 @@
   .alerta-app-overlay.abierto{ display:flex; }
   .alerta-app-box{
     position:relative; max-width:400px; width:100%;
-    background: linear-gradient(180deg, var(--card-solid), #10141f);
+    /* Superficie elevada (2026-09-10): antes degradaba hacia #10141f, MÁS
+       oscuro que --card-solid -- al revés de "lo más cerca se ve más
+       claro" (ver --surface-elevated arriba). El modal es la superficie
+       más flotante de toda la pila, así que ahora es la más clara. */
+    background: linear-gradient(180deg, var(--surface-elevated), var(--card-solid));
     border:1px solid var(--card-border); border-radius:18px; padding:34px 28px 24px;
     text-align:center; box-shadow: 0 24px 60px -20px rgba(0,0,0,0.6);
     animation: alertaAppPop .18s ease;
