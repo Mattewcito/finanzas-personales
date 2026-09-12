@@ -61,44 +61,44 @@
      (ver el <script> de más abajo) para repintar los <canvas> de
      Chart.js, que no son CSS y no reaccionan solos a estas variables.
 
-     Modo oscuro sigue siendo la base histórica de este dashboard (valor
-     default de :root -- nadie que nunca toque el interruptor ve un
-     cambio). Los balances --balde-necesidades/--balde-gustos NO tenían
-     versión clara -- se agregó una con contraste verificado (fórmula de
-     luminancia relativa WCAG 2.1, ver contraste.py del reskin):
-     #1e50c4 (7.0:1 contra #ffffff) y #8a2196 (7.67:1 contra #ffffff),
-     ambos muy por encima del mínimo 4.5:1 para texto/ícono informativo.
+     Modo claro es el default de :root (2026-09-12: invertido desde
+     oscuro -- el usuario prefiere claro como punto de partida). Los
+     balances --balde-necesidades/--balde-gustos tienen contraste
+     verificado en ambos temas (fórmula de luminancia relativa WCAG 2.1,
+     ver contraste.py del reskin): #1e50c4 (7.0:1 contra #ffffff) y
+     #8a2196 (7.67:1 contra #ffffff) en claro; versiones más brillantes
+     para oscuro con contraste verificado sobre --bg oscuro.
      =========================================================== */
   :root{
-    /* ---- Oscuro (default) ---- */
-    --bg: #090c13;
-    --bg-soft: #0d111b;
-    --card-solid: #131928;
-    --card-solid-2: #10141f; /* extremo del degradé de .kpi -- un paso más oscuro que --card-solid */
-    --card-border: rgba(255,255,255,0.07);
-    --card-hover: #171e30;
-    --surface-elevated: #1b2338; /* modal/dropdown -- más CERCA del usuario, más clara (ver comentario histórico abajo) */
-    --text: #eef1f8;
-    --text-dim: #8d96ab;
-    --text-faint: #949cb2;
+    /* ---- Claro (default) ---- */
+    --bg: #f6f7fa;
+    --bg-soft: #eceff4;
+    --card-solid: #ffffff;
+    --card-solid-2: #eef1f6; /* extremo del degradé de .kpi */
+    --card-border: rgba(15,23,42,0.10);
+    --card-hover: #f1f3f8;
+    --surface-elevated: #ffffff; /* modal/dropdown */
+    --text: #12151c;
+    --text-dim: #5b6472;
+    --text-faint: #6a7285;
     --accent: #5b6472;      /* grafito -- superficies interactivas, plano en los dos temas */
     --accent-rgb: 91,100,114; /* mismo valor en los dos temas -- para rgba(var(--accent-rgb),alpha) */
-    --accent-2: #c68a4e;    /* cobre -- única chispa de marca */
-    --accent-2-rgb: 198,138,78;
-    --green: #27d9a8;       /* ingresos / positivo */
-    --green-rgb: 39,217,168;
-    --red: #fb7185;         /* gastos / negativo */
-    --red-rgb: 251,113,133;
-    --gold: #fbbf24;        /* insights / highlights */
-    --gold-rgb: 251,191,36;
-    --shadow-card: none;
-    --shadow-hover: 0 10px 26px -12px rgba(0,0,0,0.55);
-    --shadow-dropdown: 0 12px 32px -12px rgba(0,0,0,0.55);
-    --shadow-modal: 0 24px 60px -20px rgba(0,0,0,0.6);
-    --shadow-sticky-col: -8px 0 8px -8px rgba(0,0,0,0.55); /* columna "pegada" de .table-scroll */
-    --icon-badge-bg: rgba(255,255,255,0.07);  /* fondo neutro de .icon-badge sin accent-* */
-    --panel-tint: rgba(255,255,255,0.035);    /* superficie sutil dentro de una tarjeta (.kpi-detalle) */
-    --scrollbar-thumb: #232a3d;
+    --accent-2: #9c6530;    /* cobre claro -- única chispa de marca */
+    --accent-2-rgb: 156,101,48;
+    --green: #0a7a59;       /* ingresos / positivo */
+    --green-rgb: 10,122,89;
+    --red: #c81e42;         /* gastos / negativo */
+    --red-rgb: 200,30,66;
+    --gold: #92660a;        /* insights / highlights */
+    --gold-rgb: 146,102,10;
+    --shadow-card: 0 1px 2px rgba(30,41,59,0.05), 0 1px 3px rgba(30,41,59,0.06);
+    --shadow-hover: 0 10px 24px -12px rgba(30,41,59,0.22);
+    --shadow-dropdown: 0 12px 32px -12px rgba(30,41,59,0.22);
+    --shadow-modal: 0 24px 60px -20px rgba(30,41,59,0.38);
+    --shadow-sticky-col: -8px 0 8px -8px rgba(30,41,59,0.18); /* columna "pegada" de .table-scroll */
+    --icon-badge-bg: rgba(15,23,42,0.06);  /* fondo neutro de .icon-badge sin accent-* */
+    --panel-tint: rgba(15,23,42,0.035);    /* superficie sutil dentro de una tarjeta (.kpi-detalle) */
+    --scrollbar-thumb: #b6bcc8;
 
     /* Presupuesto por baldes -- identidad (2026-09-08, ver qa_reports/
        2026-09-08/marketing_paleta_presupuesto.md secciones 3 y 7). Color de
@@ -109,49 +109,49 @@
        informe. El ESTADO (vas bien/atención/te pasaste) de cada balde no
        suma variables nuevas -- reusa --green/--gold/--red, igual que ya
        hacen las tarjetas de crédito (.nivel-amber/.nivel-rojo). */
-    --balde-necesidades: #5f8ff7;   /* azul -- lo esencial/no negociable */
-    --balde-gustos: #e26bf5;        /* magenta -- discrecional/personal, sin alarma */
-    --balde-necesidades-bg: rgba(95,143,247,0.16);
-    --balde-gustos-bg: rgba(226,107,245,0.16);
+    --balde-necesidades: #1e50c4;   /* azul oscuro claro -- lo esencial/no negociable */
+    --balde-gustos: #8a2196;        /* magenta oscuro -- discrecional/personal, sin alarma */
+    --balde-necesidades-bg: rgba(30,80,196,0.12);
+    --balde-gustos-bg: rgba(138,33,150,0.12);
 
     --radius: 16px;
     --radius-sm: 10px;
   }
-  /* El SO prefiere claro y el usuario nunca eligió nada a mano --
-     :not([data-theme="dark"]) deja pasar esto solo mientras no haya una
+  /* El SO prefiere oscuro y el usuario nunca eligió nada a mano --
+     :not([data-theme="light"]) deja pasar esto solo mientras no haya una
      elección explícita guardada (ver script anti-flash en el <head>). */
-  @media (prefers-color-scheme: light){
-    :root:not([data-theme="dark"]){
-      --bg: #f6f7fa;
-      --bg-soft: #eceff4;
-      --card-solid: #ffffff;
-      --card-solid-2: #eef1f6;
-      --card-border: rgba(15,23,42,0.10);
-      --card-hover: #f1f3f8;
-      --surface-elevated: #ffffff;
-      --text: #12151c;
-      --text-dim: #5b6472;
-      --text-faint: #6a7285;
-      --accent-2: #9c6530;
-      --accent-2-rgb: 156,101,48;
-      --green: #0a7a59;
-      --green-rgb: 10,122,89;
-      --red: #c81e42;
-      --red-rgb: 200,30,66;
-      --gold: #92660a;
-      --gold-rgb: 146,102,10;
-      --shadow-card: 0 1px 2px rgba(30,41,59,0.05), 0 1px 3px rgba(30,41,59,0.06);
-      --shadow-hover: 0 10px 24px -12px rgba(30,41,59,0.22);
-      --shadow-dropdown: 0 12px 32px -12px rgba(30,41,59,0.22);
-      --shadow-modal: 0 24px 60px -20px rgba(30,41,59,0.38);
-      --shadow-sticky-col: -8px 0 8px -8px rgba(30,41,59,0.18);
-      --icon-badge-bg: rgba(15,23,42,0.06);
-      --panel-tint: rgba(15,23,42,0.035);
-      --scrollbar-thumb: #b6bcc8;
-      --balde-necesidades: #1e50c4;
-      --balde-gustos: #8a2196;
-      --balde-necesidades-bg: rgba(30,80,196,0.12);
-      --balde-gustos-bg: rgba(138,33,150,0.12);
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg: #090c13;
+      --bg-soft: #0d111b;
+      --card-solid: #131928;
+      --card-solid-2: #10141f;
+      --card-border: rgba(255,255,255,0.07);
+      --card-hover: #171e30;
+      --surface-elevated: #1b2338;
+      --text: #eef1f8;
+      --text-dim: #8d96ab;
+      --text-faint: #949cb2;
+      --accent-2: #c68a4e;
+      --accent-2-rgb: 198,138,78;
+      --green: #27d9a8;
+      --green-rgb: 39,217,168;
+      --red: #fb7185;
+      --red-rgb: 251,113,133;
+      --gold: #fbbf24;
+      --gold-rgb: 251,191,36;
+      --shadow-card: none;
+      --shadow-hover: 0 10px 26px -12px rgba(0,0,0,0.55);
+      --shadow-dropdown: 0 12px 32px -12px rgba(0,0,0,0.55);
+      --shadow-modal: 0 24px 60px -20px rgba(0,0,0,0.6);
+      --shadow-sticky-col: -8px 0 8px -8px rgba(0,0,0,0.55);
+      --icon-badge-bg: rgba(255,255,255,0.07);
+      --panel-tint: rgba(255,255,255,0.035);
+      --scrollbar-thumb: #232a3d;
+      --balde-necesidades: #5f8ff7;
+      --balde-gustos: #e26bf5;
+      --balde-necesidades-bg: rgba(95,143,247,0.16);
+      --balde-gustos-bg: rgba(226,107,245,0.16);
     }
   }
   /* Elección MANUAL guardada -- gana siempre, sin importar el SO. */
@@ -361,20 +361,22 @@
     padding: 8px 30px 8px 14px; border-radius: 999px; font-size: 12.5px; color: var(--text);
     font-family: inherit; cursor:pointer;
     appearance:none; -webkit-appearance:none; -moz-appearance:none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238d96ab' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    /* Trazo oscuro para fondo claro (default): mismo criterio que
+       .switcher-select/.field-select en src/templates/base.html. */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235b6472' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
     background-repeat:no-repeat; background-position: right 10px center; background-size:13px;
   }
-  /* El SVG de la flecha de arriba va incrustado como data-URI -- su color
-     queda fijo en el momento en que el navegador arma el
-     background-image, no puede leer variables CSS. Versión con trazo
-     oscuro para fondos claros (mismo criterio que .switcher-select/
-     .field-select en src/templates/base.html). */
+  /* El SVG va incrustado como data-URI -- su color queda fijo, no puede
+     leer variables CSS. Trazo claro para fondos oscuros (tema oscuro). */
+  :root[data-theme="dark"] .pill-select{
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238d96ab' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  }
   :root[data-theme="light"] .pill-select{
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235b6472' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   }
-  @media (prefers-color-scheme: light){
-    :root:not([data-theme="dark"]) .pill-select{
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235b6472' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .pill-select{
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238d96ab' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
     }
   }
   .pill-select:hover{ border-color: var(--accent); }
@@ -1363,6 +1365,31 @@
   }
   .btn-subir.visible{ opacity: 1; pointer-events: auto; transform: none; }
   .btn-subir:hover{ background: var(--card-hover); color: var(--text); }
+
+  /* ===========================================================
+     prefers-reduced-motion -- WCAG 2.2 SC 2.3.3 (AAA) / 2.3.1 (AA)
+     -----------------------------------------------------------------
+     Cuando el sistema operativo indica que el usuario prefiere
+     movimiento reducido (vestibular, fotosensibilidad, preferencia),
+     eliminamos todas las transiciones y animaciones de entrada/salida.
+     Las transiciones de COLOR (tema claro/oscuro) se conservan: son
+     cambios de estado, no movimiento -- no afectan el equilibrio.
+     El scroll se fuerza a "auto" para eliminar smooth-scroll.
+     =========================================================== */
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+    /* Excepción: transiciones de color/fondo del tema -- no son movimiento */
+    body, .chart-card, .insight, .kpi, .modal-grafico-overlay,
+    .alerta-app-box, .alerta-app-overlay{
+      transition-property: background-color, color, border-color, box-shadow !important;
+      transition-duration: 0.18s !important;
+    }
+  }
 </style>
 </head>
 <body>
@@ -1431,10 +1458,10 @@
   <section class="periodo-control" id="periodoControl" aria-label="Filtro de período del dashboard">
     <span class="periodo-control-titulo">Período</span>
     <div class="view-toggle" id="periodoBotones">
-      <button type="button" data-periodo="trimestral">Trimestral</button>
-      <button type="button" data-periodo="semestral">Semestral</button>
-      <button type="button" data-periodo="anual">Anual</button>
-      <button type="button" data-periodo="personalizado" class="active">Personalizado</button>
+      <button type="button" data-periodo="trimestral" aria-pressed="false">Trimestral</button>
+      <button type="button" data-periodo="semestral" aria-pressed="false">Semestral</button>
+      <button type="button" data-periodo="anual" aria-pressed="false">Anual</button>
+      <button type="button" data-periodo="personalizado" class="active" aria-pressed="true">Personalizado</button>
     </div>
     <div class="badge-row" id="rangoTotalBadge"></div>
   </section>
@@ -1721,7 +1748,7 @@ function esTemaClaroActivo() {
   if (guardado === 'light' || guardado === 'dark') return guardado === 'light';
   // Mismo fallback que el script anti-flash del <head>: sin elección
   // manual guardada, seguimos la preferencia del sistema operativo.
-  return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+  return !(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
 }
 
 // Única fuente de verdad de los colores de Chart.js -- MISMOS valores que
@@ -3721,7 +3748,9 @@ if (totalGastoCredito > 0 || totalAvancesCredito > 0) {
 INSIGHTS_ACTUAL = insights; // para que el modal (fuera de esta función) los pueda abrir por índice
 const _insightsGrid = document.getElementById('insightsGrid'); // null si la sección está oculta -- ver ocultarSubvistas()
 if (_insightsGrid) _insightsGrid.innerHTML = insights.map((ins, i) => `
-  <div class="insight expandible" onclick="abrirModalInsight(${i})">
+  <div class="insight expandible" role="button" tabindex="0"
+       onclick="abrirModalInsight(${i})"
+       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();abrirModalInsight(${i});}">
     <div class="ic">${ins.icon}</div>
     <div class="body"><h4>${ins.title}</h4></div>
   </div>
@@ -3859,7 +3888,9 @@ const btnsPeriodo = document.getElementById('periodoBotones');
 
 function actualizarUIPeriodoControl() {
   btnsPeriodo?.querySelectorAll('button').forEach(b => {
-    b.classList.toggle('active', b.dataset.periodo === filtroPeriodoActivo);
+    const activo = b.dataset.periodo === filtroPeriodoActivo;
+    b.classList.toggle('active', activo);
+    b.setAttribute('aria-pressed', activo ? 'true' : 'false');
   });
   // Requisito 2026-09-08 punto 5: antes se OCULTABAN los selects año/mes
   // (`hidden`) fuera de "Personalizado" -- la interfaz cambiaba de

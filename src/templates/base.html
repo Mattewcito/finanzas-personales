@@ -26,10 +26,10 @@
      dos temas -- cada plantilla sigue usando var(--card-solid), etc.
      sin saber en qué tema está; solo cambia el valor detrás.
 
-     Modo oscuro es la base histórica de la app y el valor por
-     default de :root (usuarios de siempre no ven ningún cambio si
-     nunca tocan el interruptor). Modo claro se activa por:
-       1) preferencia del sistema operativo (prefers-color-scheme),
+     Modo claro es el default de :root (2026-09-12: invertido desde
+     oscuro -- el usuario prefiere claro como punto de partida). Modo
+     oscuro se activa por:
+       1) preferencia del sistema operativo (prefers-color-scheme:dark),
           si el usuario nunca eligió nada a mano, o
        2) el interruptor de tema del pie del menú (persiste en
           localStorage como 'finanzas_theme': 'light' | 'dark').
@@ -39,50 +39,50 @@
      entre sí -- ver comentario junto a cada uno.
   ================================================================ */
   :root{
-    /* ---- Oscuro (default) ---- */
-    --bg: #090c13;
-    --bg-soft: #0d111b;
-    --card-solid: #131928;
-    --card-border: rgba(255,255,255,0.08);
-    --card-hover: #171e30;
-    --surface-elevated: #1b2338; /* modal/dropdown -- más CERCA del usuario, más clara */
-    --text: #eef1f8;
-    --text-dim: #9aa3b8;
-    --text-faint: #949cb2; /* antes #6b7488 -- 4.02-4.17:1 (falla AA); mismo valor ya verificado en dashboard_finanzas.html, 7.13:1 sobre --bg */
+    /* ---- Claro (default) ---- */
+    --bg: #f6f7fa;
+    --bg-soft: #eceff4;
+    --card-solid: #ffffff;
+    --card-border: rgba(15,23,42,0.10);
+    --card-hover: #f1f3f8;
+    --surface-elevated: #ffffff; /* modal/dropdown */
+    --text: #12151c;
+    --text-dim: #5b6472;
+    --text-faint: #6a7285;
     --accent: #5b6472;   /* grafito -- superficies interactivas, plano en los dos temas */
-    --accent-2: #c68a4e; /* cobre -- única chispa de marca */
-    --green: #27d9a8;
-    --red: #fb7185;
-    --gold: #fbbf24;
-    --shadow-card: none;
-    --shadow-hover: 0 10px 24px -12px rgba(0,0,0,0.55);
-    --shadow-dropdown: 0 12px 32px -12px rgba(0,0,0,0.55);
-    --shadow-modal: 0 24px 60px -20px rgba(0,0,0,0.6);
+    --accent-2: #9c6530; /* cobre claro -- única chispa de marca */
+    --green: #0a7a59;
+    --red: #c81e42;
+    --gold: #92660a;
+    --shadow-card: 0 1px 2px rgba(30,41,59,0.05), 0 1px 3px rgba(30,41,59,0.06);
+    --shadow-hover: 0 10px 24px -12px rgba(30,41,59,0.22);
+    --shadow-dropdown: 0 12px 32px -12px rgba(30,41,59,0.22);
+    --shadow-modal: 0 24px 60px -20px rgba(30,41,59,0.38);
     --sidebar-w: 226px;
     --sidebar-w-collapsed: 68px;
   }
-  /* El SO prefiere claro y el usuario nunca eligió nada a mano --
-     :not([data-theme="dark"]) deja pasar esto solo mientras no haya
+  /* El SO prefiere oscuro y el usuario nunca eligió nada a mano --
+     :not([data-theme="light"]) deja pasar esto solo mientras no haya
      una elección explícita guardada (ver script anti-flash arriba). */
-  @media (prefers-color-scheme: light){
-    :root:not([data-theme="dark"]){
-      --bg: #f6f7fa;
-      --bg-soft: #eceff4;
-      --card-solid: #ffffff;
-      --card-border: rgba(15,23,42,0.10);
-      --card-hover: #f1f3f8;
-      --surface-elevated: #ffffff;
-      --text: #12151c;
-      --text-dim: #5b6472;
-      --text-faint: #6a7285;
-      --accent-2: #9c6530;
-      --green: #0a7a59;
-      --red: #c81e42;
-      --gold: #92660a;
-      --shadow-card: 0 1px 2px rgba(30,41,59,0.05), 0 1px 3px rgba(30,41,59,0.06);
-      --shadow-hover: 0 10px 24px -12px rgba(30,41,59,0.22);
-      --shadow-dropdown: 0 12px 32px -12px rgba(30,41,59,0.22);
-      --shadow-modal: 0 24px 60px -20px rgba(30,41,59,0.38);
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg: #090c13;
+      --bg-soft: #0d111b;
+      --card-solid: #131928;
+      --card-border: rgba(255,255,255,0.08);
+      --card-hover: #171e30;
+      --surface-elevated: #1b2338;
+      --text: #eef1f8;
+      --text-dim: #9aa3b8;
+      --text-faint: #949cb2;
+      --accent-2: #c68a4e;
+      --green: #27d9a8;
+      --red: #fb7185;
+      --gold: #fbbf24;
+      --shadow-card: none;
+      --shadow-hover: 0 10px 24px -12px rgba(0,0,0,0.55);
+      --shadow-dropdown: 0 12px 32px -12px rgba(0,0,0,0.55);
+      --shadow-modal: 0 24px 60px -20px rgba(0,0,0,0.6);
     }
   }
   /* Elección MANUAL guardada -- gana siempre, sin importar el SO. */
@@ -227,19 +227,24 @@
   }
   .theme-toggle:hover{ background: var(--card-hover); color: var(--text); }
   .theme-toggle svg{ width:15px; height:15px; flex-shrink:0; }
-  .theme-toggle .icon-luna{ display:none; }
+  /* Default light: mostrar luna (para cambiar a oscuro) */
+  .theme-toggle .icon-sol{ display:none; }
+  :root[data-theme="dark"] .theme-toggle .icon-luna{ display:none; }
+  :root[data-theme="dark"] .theme-toggle .icon-sol{ display:block; }
   :root[data-theme="light"] .theme-toggle .icon-sol{ display:none; }
   :root[data-theme="light"] .theme-toggle .icon-luna{ display:block; }
-  @media (prefers-color-scheme: light){
-    :root:not([data-theme="dark"]) .theme-toggle .icon-sol{ display:none; }
-    :root:not([data-theme="dark"]) .theme-toggle .icon-luna{ display:block; }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .theme-toggle .icon-luna{ display:none; }
+    :root:not([data-theme="light"]) .theme-toggle .icon-sol{ display:block; }
   }
   .app-sidebar.collapsed .theme-toggle span{ display:none; }
   .app-sidebar.collapsed .theme-toggle{ justify-content:center; }
 
   .switcher-select, .field-select{
     appearance: none; -webkit-appearance: none; -moz-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239aa3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    /* Trazo oscuro para fondo claro (default light). El color del trazo
+       es fijo en el data-URI (no puede leer var CSS). */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235b6472' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 10px center;
     background-size: 14px;
@@ -249,14 +254,18 @@
      su color queda fijo en el momento en que el navegador arma el
      background-image, no puede leer variables CSS. Le damos una
      versión con trazo oscuro para fondos claros. */
+  :root[data-theme="dark"] .switcher-select,
+  :root[data-theme="dark"] .field-select{
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239aa3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  }
   :root[data-theme="light"] .switcher-select,
   :root[data-theme="light"] .field-select{
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235b6472' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   }
-  @media (prefers-color-scheme: light){
-    :root:not([data-theme="dark"]) .switcher-select,
-    :root:not([data-theme="dark"]) .field-select{
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235b6472' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .switcher-select,
+    :root:not([data-theme="light"]) .field-select{
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239aa3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
     }
   }
 
@@ -478,6 +487,26 @@
     .app-main{ padding-bottom: calc(var(--mobile-nav-h, 62px) + 4px); }
     .app-main iframe{ height: calc(100vh - var(--mobile-nav-h, 62px) - 4px) !important; }
   }
+
+  /* ===========================================================
+     prefers-reduced-motion -- WCAG 2.2 SC 2.3.3 (AAA) / 2.3.1 (AA)
+     -----------------------------------------------------------------
+     Elimina transiciones y animaciones de movimiento. Las de color
+     (tema claro/oscuro) se preservan: no son movimiento.
+     =========================================================== */
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+    body, .app-sidebar, .card, .app-shell, .sidebar-nav a,
+    .sidebar-toggle, .alerta-app-box, .alerta-app-overlay{
+      transition-property: background-color, color, border-color, box-shadow !important;
+      transition-duration: 0.18s !important;
+    }
+  }
 </style>
 {% block head %}{% endblock %}
 </head>
@@ -677,7 +706,7 @@ function alHacerClickEnCualquierDocumento(handler) {
   function temaActual() {
     const guardado = document.documentElement.getAttribute('data-theme');
     if (guardado === 'light' || guardado === 'dark') return guardado;
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
 
   function aplicarEnIframes(tema) {
