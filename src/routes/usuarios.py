@@ -10,6 +10,11 @@ from auth import login_required
 
 usuarios_bp = Blueprint("usuarios", __name__)
 
+# Mínimo de longitud de contraseña (hallazgo M1 de la revisión de seguridad
+# 2026-09-11: 4 caracteres era trivialmente adivinable, sobre todo
+# combinado con la falta de rate limiting que ya se agregó en /login).
+PASSWORD_MIN_LEN = 8
+
 
 @usuarios_bp.route("/crear-usuario")
 @login_required
@@ -36,8 +41,8 @@ def api_crear_usuario():
         return jsonify(ok=False, error="Faltan campos."), 400
     if rol not in ("admin", "usuario"):
         return jsonify(ok=False, error="Rol inválido."), 400
-    if len(password) < 4:
-        return jsonify(ok=False, error="La contraseña es demasiado corta."), 400
+    if len(password) < PASSWORD_MIN_LEN:
+        return jsonify(ok=False, error=f"La contraseña debe tener al menos {PASSWORD_MIN_LEN} caracteres."), 400
 
     with db.conexion() as conn:
         db.crear_esquema(conn)
@@ -68,8 +73,8 @@ def api_actualizar_perfil():
 
     if not username or not nombre:
         return jsonify(ok=False, error="Faltan campos."), 400
-    if password and len(password) < 4:
-        return jsonify(ok=False, error="La contraseña es demasiado corta."), 400
+    if password and len(password) < PASSWORD_MIN_LEN:
+        return jsonify(ok=False, error=f"La contraseña debe tener al menos {PASSWORD_MIN_LEN} caracteres."), 400
 
     with db.conexion() as conn:
         db.actualizar_usuario(conn, session["usuario_id"], username=username,
@@ -105,8 +110,8 @@ def api_editar_usuario(usuario_id):
 
     if not username or not nombre or rol not in ("admin", "usuario"):
         return jsonify(ok=False, error="Faltan campos o rol inválido."), 400
-    if password and len(password) < 4:
-        return jsonify(ok=False, error="La contraseña es demasiado corta."), 400
+    if password and len(password) < PASSWORD_MIN_LEN:
+        return jsonify(ok=False, error=f"La contraseña debe tener al menos {PASSWORD_MIN_LEN} caracteres."), 400
 
     with db.conexion() as conn:
         db.actualizar_usuario(conn, usuario_id, username=username, nombre_mostrado=nombre,

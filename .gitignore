@@ -49,6 +49,14 @@ docker-compose.override.yml
 # (tools/qa/playwright_utils.py).
 qa_reports/
 
+# Scripts de diagnóstico/debug temporales (prefijo "_") generados por agentes
+# de QA durante una corrida puntual. El helper reutilizable (_utils.py) sí se
+# versiona; estos descartes de un día no.
+tools/qa/_*.py
+
+# Scripts de conveniencia local (no son parte del producto)
+abrir_base_de_datos.bat
+
 # Excepciones (deben ir al final para ganarle a las reglas de arriba):
 # archivos *.example.json son plantillas sin datos reales, sí se versionan.
 !data/*.example.json

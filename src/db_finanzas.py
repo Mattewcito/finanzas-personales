@@ -89,12 +89,13 @@ CREATE INDEX IF NOT EXISTS idx_usuarios_username ON usuarios(username);
 
 -- Configuración de lectura de correo (Fase 1), UNA fila por usuario --
 -- cada quien configura su propio correo dedicado desde "Mi perfil" en la
--- interfaz (routes/correo.py). app_password se guarda en texto plano a
--- propósito (no se puede hashear: leer_correo.py necesita el valor real
--- para autenticarse por IMAP) -- mismo nivel de confianza que ya tenía
--- data/credenciales_correo.json (archivo local, fuera de git, en una app
--- que nunca se expone a internet público). La interfaz nunca la vuelve a
--- mostrar una vez guardada.
+-- interfaz (routes/correo.py). app_password no se puede hashear (leer_correo.py
+-- necesita el valor real para autenticarse por IMAP) -- desde la migración del
+-- 2026-09-06 se guarda CIFRADO con cifrado.cifrar() (misma columna
+-- app_password de abajo, pero con el valor cifrado) en vez de en texto plano;
+-- la clave de cifrado vive en
+-- data/cifrado.key, fuera de git, igual que finanzas.db. La interfaz nunca
+-- vuelve a mostrar el valor una vez guardado.
 CREATE TABLE IF NOT EXISTS correo_config (
     usuario_id INTEGER PRIMARY KEY REFERENCES usuarios(id),
     email TEXT NOT NULL,
