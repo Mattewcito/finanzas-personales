@@ -247,9 +247,9 @@
 </div>
 
 <!-- Modal de ayuda -->
-<div class="modal-overlay" id="modalAyuda">
+<div class="modal-overlay" id="modalAyuda" role="dialog" aria-modal="true" aria-labelledby="modalAyudaTitulo">
   <div class="modal-box">
-    <h3>Cómo configurar tu correo automático</h3>
+    <h3 id="modalAyudaTitulo">Cómo configurar tu correo automático</h3>
     <p class="sub">6 pasos, una sola vez. Usá una cuenta de Gmail dedicada solo a esto — no tu correo personal.</p>
 
     <div class="paso"><div class="num">1</div><div class="txt">
@@ -338,10 +338,44 @@ function mostrarResultado(clase, texto) {
 }
 
 // --- Modal de ayuda ---
+// a11y (fix alto 2026-09-11): antes no cerraba con Escape, no gestionaba
+// foco (quedaba en btnAyuda, detrás del overlay visualmente, y no volvía
+// a él al cerrar) y no tenía role="dialog"/aria-modal (ver el HTML de
+// arriba). Se replica acá el mismo patrón de foco atrapado + restitución
+// que ya usa el modal global de alertas en base.html.
 const modal = document.getElementById('modalAyuda');
-document.getElementById('btnAyuda').addEventListener('click', () => modal.classList.add('abierto'));
-document.getElementById('btnCerrarAyuda').addEventListener('click', () => modal.classList.remove('abierto'));
-modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('abierto'); });
+const modalAyudaBox = modal.querySelector('.modal-box');
+const btnCerrarAyuda = document.getElementById('btnCerrarAyuda');
+let focoPrevioAyuda = null;
+
+function onKeydownTrapAyuda(e) {
+  if (e.key === 'Escape') { cerrarModalAyuda(); return; }
+  if (e.key !== 'Tab') return;
+  const foco = modalAyudaBox.querySelectorAll(
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  );
+  if (!foco.length) return;
+  const primero = foco[0], ultimo = foco[foco.length - 1];
+  if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
+  else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
+}
+
+function abrirModalAyuda() {
+  focoPrevioAyuda = document.activeElement;
+  modal.classList.add('abierto');
+  modal.addEventListener('keydown', onKeydownTrapAyuda);
+  btnCerrarAyuda.focus();
+}
+function cerrarModalAyuda() {
+  modal.classList.remove('abierto');
+  modal.removeEventListener('keydown', onKeydownTrapAyuda);
+  if (focoPrevioAyuda && document.contains(focoPrevioAyuda)) focoPrevioAyuda.focus();
+  focoPrevioAyuda = null;
+}
+
+document.getElementById('btnAyuda').addEventListener('click', abrirModalAyuda);
+btnCerrarAyuda.addEventListener('click', cerrarModalAyuda);
+modal.addEventListener('click', (e) => { if (e.target === modal) cerrarModalAyuda(); });
 
 // --- Radios de frecuencia: habilitar/deshabilitar sus propios inputs ---
 const radioIntervalo = document.getElementById('radioIntervalo');

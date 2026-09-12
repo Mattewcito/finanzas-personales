@@ -89,15 +89,26 @@
           </div>
         </div>
 
-        <label class="field-label">Archivo</label>
-        <div class="dropzone" id="dropzone">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <label class="field-label" id="archivoLabel">Archivo</label>
+        <div class="dropzone" id="dropzone" role="button" tabindex="0"
+             aria-label="Elegir archivo de extracto para subir" aria-describedby="dzFile">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M12 16V4"></path><path d="M7 9l5-5 5 5"></path>
             <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path>
           </svg>
           <p class="dz-text">Arrastrá el archivo acá o <span>hacé clic para elegirlo</span></p>
           <p class="dz-file" id="dzFile"></p>
-          <input type="file" name="archivo" id="archivoInput" required hidden>
+          <!-- a11y (fix crítico 2026-09-11): antes tenía `hidden`, que lo
+               sacaba del todo del árbol de foco -- un usuario de teclado
+               no tenía forma de abrir el selector de archivos. Ahora
+               queda "visualmente oculto" (técnica sr-only) pero sigue
+               existiendo en el DOM; el control operable real es el
+               `.dropzone` de arriba (role="button" + tabindex="0" +
+               keydown de Enter/Espacio en el <script> de abajo), por eso
+               este input tiene tabindex="-1" (no genera un segundo
+               parate de Tab redundante) y aria-hidden="true". -->
+          <input type="file" name="archivo" id="archivoInput" required tabindex="-1" aria-hidden="true"
+                 style="position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;">
         </div>
 
         <button type="submit" class="btn-primary" id="btnSubmit">Subir e insertar</button>
@@ -140,6 +151,16 @@ document.getElementById('tipoArchivo').addEventListener('change', (e) => {
 });
 
 dropzone.addEventListener('click', () => archivoInput.click());
+dropzone.addEventListener('keydown', (e) => {
+  // El input real tiene tabindex="-1" (ver comentario de a11y arriba
+  // del dropzone en el HTML) -- el propio dropzone es el control
+  // operable por teclado, así que Enter/Espacio deben abrir el
+  // selector de archivos igual que el click de mouse.
+  if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+    e.preventDefault();
+    archivoInput.click();
+  }
+});
 archivoInput.addEventListener('change', () => {
   dzFile.textContent = archivoInput.files.length ? '📄 ' + archivoInput.files[0].name : '';
 });
