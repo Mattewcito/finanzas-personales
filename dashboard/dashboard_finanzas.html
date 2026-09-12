@@ -1509,7 +1509,7 @@
        (guard `if (!el) return` ahí, mismo patrón que renderPerfilFinanciero()). -->
   <div class="tarjetas-grid" id="tarjetasGrid"></div>
   <div class="charts-grid" id="deudaChartsGrid" style="margin-top:16px;">
-    <div class="chart-card full expandible" onclick="abrirModalGrafico('chartDeudaEvolucion','📈 Evolución de la deuda en tarjetas de crédito')">
+    <div class="chart-card full expandible" role="button" tabindex="0" onclick="abrirModalGrafico('chartDeudaEvolucion','📈 Evolución de la deuda en tarjetas de crédito')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
       <h3>📈 Evolución de la deuda en tarjetas de crédito</h3>
       <p class="desc">Saldo acumulado estimado (compras a crédito + avances − pagos a la tarjeta), movimiento a movimiento.</p>
       <div class="chart-holder tall" id="chartDeudaEvolucionHolder"><canvas id="chartDeudaEvolucion"></canvas></div>
@@ -1523,49 +1523,49 @@
 
   <div class="charts-grid" id="analisisChartsGrid">
 
-    <div class="chart-card full expandible" onclick="abrirModalGrafico('chartCategorias','🏷️ Gastos por categoría')">
+    <div class="chart-card full expandible" role="button" tabindex="0" onclick="abrirModalGrafico('chartCategorias','🏷️ Gastos por categoría')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
       <h3>🏷️ Gastos por categoría</h3>
       <p class="desc">Monto total gastado (COP) en cada categoría, de mayor a menor.</p>
       <div class="chart-holder tall"><canvas id="chartCategorias"></canvas></div>
     </div>
 
-    <div class="chart-card expandible" onclick="abrirModalGrafico('chartIngresosGastos','⚖️ Ingresos vs. gastos')">
+    <div class="chart-card expandible" role="button" tabindex="0" onclick="abrirModalGrafico('chartIngresosGastos','⚖️ Ingresos vs. gastos')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
       <h3>⚖️ Ingresos vs. gastos</h3>
       <p class="desc">Solo caja real — excluye compras y avances de tarjeta de crédito (ver sección "Tarjetas de crédito").</p>
       <div class="chart-holder"><canvas id="chartIngresosGastos"></canvas></div>
     </div>
 
-    <div class="chart-card expandible" id="chartMonedaCard" onclick="abrirModalGrafico('chartMoneda','💱 Distribución por moneda')">
+    <div class="chart-card expandible" id="chartMonedaCard" role="button" tabindex="0" onclick="abrirModalGrafico('chartMoneda','💱 Distribución por moneda')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
       <h3>💱 Distribución por moneda</h3>
       <p class="desc">Cantidad de movimientos según la moneda utilizada.</p>
       <div class="chart-holder"><canvas id="chartMoneda"></canvas></div>
     </div>
 
-    <div class="chart-card full expandible" onclick="abrirModalGrafico('chartEvolucion','📈 Evolución temporal de gastos')">
+    <div class="chart-card full expandible" role="button" tabindex="0" onclick="abrirModalGrafico('chartEvolucion','📈 Evolución temporal de gastos')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
       <h3>📈 Evolución temporal de gastos</h3>
       <p class="desc">Gasto diario (COP) a lo largo del período — ayuda a detectar picos de consumo.</p>
       <div class="chart-holder tall"><canvas id="chartEvolucion"></canvas></div>
     </div>
 
-    <div class="chart-card expandible" onclick="abrirModalLeaderboard()">
+    <div class="chart-card expandible" role="button" tabindex="0" onclick="abrirModalLeaderboard()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
       <h3>🏆 Top 5 categorías</h3>
       <p class="desc">Las categorías que más peso tienen en tus gastos.</p>
       <div class="leaderboard" id="leaderboard"></div>
     </div>
 
-    <div class="chart-card expandible" onclick="abrirModalGrafico('chartDistribucion','🥧 Distribución porcentual de gastos')">
+    <div class="chart-card expandible" role="button" tabindex="0" onclick="abrirModalGrafico('chartDistribucion','🥧 Distribución porcentual de gastos')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
       <h3>🥧 Distribución porcentual de gastos</h3>
       <p class="desc">Participación (%) de cada categoría sobre el gasto total.</p>
       <div class="chart-holder"><canvas id="chartDistribucion"></canvas></div>
     </div>
 
-    <div class="chart-card full expandible" onclick="abrirModalGrafico('chartTendenciaMensual','🗓️ Tendencia mensual')">
+    <div class="chart-card full expandible" role="button" tabindex="0" onclick="abrirModalGrafico('chartTendenciaMensual','🗓️ Tendencia mensual')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
       <h3>🗓️ Tendencia mensual</h3>
       <p class="desc">Ingresos vs. gastos mes a mes (COP). Los meses con datos incompletos están marcados.</p>
       <div class="chart-holder tall"><canvas id="chartTendenciaMensual"></canvas></div>
     </div>
 
-    <div class="chart-card full expandible" onclick="abrirModalGrafico('chartEntidades','🏦 Entidades financieras más usadas')">
+    <div class="chart-card full expandible" role="button" tabindex="0" onclick="abrirModalGrafico('chartEntidades','🏦 Entidades financieras más usadas')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
       <h3>🏦 Entidades financieras más usadas</h3>
       <p class="desc">Monto movilizado y número de transacciones por entidad.</p>
       <div class="chart-holder"><canvas id="chartEntidades"></canvas></div>
@@ -1850,16 +1850,50 @@ window.__aplicarTemaFinanzas__ = function (tema) {
    "elementoQueAbrio" porque es un componente completamente aparte).
 ================================================================= */
 const FOCO_MODALES = {};
+const _TRAP_LISTENERS = {};
+
+// Selector de elementos focuseables dentro de un modal.
+const _FOCUSEABLES = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
 function enfocarModal(modalId) {
   FOCO_MODALES[modalId] = document.activeElement;
   const modal = document.getElementById(modalId);
-  const botonCerrar = modal && modal.querySelector('.modal-grafico-cerrar');
-  // rAF: el caller ya puso la clase "open" (display:flex) antes de llamar
-  // a esto, pero un frame de margen asegura que el navegador considere al
-  // botón realmente focuseable (visible, con layout calculado).
+  if (!modal) return;
+  // Habilitar interacción: quitar inert (añadido en el HTML por defecto para
+  // impedir que el foco llegue a modales cerrados por teclado).
+  modal.removeAttribute('inert');
+  const botonCerrar = modal.querySelector('.modal-grafico-cerrar');
+  // rAF: el caller ya puso la clase "open" antes de llamar a esto, pero un
+  // frame de margen asegura que el navegador calcule el layout antes de focus().
   requestAnimationFrame(() => { if (botonCerrar) botonCerrar.focus(); });
+
+  // Focus trap: Tab/Shift+Tab ciclan solo dentro del modal.
+  if (_TRAP_LISTENERS[modalId]) document.removeEventListener('keydown', _TRAP_LISTENERS[modalId]);
+  _TRAP_LISTENERS[modalId] = function trapFoco(e) {
+    if (e.key !== 'Tab') return;
+    if (!modal.classList.contains('open')) return;
+    const focuseables = [...modal.querySelectorAll(_FOCUSEABLES)].filter(el => !el.closest('[inert]'));
+    if (!focuseables.length) { e.preventDefault(); return; }
+    const primero = focuseables[0];
+    const ultimo = focuseables[focuseables.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
+    } else {
+      if (document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
+    }
+  };
+  document.addEventListener('keydown', _TRAP_LISTENERS[modalId]);
 }
+
 function devolverFocoModal(modalId) {
+  // Quitar el trap de Tab antes de restaurar el foco.
+  if (_TRAP_LISTENERS[modalId]) {
+    document.removeEventListener('keydown', _TRAP_LISTENERS[modalId]);
+    _TRAP_LISTENERS[modalId] = null;
+  }
+  const modal = document.getElementById(modalId);
+  // Volver a inert: nadie puede hacer Tab hacia adentro del modal mientras esté cerrado.
+  if (modal) modal.setAttribute('inert', '');
   const previo = FOCO_MODALES[modalId];
   FOCO_MODALES[modalId] = null;
   if (previo && document.contains(previo) && typeof previo.focus === 'function') previo.focus();
@@ -1959,6 +1993,25 @@ const fmtDate = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('es-CO',
 const fmtDateTime = (iso) => new Date(iso).toLocaleString('es-CO', { day:'2-digit', month:'short', year:'numeric', hour:'numeric', minute:'2-digit', hour12:true });
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
+// Seguridad (2026-09-11, hallazgo C2 de qa_reports/security_review_2026-09-11.md):
+// descripcion/entidad/categoria (movimientos), nombre de tarjeta y nombre de
+// meta de ahorro son texto LIBRE escrito por el usuario -- /api/registrar-
+// movimiento y /api/movimiento/<id>/editar solo hacen `.strip()`, sin ninguna
+// sanitización HTML. Antes de este fix, todos esos campos se interpolaban
+// directo dentro de template strings que terminan en `innerHTML`, así que un
+// movimiento con descripcion="<img src=x onerror=...>" ejecutaba ese script
+// en el navegador de cualquiera que viera el movimiento -- incluido un admin
+// "viendo" esa cuenta (ver auth.py::viendo_id()). escapeHtml() escapa los 5
+// caracteres relevantes de HTML antes de insertar CUALQUIER campo de origen
+// usuario en un string que va a innerHTML -- se usa en cada uno de esos
+// sitios (rowHTML, tarjetas, metas, insights, leaderboard, etc.), nunca en
+// texto ya fijo/armado por este mismo archivo.
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
 /* =================================================================
    HEADER — lo único que NO depende del filtro de período: la fecha de
    generación del archivo. El rango de fechas SÍ es dinámico y se
@@ -1980,10 +2033,10 @@ document.getElementById('lastUpdated').textContent = `Última actualización del
   const VISIBLES_DE_ENTRADA = 2; // el resto queda oculto atrás de "ver más" -- para no saturar de texto
 
   el.innerHTML = `
-    <div class="arquetipo">🧭 ${perfil.arquetipo || 'Sin datos suficientes'}</div>
-    <p class="descripcion">${perfil.descripcion || ''}</p>
+    <div class="arquetipo">🧭 ${escapeHtml(perfil.arquetipo || 'Sin datos suficientes')}</div>
+    <p class="descripcion">${escapeHtml(perfil.descripcion || '')}</p>
     ${consejos.length ? `<ul class="consejos">${consejos.map((c, i) =>
-        `<li class="${i >= VISIBLES_DE_ENTRADA ? 'oculto' : ''}">💡 ${c}</li>`).join('')}</ul>` : ''}
+        `<li class="${i >= VISIBLES_DE_ENTRADA ? 'oculto' : ''}">💡 ${escapeHtml(c)}</li>`).join('')}</ul>` : ''}
     ${consejos.length > VISIBLES_DE_ENTRADA
         ? `<button type="button" class="ver-mas-consejos" id="btnVerMasConsejos">Ver ${consejos.length - VISIBLES_DE_ENTRADA} consejo(s) más ▾</button>`
         : ''}
@@ -2048,7 +2101,7 @@ document.getElementById('lastUpdated').textContent = `Última actualización del
   const cardsHTML = activas.map(t => {
     const pct = Math.max(0, t.porcentaje_uso || 0);
     const nivelActual = nivel(pct);
-    const metaTexto = [t.entidad, t.ultimos4 ? `Terminada en ${t.ultimos4}` : null].filter(Boolean).join(' · ') || 'Tarjeta de crédito';
+    const metaTexto = [t.entidad ? escapeHtml(t.entidad) : null, t.ultimos4 ? `Terminada en ${escapeHtml(t.ultimos4)}` : null].filter(Boolean).join(' · ') || 'Tarjeta de crédito';
     const color = colorTarjeta(t.id);
     const digitosHTML = t.ultimos4
       ? `<div class="tarjeta-card-digits">•••• •••• •••• ${t.ultimos4}</div>`
@@ -2058,10 +2111,10 @@ document.getElementById('lastUpdated').textContent = `Última actualización del
       : '';
     return `
     <div class="tarjeta-wrap">
-      <div class="tarjeta-card ${nivelActual}" title="${t.nombre}" style="background: linear-gradient(135deg, ${color} 0%, color-mix(in oklch, ${color} 60%, black) 100%); --tarjeta-sombra: color-mix(in srgb, ${color} 45%, transparent);">
+      <div class="tarjeta-card ${nivelActual}" title="${escapeHtml(t.nombre)}" style="background: linear-gradient(135deg, ${color} 0%, color-mix(in oklch, ${color} 60%, black) 100%); --tarjeta-sombra: color-mix(in srgb, ${color} 45%, transparent);">
         <div class="tarjeta-card-head">
           <div class="tarjeta-card-titulo">
-            <span class="tarjeta-card-nombre">${t.nombre}</span>
+            <span class="tarjeta-card-nombre">${escapeHtml(t.nombre)}</span>
             <span class="tarjeta-card-meta">${metaTexto}</span>
           </div>
           <div class="tarjeta-card-chip">${ICON_CHIP}</div>
@@ -2288,9 +2341,9 @@ function rowHTML(r, withTipo){
     <tr>
       <td>${fmtDate(r.fecha)}</td>
       ${withTipo ? `<td><span class="tag-tipo ${r.tipo}">${r.tipo}</span></td>` : ''}
-      <td><span class="cat-chip">${catIcon(r.categoria)} ${r.categoria}</span></td>
-      <td>${r.descripcion}</td>
-      <td>${r.entidad}</td>
+      <td><span class="cat-chip">${catIcon(r.categoria)} ${escapeHtml(r.categoria)}</span></td>
+      <td>${escapeHtml(r.descripcion)}</td>
+      <td>${escapeHtml(r.entidad)}</td>
       <td class="num" style="color:${r.tipo==='ingreso'?'var(--green)':'var(--red)'}">${r.tipo==='ingreso'?'+':'-'} ${monto}</td>
     </tr>`;
 }
@@ -2487,7 +2540,7 @@ function renderMetas() {
     <div class="meta-card ${alcanzada ? 'alcanzada' : ''}">
       <div class="meta-card-head">
         <div>
-          <div class="meta-card-nombre">${m.nombre}</div>
+          <div class="meta-card-nombre">${escapeHtml(m.nombre)}</div>
           ${m.fecha_objetivo ? `<div class="meta-card-fecha">Meta para ${fmtDate(m.fecha_objetivo)}</div>` : ''}
         </div>
         <span class="meta-card-pct">${fmtPct(Math.min(m.porcentaje, 999))}</span>
@@ -2596,8 +2649,8 @@ function abrirModalCategorias() {
   lista.innerHTML = categorias.length
     ? categorias.map(cat => `
       <div class="categoria-balde-row">
-        <span class="cat-nombre">${catIcon(cat)} ${cat}</span>
-        <select data-categoria="${cat}" onchange="cambiarBaldeCategoria(this)" aria-label="Balde de la categoría ${cat}">
+        <span class="cat-nombre">${catIcon(cat)} ${escapeHtml(cat)}</span>
+        <select data-categoria="${escapeHtml(cat)}" onchange="cambiarBaldeCategoria(this)" aria-label="Balde de la categoría ${escapeHtml(cat)}">
           ${BALDES.map(b => `<option value="${b.id}" ${CATEGORIA_BALDE[cat] === b.id ? 'selected' : ''}>${b.label}</option>`).join('')}
         </select>
       </div>`).join('')
@@ -3123,7 +3176,7 @@ kpiGrid.innerHTML = `
   <div class="kpi kpi-compact">
     <div class="icon-badge" aria-hidden="true"><div class="icon">${catIcon(catTop)}</div></div>
     <div class="label">Categoría con mayor gasto</div>
-    <div class="value" style="text-transform:capitalize;">${catTop}</div>
+    <div class="value" style="text-transform:capitalize;">${escapeHtml(catTop)}</div>
     <div class="sub">${fmtCOP(catTopMonto)} · ${fmtPct(totalGastosCOP ? catTopMonto/totalGastosCOP*100 : 0)} del consumo total (incl. crédito)</div>
   </div>
 
@@ -3137,7 +3190,7 @@ kpiGrid.innerHTML = `
   <div class="kpi kpi-compact">
     <div class="icon-badge" aria-hidden="true"><div class="icon">${ICONS_KPI.bank}</div></div>
     <div class="label">Entidad más utilizada</div>
-    <div class="value">${entidadTop}</div>
+    <div class="value">${escapeHtml(entidadTop)}</div>
     <div class="sub">${entidadCount[0]?.[1] || 0} movimientos · ${fmtCOP(entidadMonto.find(e=>e[0]===entidadTop)?.[1]||0)}</div>
   </div>
 
@@ -3442,7 +3495,7 @@ if (_leaderboard) _leaderboard.innerHTML = top5.map(([cat,monto],i)=>{
     <div class="lb-row">
       <div class="lb-rank ${rankClass}">${i+1}</div>
       <div class="lb-body">
-        <div class="lb-top"><span class="name">${catIcon(cat)} ${cat}</span><span class="amt">${fmtCOP(monto)}</span></div>
+        <div class="lb-top"><span class="name">${catIcon(cat)} ${escapeHtml(cat)}</span><span class="amt">${fmtCOP(monto)}</span></div>
         <div class="lb-bar"><span style="width:${pct}%; background:${colorFor(i)};"></span></div>
       </div>
     </div>`;
@@ -3557,8 +3610,8 @@ const insights = [];
 if (gastoPorCategoria.length) {
   insights.push({
     icon: catIcon(catTop),
-    title: `${capitalize(catTop)} es tu mayor categoría de gasto`,
-    text: `Concentra <b>${fmtCOP(catTopMonto)}</b> (${fmtPct(totalGastosCOP ? catTopMonto/totalGastosCOP*100 : 0)} del gasto total).${gastoPorCategoria[1] ? ` La segunda categoría es <b>${capitalize(gastoPorCategoria[1][0])}</b> con ${fmtCOP(gastoPorCategoria[1][1])}.` : ' Todavía es la única categoría registrada.'}`
+    title: `${escapeHtml(capitalize(catTop))} es tu mayor categoría de gasto`,
+    text: `Concentra <b>${fmtCOP(catTopMonto)}</b> (${fmtPct(totalGastosCOP ? catTopMonto/totalGastosCOP*100 : 0)} del gasto total).${gastoPorCategoria[1] ? ` La segunda categoría es <b>${escapeHtml(capitalize(gastoPorCategoria[1][0]))}</b> con ${fmtCOP(gastoPorCategoria[1][1])}.` : ' Todavía es la única categoría registrada.'}`
   });
 }
 
@@ -3585,7 +3638,7 @@ if (subs.length) {
   insights.push({
     icon: '📱',
     title: `${new Set(subs.map(r=>r.descripcion.split(' - ')[0])).size} servicio(s) de suscripción detectados`,
-    text: `${[...subsPorServicio.entries()].map(([s,v])=>`<b>${s}</b> (${fmtCOP(v)} acumulado)`).join(', ')}${subsUSD.length? ` y <b>${subsUSD[0].descripcion}</b> (${fmtUSD(subsUSD[0].monto)}/mes)` : ''}. Los cargos de Apple varían mes a mes — vale la pena revisar qué apps se están renovando.`
+    text: `${[...subsPorServicio.entries()].map(([s,v])=>`<b>${escapeHtml(s)}</b> (${fmtCOP(v)} acumulado)`).join(', ')}${subsUSD.length? ` y <b>${escapeHtml(subsUSD[0].descripcion)}</b> (${fmtUSD(subsUSD[0].monto)}/mes)` : ''}. Los cargos de Apple varían mes a mes — vale la pena revisar qué apps se están renovando.`
   });
 }
 
@@ -3612,7 +3665,7 @@ const freqTop = [...freqMap.entries()].filter(([,v])=>v.count>=3).sort((a,b)=>b[
 if (freqTop) {
   insights.push({
     icon: '🔁',
-    title: `"${freqTop[0]}" es tu comercio más frecuente`,
+    title: `"${escapeHtml(freqTop[0])}" es tu comercio más frecuente`,
     text: `Aparece <b>${freqTop[1].count} veces</b> en el período, sumando <b>${fmtCOP(freqTop[1].total)}</b>. Los viajes cortos (Uber/DiDi) y domicilios (Rappi) son los patrones que más se repiten.`
   });
 }
@@ -3632,7 +3685,7 @@ if (totalGastosCOP) {
   insights.push({
     icon: '💸',
     title: `${fmtPct(totalDiscrecional/totalGastosCOP*100)} del gasto es discrecional`,
-    text: `Restaurantes, entretenimiento, compras y ropa suman <b>${fmtCOP(totalDiscrecional)}</b>.${diasFraccionados.length ? ` Además, se detectaron <b>${diasFraccionados.length} día(s)</b> con 3+ compras de la misma categoría (ej. ${capitalize(ejemploCat)} el ${fmtDate(ejemploFecha)}) — posibles compras impulsivas fraccionadas.` : ''}`
+    text: `Restaurantes, entretenimiento, compras y ropa suman <b>${fmtCOP(totalDiscrecional)}</b>.${diasFraccionados.length ? ` Además, se detectaron <b>${diasFraccionados.length} día(s)</b> con 3+ compras de la misma categoría (ej. ${escapeHtml(capitalize(ejemploCat))} el ${fmtDate(ejemploFecha)}) — posibles compras impulsivas fraccionadas.` : ''}`
   });
 }
 
@@ -3641,7 +3694,7 @@ if (dataUSD.length > 0) {
   insights.push({
     icon: '💱',
     title: `Tus finanzas operan casi 100% en COP`,
-    text: `${dataCOP.length} de ${DATA.length} movimientos (${fmtPct(dataCOP.length/DATA.length*100)}) fueron en pesos colombianos. ${dataUSD.length === 1 ? `La única transacción en USD fue <b>${dataUSD[0].descripcion}</b> por ${fmtUSD(dataUSD[0].monto)}.` : `Hubo <b>${dataUSD.length} transacciones</b> en USD.`}`
+    text: `${dataCOP.length} de ${DATA.length} movimientos (${fmtPct(dataCOP.length/DATA.length*100)}) fueron en pesos colombianos. ${dataUSD.length === 1 ? `La única transacción en USD fue <b>${escapeHtml(dataUSD[0].descripcion)}</b> por ${fmtUSD(dataUSD[0].monto)}.` : `Hubo <b>${dataUSD.length} transacciones</b> en USD.`}`
   });
 }
 
@@ -3691,9 +3744,9 @@ const _tbodyMayoresGastos = document.getElementById('tbodyMayoresGastos');
 if (_tbodyMayoresGastos) _tbodyMayoresGastos.innerHTML = mayoresGastos.map(r=>`
   <tr>
     <td>${fmtDate(r.fecha)}</td>
-    <td><span class="cat-chip">${catIcon(r.categoria)} ${r.categoria}</span></td>
-    <td>${r.descripcion}</td>
-    <td>${r.entidad}</td>
+    <td><span class="cat-chip">${catIcon(r.categoria)} ${escapeHtml(r.categoria)}</span></td>
+    <td>${escapeHtml(r.descripcion)}</td>
+    <td>${escapeHtml(r.entidad)}</td>
     <td class="num" style="color:var(--red)">- ${fmtCOP(r.monto)}</td>
   </tr>`).join('');
 
@@ -3703,9 +3756,9 @@ const _tbodyMayoresIngresos = document.getElementById('tbodyMayoresIngresos');
 if (_tbodyMayoresIngresos) _tbodyMayoresIngresos.innerHTML = mayoresIngresos.map(r=>`
   <tr>
     <td>${fmtDate(r.fecha)}</td>
-    <td><span class="cat-chip">${catIcon(r.categoria)} ${r.categoria}</span></td>
-    <td>${r.descripcion}</td>
-    <td>${r.entidad}</td>
+    <td><span class="cat-chip">${catIcon(r.categoria)} ${escapeHtml(r.categoria)}</span></td>
+    <td>${escapeHtml(r.descripcion)}</td>
+    <td>${escapeHtml(r.entidad)}</td>
     <td class="num" style="color:var(--green)">+ ${fmtCOP(r.monto)}</td>
   </tr>`).join('');
 
@@ -3736,9 +3789,9 @@ if (_tbodyDeuda) _tbodyDeuda.innerHTML = [...DEUDA_TARJETAS].reverse().map(d => 
   return `
     <tr>
       <td>${fmtDate(d.fecha)}</td>
-      <td><span class="tag-tipo ${esPago ? 'ingreso' : 'gasto'}">${ETIQUETA_MOVIMIENTO_DEUDA[d.tipo_movimiento] || d.tipo_movimiento}</span></td>
-      <td>${d.descripcion}</td>
-      <td>${d.entidad}</td>
+      <td><span class="tag-tipo ${esPago ? 'ingreso' : 'gasto'}">${escapeHtml(ETIQUETA_MOVIMIENTO_DEUDA[d.tipo_movimiento] || d.tipo_movimiento)}</span></td>
+      <td>${escapeHtml(d.descripcion)}</td>
+      <td>${escapeHtml(d.entidad)}</td>
       <td class="num" style="color:${esPago ? 'var(--green)' : 'var(--red)'}">${esPago ? '−' : '+'} ${fmtCOP(d.monto)}</td>
       <td class="num">${fmtCOP(d.saldo_acumulado)}</td>
     </tr>`;
@@ -3922,9 +3975,9 @@ function tablaDetalleDesdeConfig(config) {
   }
   const encabezados = datasets.map(ds => ds.label || 'Valor');
   let html = '<table class="tabla-detalle-modal"><thead><tr><th>Detalle</th>' +
-    encabezados.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>';
+    encabezados.map(h => `<th>${escapeHtml(h)}</th>`).join('') + '</tr></thead><tbody>';
   labels.forEach((lab, i) => {
-    html += `<tr><td>${lab}</td>` +
+    html += `<tr><td>${escapeHtml(lab)}</td>` +
       datasets.map(ds => `<td>${fmtNum(ds.data[i] ?? 0)}</td>`).join('') + '</tr>';
   });
   html += '</tbody></table>';
@@ -3950,7 +4003,7 @@ function abrirModalLeaderboard() {
       <div class="lb-row">
         <div class="lb-rank">${i + 1}</div>
         <div class="lb-body">
-          <div class="lb-top"><span class="name">${catIcon(cat)} ${cat}</span><span class="amt">${fmtCOP(monto)}</span></div>
+          <div class="lb-top"><span class="name">${catIcon(cat)} ${escapeHtml(cat)}</span><span class="amt">${fmtCOP(monto)}</span></div>
           <div class="lb-bar"><span style="width:${pct}%; background:${colorFor(i)};"></span></div>
         </div>
       </div>`;
@@ -4094,7 +4147,7 @@ document.addEventListener('DOMContentLoaded', () => {
 <!-- ============================================================
      MODAL DE GRÁFICO EXPANDIDO (ver JS: abrirModalGrafico/abrirModalLeaderboard)
      ============================================================ -->
-<div class="modal-grafico-overlay" id="modalGrafico" role="dialog" aria-modal="true" aria-labelledby="modalGraficoTitulo">
+<div class="modal-grafico-overlay" id="modalGrafico" role="dialog" aria-modal="true" aria-labelledby="modalGraficoTitulo" inert>
   <div class="modal-grafico-card">
     <div class="modal-grafico-header">
       <h3 id="modalGraficoTitulo"></h3>
@@ -4114,7 +4167,7 @@ document.addEventListener('DOMContentLoaded', () => {
      mismas clases modal-grafico-* que el de arriba, para que se vea
      igual, pero sin canvas -- el detalle es solo texto.
      ============================================================ -->
-<div class="modal-grafico-overlay" id="modalInsight" role="dialog" aria-modal="true" aria-labelledby="modalInsightTitulo">
+<div class="modal-grafico-overlay" id="modalInsight" role="dialog" aria-modal="true" aria-labelledby="modalInsightTitulo" inert>
   <div class="modal-grafico-card" style="width: min(560px, 100%);">
     <div class="modal-grafico-header">
       <h3 id="modalInsightTitulo"></h3>
@@ -4130,7 +4183,7 @@ document.addEventListener('DOMContentLoaded', () => {
      MODAL "CONFIGURAR PRESUPUESTO" (ver JS: abrirModalPresupuesto) --
      mismas clases modal-grafico-* que los modales de arriba.
      ============================================================ -->
-<div class="modal-grafico-overlay" id="modalPresupuesto" role="dialog" aria-modal="true" aria-labelledby="modalPresupuestoTitulo">
+<div class="modal-grafico-overlay" id="modalPresupuesto" role="dialog" aria-modal="true" aria-labelledby="modalPresupuestoTitulo" inert>
   <div class="modal-grafico-card" style="width: min(460px, 100%);">
     <div class="modal-grafico-header">
       <h3 id="modalPresupuestoTitulo">Configurar presupuesto</h3>
@@ -4164,7 +4217,7 @@ document.addEventListener('DOMContentLoaded', () => {
      un <select> por categoría, se guarda al instante (criterio de
      aceptación: "sin tocar código ni pedirnos ayuda").
      ============================================================ -->
-<div class="modal-grafico-overlay" id="modalCategorias" role="dialog" aria-modal="true" aria-labelledby="modalCategoriasTitulo">
+<div class="modal-grafico-overlay" id="modalCategorias" role="dialog" aria-modal="true" aria-labelledby="modalCategoriasTitulo" inert>
   <div class="modal-grafico-card" style="width: min(520px, 100%);">
     <div class="modal-grafico-header">
       <h3 id="modalCategoriasTitulo">Reasignar categorías a un balde</h3>
@@ -4183,7 +4236,7 @@ document.addEventListener('DOMContentLoaded', () => {
      si venís de "Nueva meta de ahorro" o de "Editar" en una meta ya
      existente, ver abrirModalMeta()).
      ============================================================ -->
-<div class="modal-grafico-overlay" id="modalMeta" role="dialog" aria-modal="true" aria-labelledby="modalMetaTitulo">
+<div class="modal-grafico-overlay" id="modalMeta" role="dialog" aria-modal="true" aria-labelledby="modalMetaTitulo" inert>
   <div class="modal-grafico-card" style="width: min(440px, 100%);">
     <div class="modal-grafico-header">
       <h3 id="modalMetaTitulo">Nueva meta de ahorro</h3>
