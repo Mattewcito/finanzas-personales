@@ -14,15 +14,17 @@
   .mini-switch{ position:relative; display:inline-block; width:38px; height:21px; vertical-align:middle; }
   .mini-switch input{ opacity:0; width:0; height:0; }
   .mini-switch .slider{
-    position:absolute; inset:0; background: var(--card-hover); border-radius:999px; cursor:pointer;
-    transition: background .15s ease;
+    position:absolute; inset:0; background: var(--card-hover);
+    border: 1.5px solid var(--text-dim); border-radius:999px; cursor:pointer;
+    transition: background .15s ease, border-color .15s ease;
   }
   .mini-switch .slider::before{
     content:''; position:absolute; width:15px; height:15px; left:3px; top:3px;
-    background:#fff; border-radius:50%; transition: transform .15s ease;
+    /* pip: dark in unchecked state so it's visible on light background */
+    background: var(--text-dim); border-radius:50%; transition: transform .15s ease, background .15s ease;
   }
-  .mini-switch input:checked + .slider{ background: var(--accent); }
-  .mini-switch input:checked + .slider::before{ transform: translateX(17px); }
+  .mini-switch input:checked + .slider{ background: var(--accent); border-color: var(--accent); }
+  .mini-switch input:checked + .slider::before{ transform: translateX(17px); background:#fff; }
   .mini-switch input:disabled + .slider{ opacity:.5; cursor:not-allowed; }
 </style>
 {% endblock %}
@@ -53,8 +55,9 @@
           <td class="centro">
             <label class="mini-switch">
               <input type="checkbox" class="toggle-vista" data-usuario-id="{{ u.id }}" data-vista="{{ v.id }}"
+                     aria-label="Mostrar {{ v.label }} a {{ u.nombre_mostrado }}"
                      {{ 'checked' if v.id not in ocultas_por_usuario.get(u.id, []) else '' }}>
-              <span class="slider"></span>
+              <span class="slider" aria-hidden="true"></span>
             </label>
           </td>
           {% endfor %}
