@@ -13,6 +13,7 @@ rutas de un área del producto en vez de tener las ~30 rutas del proyecto
 en un único archivo de 480 líneas.
 """
 import os
+import time
 from functools import wraps
 
 from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
@@ -27,6 +28,49 @@ import db_finanzas as db
 MODO = os.environ.get("MODO_LABEL", "Local")
 
 auth_bp = Blueprint("auth", __name__)
+
+# --- Rate limiting básico de /login (hallazgo H2 de la revisión de
+# seguridad 2026-09-11) ---
+# Limitador simple EN MEMORIA (dict), sin agregar dependencias nuevas
+# (nada de flask-limiter -- el proyecto prefiere herramientas mínimas para
+# una app familiar de bajo tráfico). Limitaciones conocidas y aceptadas:
+#   - Se resetea si el proceso reinicia (perder el historial de intentos
+#     fallidos al reiniciar el contenedor es aceptable acá).
+#   - NO se comparte entre workers de gunicorn si hay más de uno corriendo
+#     -- cada worker tiene su propio dict en memoria, así que el límite
+#     real termina siendo (límite configurado x cantidad de workers). Para
+#     esta app, con pocos workers y tráfico familiar, es una mitigación
+#     razonable, no una garantía dura contra fuerza bruta distribuida.
+_INTENTOS_FALLIDOS: dict[str, list[float]] = {}
+_LOGIN_MAX_INTENTOS = 5
+_LOGIN_VENTANA_SEG = 5 * 60   # 5 minutos
+_LOGIN_BLOQUEO_SEG = 5 * 60   # 5 minutos
+
+
+def _registrar_intento_fallido(clave: str) -> None:
+    ahora = time.time()
+    intentos = _INTENTOS_FALLIDOS.setdefault(clave, [])
+    intentos.append(ahora)
+    # Poda oportunista: solo conserva intentos dentro de la ventana +
+    # bloqueo, para que el dict no crezca sin límite con el tiempo.
+    limite = ahora - max(_LOGIN_VENTANA_SEG, _LOGIN_BLOQUEO_SEG)
+    _INTENTOS_FALLIDOS[clave] = [t for t in intentos if t >= limite]
+
+
+def _limpiar_intentos(clave: str) -> None:
+    _INTENTOS_FALLIDOS.pop(clave, None)
+
+
+def _bloqueado(clave: str) -> bool:
+    ahora = time.time()
+    intentos = _INTENTOS_FALLIDOS.get(clave, [])
+    recientes = [t for t in intentos if t >= ahora - _LOGIN_VENTANA_SEG]
+    if len(recientes) < _LOGIN_MAX_INTENTOS:
+        return False
+    # Bloqueado mientras el intento más reciente siga dentro de la
+    # ventana de bloqueo (bloqueo "deslizante": cada intento nuevo
+    # mientras se está bloqueado empuja el bloqueo hacia adelante).
+    return ahora - recientes[-1] < _LOGIN_BLOQUEO_SEG
 
 
 def login_required(f):
@@ -129,12 +173,29 @@ def login():
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "")
 
+    ip = request.remote_addr or "desconocida"
+    clave_ip = f"ip:{ip}"
+    clave_user = f"user:{username.lower()}" if username else None
+
+    if _bloqueado(clave_ip) or (clave_user and _bloqueado(clave_user)):
+        return render_template(
+            "login.html",
+            error="Demasiados intentos fallidos. Esperá unos minutos e intentá de nuevo.",
+        ), 429
+
     with db.conexion() as conn:
         db.crear_esquema(conn)
         cuenta = db.verificar_login(conn, username, password)
 
     if not cuenta:
+        _registrar_intento_fallido(clave_ip)
+        if clave_user:
+            _registrar_intento_fallido(clave_user)
         return render_template("login.html", error="Usuario o contraseña incorrectos.")
+
+    _limpiar_intentos(clave_ip)
+    if clave_user:
+        _limpiar_intentos(clave_user)
 
     session.clear()
     session["usuario_id"] = cuenta["id"]
