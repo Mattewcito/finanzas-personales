@@ -7,9 +7,11 @@ extractos (Excel/PDF). Ver auth.py para el patrón de Blueprints elegido.
 import datetime
 import io
 import sys
+import uuid
 from pathlib import Path
 
 from flask import Blueprint, render_template, request, jsonify, send_from_directory, send_file
+from werkzeug.utils import secure_filename
 
 import db_finanzas as db
 import perfil_financiero
@@ -344,7 +346,14 @@ def api_cargar_extracto():
     if not archivo or not archivo.filename:
         return jsonify(ok=False, error="No se recibió ningún archivo."), 400
 
-    destino = UPLOADS_DIR / archivo.filename
+    # Nunca confiar en archivo.filename tal cual para el path final -- viene
+    # del cliente sin sanitizar y podria contener ".." o una ruta absoluta
+    # (path traversal). secure_filename() lo limpia, y el prefijo uuid evita
+    # colisiones entre usuarios subiendo un archivo con el mismo nombre.
+    nombre_seguro = secure_filename(archivo.filename)
+    if not nombre_seguro:
+        return jsonify(ok=False, error="Nombre de archivo inválido."), 400
+    destino = UPLOADS_DIR / f"{uuid.uuid4().hex}_{nombre_seguro}"
     archivo.save(destino)
 
     try:
