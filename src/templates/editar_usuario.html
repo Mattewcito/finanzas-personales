@@ -5,7 +5,7 @@
 <div class="page-wrap" style="max-width: 640px;">
 
   <div class="page-header">
-    <h1>✏️ Editar usuario</h1>
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="22" height="22" aria-hidden="true" style="vertical-align:middle; margin-right:8px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Editar usuario</h1>
     <p>Estás editando la cuenta de <b style="color:var(--text-dim)">{{ cuenta.nombre_mostrado }}</b>. Dejá la contraseña en blanco si no querés cambiarla.</p>
   </div>
 
@@ -52,14 +52,14 @@ document.getElementById('formEditar').addEventListener('submit', async (e) => {
     const json = await res.json();
     resultado.style.display = 'none';
     if (!res.ok || !json.ok) {
-      await mostrarAlertaApp('error', '❌ ' + (json.error || 'Error desconocido'));
+      await mostrarAlertaApp('error', json.error || 'Error desconocido');
       return;
     }
-    await mostrarAlertaApp('ok', '✅ Usuario actualizado.');
+    await mostrarAlertaApp('ok', 'Usuario actualizado.');
     e.target.querySelector('[name="password"]').value = '';
   } catch (err) {
     resultado.style.display = 'none';
-    await mostrarAlertaApp('error', '❌ No se pudo conectar con el servidor.');
+    await mostrarAlertaApp('error', 'No se pudo conectar con el servidor.');
   } finally {
     btn.disabled = false;
   }

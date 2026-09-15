@@ -5,7 +5,7 @@
 <div class="page-wrap" style="max-width: 640px;">
 
   <div class="page-header">
-    <h1>👤 Crear usuario</h1>
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="22" height="22" aria-hidden="true" style="vertical-align:middle; margin-right:8px;"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>Crear usuario</h1>
     <p>Cada cuenta nueva arranca con sus propias finanzas, separadas por completo del resto.</p>
   </div>
 
@@ -63,15 +63,15 @@ document.getElementById('formCrearUsuario').addEventListener('submit', async (e)
     const json = await res.json();
     resultado.style.display = 'none';
     if (!res.ok || !json.ok) {
-      await mostrarAlertaApp('error', '❌ ' + (json.error || 'Error desconocido'));
+      await mostrarAlertaApp('error', json.error || 'Error desconocido');
       return;
     }
     e.target.reset();
-    await mostrarAlertaApp('ok', '✅ Usuario creado. Ya puede iniciar sesión con esas credenciales.');
+    await mostrarAlertaApp('ok', 'Usuario creado. Ya puede iniciar sesión con esas credenciales.');
     location.reload(); // para que aparezca en la lista de abajo -- recién ahora que el usuario ya leyó y cerró el aviso
   } catch (err) {
     resultado.style.display = 'none';
-    await mostrarAlertaApp('error', '❌ No se pudo conectar con el servidor.');
+    await mostrarAlertaApp('error', 'No se pudo conectar con el servidor.');
   } finally {
     btn.disabled = false;
   }

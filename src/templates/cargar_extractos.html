@@ -52,13 +52,13 @@
 <div class="page-wrap">
 
   <div class="page-header">
-    <h1>📥 Cargar extracto bancario</h1>
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="22" height="22" aria-hidden="true" style="vertical-align:middle; margin-right:8px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Extractos bancarios</h1>
     <p>Subí un Excel o un PDF de extracto — se procesa y se inserta en <b style="color:var(--text-dim)">finanzas.db</b> sin duplicar lo que ya esté registrado.</p>
   </div>
 
   {% if usuario_rol == 'admin' %}
   <div class="aviso-cuenta">
-    ⚠️ Estás por cargar movimientos para la cuenta de <b>{{ usuario_viendo_nombre }}</b>.
+    Estás por cargar movimientos para la cuenta de <b>{{ usuario_viendo_nombre }}</b>.
     Si no es la que querés, cambiala primero en "Viendo perfil de" (menú de la izquierda).
   </div>
   {% endif %}
@@ -202,17 +202,17 @@ document.getElementById('formCarga').addEventListener('submit', async (e) => {
     const json = await res.json();
     resultado.style.display = 'none';
     if (!res.ok || !json.ok) {
-      await mostrarAlertaApp('error', '❌ ' + (json.error || 'Error desconocido'));
+      await mostrarAlertaApp('error', json.error || 'Error desconocido');
       return;
     }
-    const lineas = [`✅ ${json.nuevos} movimiento(s) nuevo(s) insertado(s).`];
+    const lineas = [`${json.nuevos} movimiento(s) nuevo(s) insertado(s).`];
     if (json.duplicados_bd > 0) lineas.push(`${json.duplicados_bd} ya estaban guardados de antes (mismo día y monto).`);
     if (json.duplicados_lote > 0) lineas.push(`${json.duplicados_lote} estaban repetidos dentro del mismo archivo.`);
     lineas.push('El dashboard ya se actualizó con estos datos.');
     await mostrarAlertaApp('ok', lineas.join('\n'));
   } catch (err) {
     resultado.style.display = 'none';
-    await mostrarAlertaApp('error', '❌ No se pudo conectar con el servidor.');
+    await mostrarAlertaApp('error', 'No se pudo conectar con el servidor.');
   } finally {
     btn.disabled = false;
   }

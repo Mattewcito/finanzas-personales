@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%235b6472'/%3E%3Cpath d='M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="/static/brand/favicon.svg">
 <title>Dashboard Financiero Personal</title>
 
 <!-- Anti-flash de tema (2026-09-11, mismo mecanismo que src/templates/
@@ -1230,7 +1230,7 @@
        ============================================================ -->
   <header class="top">
     <div class="title-block">
-      <h1>💰 Dashboard Financiero Personal</h1>
+      <h1>Resumen</h1>
       <!-- Requisito 2026-09-08 punto 1: el texto anterior ("Análisis
            automático de movimientos -- generado desde finanzas.db,
            sincronizada con el Excel, el correo y los extractos que
@@ -1349,7 +1349,7 @@
   <!-- ============================================================
        TARJETAS DE CRÉDITO Y DEUDA
        ============================================================ -->
-  <div class="section-title" id="deuda"><h2>💳 Tarjetas de crédito y deuda</h2><div class="line"></div><span class="tag">clasificación automática por texto</span></div>
+  <div class="section-title" id="deuda"><h2>Tarjetas de crédito y deuda</h2><div class="line"></div><span class="tag">clasificación automática por texto</span></div>
   <p id="resumenDeuda" style="margin:-6px 0 14px; font-size:12.5px; color:var(--text-dim); max-width:820px;"></p>
   <div class="kpi-grid" id="kpiGridDeuda"></div>
   <!-- Desglose por tarjeta (2026-09-07, ver
@@ -1362,8 +1362,8 @@
        (guard `if (!el) return` ahí, mismo patrón que renderPerfilFinanciero()). -->
   <div class="tarjetas-grid" id="tarjetasGrid"></div>
   <div class="charts-grid" id="deudaChartsGrid" style="margin-top:16px;">
-    <div class="chart-card full expandible" role="button" tabindex="0" onclick="abrirModalGrafico('chartDeudaEvolucion','📈 Evolución de la deuda en tarjetas de crédito')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
-      <h3>📈 Evolución de la deuda en tarjetas de crédito</h3>
+    <div class="chart-card full expandible" role="button" tabindex="0" onclick="abrirModalGrafico('chartDeudaEvolucion','Evolución de la deuda en tarjetas de crédito')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
+      <h3>Evolución de la deuda en tarjetas de crédito</h3>
       <p class="desc">Saldo acumulado estimado (compras a crédito + avances − pagos a la tarjeta), movimiento a movimiento.</p>
       <div class="chart-holder tall" id="chartDeudaEvolucionHolder"><canvas id="chartDeudaEvolucion"></canvas></div>
     </div>
@@ -1382,8 +1382,8 @@
       <div class="chart-holder tall"><canvas id="chartCategorias"></canvas></div>
     </div>
 
-    <div class="chart-card expandible" role="button" tabindex="0" onclick="abrirModalGrafico('chartIngresosGastos','⚖️ Ingresos vs. gastos')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
-      <h3>⚖️ Ingresos vs. gastos</h3>
+    <div class="chart-card expandible" role="button" tabindex="0" onclick="abrirModalGrafico('chartIngresosGastos','Ingresos vs. gastos')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
+      <h3>Ingresos vs. gastos</h3>
       <p class="desc">Solo caja real — excluye compras y avances de tarjeta de crédito (ver sección "Tarjetas de crédito").</p>
       <div class="chart-holder"><canvas id="chartIngresosGastos"></canvas></div>
     </div>
@@ -1394,8 +1394,8 @@
       <div class="chart-holder"><canvas id="chartMoneda"></canvas></div>
     </div>
 
-    <div class="chart-card full expandible" role="button" tabindex="0" onclick="abrirModalGrafico('chartEvolucion','📈 Evolución temporal de gastos')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
-      <h3>📈 Evolución temporal de gastos</h3>
+    <div class="chart-card full expandible" role="button" tabindex="0" onclick="abrirModalGrafico('chartEvolucion','Evolución temporal de gastos')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
+      <h3>Evolución temporal de gastos</h3>
       <p class="desc">Gasto diario (COP) a lo largo del período — ayuda a detectar picos de consumo.</p>
       <div class="chart-holder tall"><canvas id="chartEvolucion"></canvas></div>
     </div>
@@ -1412,8 +1412,8 @@
       <div class="chart-holder"><canvas id="chartDistribucion"></canvas></div>
     </div>
 
-    <div class="chart-card full expandible" role="button" tabindex="0" onclick="abrirModalGrafico('chartTendenciaMensual','🗓️ Tendencia mensual')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
-      <h3>🗓️ Tendencia mensual</h3>
+    <div class="chart-card full expandible" role="button" tabindex="0" onclick="abrirModalGrafico('chartTendenciaMensual','Tendencia mensual')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
+      <h3>Tendencia mensual</h3>
       <p class="desc">Ingresos vs. gastos mes a mes (COP). Los meses con datos incompletos están marcados.</p>
       <div class="chart-holder tall"><canvas id="chartTendenciaMensual"></canvas></div>
     </div>
@@ -1436,7 +1436,7 @@
        TABLAS
        ============================================================ -->
   <div class="section-title" id="movimientos">
-    <h2 id="tituloSeccionMovimientos">📋 Últimos movimientos</h2><div class="line"></div>
+    <h2 id="tituloSeccionMovimientos">Movimientos</h2><div class="line"></div>
     <span class="tag">5 vistas</span>
     <label class="switch-toggle" title="Ver todos los movimientos del período, con paginado">
       <input type="checkbox" id="toggleTodosMovimientos">
@@ -1929,7 +1929,7 @@ document.getElementById('lastUpdated').textContent = `Última actualización del
     // agrega nada -- ':empty' en el CSS de arriba evita que quede un
     // hueco vacío en el layout.
     el.innerHTML = sinAsignar > 0
-      ? `<div class="empty-state" style="grid-column:1/-1;">💳 Registrá tus tarjetas en <a href="/tarjetas" target="_top" style="color:var(--accent-2); font-weight:600;">Mis tarjetas</a> para ver cupo disponible y % de uso por tarjeta.</div>`
+      ? `<div class="empty-state" style="grid-column:1/-1;">Registrá tus tarjetas en <a href="/tarjetas" target="_top" style="color:var(--accent-2); font-weight:600;">Mis tarjetas</a> para ver cupo disponible y % de uso por tarjeta.</div>`
       : '';
     return;
   }
@@ -2767,7 +2767,7 @@ if (!DATA.length) {
     'No se registraron movimientos de tarjeta de crédito en el período seleccionado.';
   const _chartDeudaHolderVacio = document.getElementById('chartDeudaEvolucionHolder');
   if (_chartDeudaHolderVacio) _chartDeudaHolderVacio.innerHTML =
-    '<div class="empty-state">💳 No se detectaron compras, avances ni pagos de tarjeta de crédito en los movimientos del período seleccionado.</div>';
+    '<div class="empty-state">No se detectaron compras, avances ni pagos de tarjeta de crédito en los movimientos del período seleccionado.</div>';
   const _insightsGridVacio = document.getElementById('insightsGrid'); // null si la sección está oculta -- ver ocultarSubvistas()
   if (_insightsGridVacio) _insightsGridVacio.innerHTML =
     '<div class="empty-state">🧠 Todavía no hay suficientes movimientos en este período para generar insights automáticos.</div>';
@@ -3015,7 +3015,7 @@ kpiGrid.innerHTML = `
        en mobile sin pelear contra la especificidad de un inline style
        (bug qa-responsive 2026-09-07 #2). -->
   <div class="chart-card full chart-card-compacto-ingresos">
-    <h3>⚖️ Ingresos vs. gastos <span class="tag" style="margin-left:8px; font-weight:400;">vista compacta</span></h3>
+    <h3>Ingresos vs. gastos <span class="tag" style="margin-left:8px; font-weight:400;">vista compacta</span></h3>
     <div class="chart-holder compact"><canvas id="chartIngresosGastosCompact"></canvas></div>
   </div>
 
@@ -3174,7 +3174,7 @@ if (DEUDA_TARJETAS.length) {
 } else {
   delete GRAFICOS_REGISTRY['chartDeudaEvolucion']; // sin canvas en este período -- que el modal no reabra el de un período anterior
   if (_chartDeudaHolder) _chartDeudaHolder.innerHTML =
-    '<div class="empty-state">💳 No se detectaron compras, avances ni pagos de tarjeta de crédito en los movimientos del período seleccionado.</div>';
+    '<div class="empty-state">No se detectaron compras, avances ni pagos de tarjeta de crédito en los movimientos del período seleccionado.</div>';
 }
 
 /* =================================================================
@@ -3782,12 +3782,12 @@ if (toggleTodosMovimientos) {
     if (todosMovActivo) {
       todosMovPagina = 1;
       renderTodosMovimientos(DATA_ACTUAL);
-      document.getElementById('tituloSeccionMovimientos').textContent = '📋 Movimientos';
+      document.getElementById('tituloSeccionMovimientos').textContent = 'Movimientos';
     } else {
       // Vuelve a nombrar la pestaña que sigue activa (no se resetea al
       // apagar el switch, solo queda oculta mientras tanto).
       const tabActiva = document.querySelector('.tab-btn.active');
-      document.getElementById('tituloSeccionMovimientos').textContent = `📋 ${tabActiva ? tabActiva.textContent : 'Últimos movimientos'}`;
+      document.getElementById('tituloSeccionMovimientos').textContent = tabActiva ? tabActiva.textContent : 'Movimientos';
     }
   });
 }
@@ -3936,7 +3936,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById(btn.dataset.pane).classList.add('active');
     // El título de la sección sigue a la pestaña activa -- más diciente
     // que dejarlo fijo en "Movimientos" sin decir qué se está mirando.
-    document.getElementById('tituloSeccionMovimientos').textContent = `📋 ${btn.textContent}`;
+    document.getElementById('tituloSeccionMovimientos').textContent = btn.textContent;
   });
 });
 
