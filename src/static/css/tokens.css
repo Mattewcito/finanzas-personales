@@ -1,0 +1,178 @@
+/* tokens.css — fuente única de verdad de diseño "Cuadre" 2026-09-15
+   Los 4 bloques son el patrón estándar: :root (default light),
+   @media dark (OS sin elección manual), [data-theme="light"] (manual),
+   [data-theme="dark"] (manual). Mismo mecanismo que había inline. */
+
+:root {
+  /* === Colores nuevos === */
+  --bg:              #F6F7FB;
+  --surface:         #FFFFFF;
+  --surface-2:       #EEF1F7;
+  --surface-hover:   #E6EAF2;
+  --border:          #E1E5EE;
+  --text:            #0E1321;
+  --text-muted:      #4E576A;
+  --text-subtle:     #646C80;
+  --brand:           #3845D1;
+  --brand-hover:     #2C37B0;
+  --brand-soft:      #ECEEFF;
+  --on-brand:        #FFFFFF;
+  --positive:        #05734F;
+  --positive-soft:   #E4F5EE;
+  --negative:        #BE1E3A;
+  --negative-soft:   #FDECEF;
+  --warning:         #8F5500;
+  --warning-soft:    #FFF3DF;
+  --cat-necesidades: #0E6E8C;
+  --cat-gustos:      #A21CAF;
+  --cat-ahorro:      #3F6212;
+  --focus-ring:      0 0 0 3px color-mix(in srgb, var(--brand) 45%, transparent);
+
+  /* === Tipografía === */
+  --font-display: 'Plus Jakarta Sans', -apple-system, 'Segoe UI', sans-serif;
+  --font-ui:      'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --fs-display:   32px; --lh-display: 40px;
+  --fs-h1:        24px; --lh-h1:      32px;
+  --fs-h2:        18px; --lh-h2:      26px;
+  --fs-h3:        15px; --lh-h3:      22px;
+  --fs-body:      15px; --lh-body:    24px;
+  --fs-sm:        13px; --lh-sm:      20px;
+  --fs-xs:        12px; --lh-xs:      16px;
+
+  /* === Espaciado (escala 4px) === */
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px;
+  --space-5:20px; --space-6:24px; --space-8:32px; --space-10:40px; --space-12:48px;
+
+  /* === Radios === */
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-full: 999px;
+
+  /* === Sombras === */
+  --shadow-1: 0 1px 2px rgba(14,19,33,.06);
+  --shadow-2: 0 8px 24px -12px rgba(14,19,33,.18);
+
+  /* === Movimiento === */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --ease:     cubic-bezier(.2,.8,.2,1);
+
+  /* === Compatibilidad — mantener hasta Fase 5 === */
+  /* Nombres viejos que aún usa el CSS inline de base.html/dashboard */
+  --bg-soft:           var(--surface-2);
+  --card-solid:        var(--surface);
+  --card-solid-2:      var(--surface-2);
+  --card-border:       var(--border);
+  --card-hover:        var(--surface-hover);
+  --surface-elevated:  var(--surface);
+  --text-dim:          var(--text-muted);
+  --text-faint:        var(--text-subtle);
+  --accent:            var(--brand);
+  --accent-2:          var(--brand);
+  --green:             var(--positive);
+  --red:               var(--negative);
+  --gold:              var(--warning);
+  --balde-necesidades: var(--cat-necesidades);
+  --balde-gustos:      var(--cat-gustos);
+  --balde-ahorro:      var(--cat-ahorro);
+  --sidebar-w:         226px;
+  --sidebar-w-collapsed: 68px;
+  /* Sombras viejas */
+  --shadow-card:     var(--shadow-1);
+  --shadow-hover:    var(--shadow-2);
+  --shadow-dropdown: 0 12px 32px -12px rgba(14,19,33,.22);
+  --shadow-modal:    0 24px 60px -20px rgba(14,19,33,.38);
+}
+
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:              #0A0D16;
+    --surface:         #121726;
+    --surface-2:       #192033;
+    --surface-hover:   #1F2740;
+    --border:          #262D42;
+    --text:            #EDF0F7;
+    --text-muted:      #A6AEC1;
+    --text-subtle:     #8C95AA;
+    --brand:           #8594FF;
+    --brand-hover:     #9DA9FF;
+    --brand-soft:      rgba(133,148,255,.14);
+    --on-brand:        #0A0D16;
+    --positive:        #3DDC97;
+    --positive-soft:   rgba(61,220,151,.14);
+    --negative:        #FF7A8A;
+    --negative-soft:   rgba(255,122,138,.14);
+    --warning:         #FBBF24;
+    --warning-soft:    rgba(251,191,36,.14);
+    --cat-necesidades: #38BDF8;
+    --cat-gustos:      #E879F9;
+    --cat-ahorro:      #A3E635;
+    --shadow-1: none;
+    --shadow-2: 0 8px 24px -12px rgba(0,0,0,.55);
+    --shadow-card:     none;
+    --shadow-hover:    0 10px 24px -12px rgba(0,0,0,.55);
+    --shadow-dropdown: 0 12px 32px -12px rgba(0,0,0,.55);
+    --shadow-modal:    0 24px 60px -20px rgba(0,0,0,.6);
+  }
+}
+
+:root[data-theme="light"]{
+  --bg:              #F6F7FB;
+  --surface:         #FFFFFF;
+  --surface-2:       #EEF1F7;
+  --surface-hover:   #E6EAF2;
+  --border:          #E1E5EE;
+  --text:            #0E1321;
+  --text-muted:      #4E576A;
+  --text-subtle:     #646C80;
+  --brand:           #3845D1;
+  --brand-hover:     #2C37B0;
+  --brand-soft:      #ECEEFF;
+  --on-brand:        #FFFFFF;
+  --positive:        #05734F;
+  --positive-soft:   #E4F5EE;
+  --negative:        #BE1E3A;
+  --negative-soft:   #FDECEF;
+  --warning:         #8F5500;
+  --warning-soft:    #FFF3DF;
+  --cat-necesidades: #0E6E8C;
+  --cat-gustos:      #A21CAF;
+  --cat-ahorro:      #3F6212;
+  --shadow-1: 0 1px 2px rgba(14,19,33,.06);
+  --shadow-2: 0 8px 24px -12px rgba(14,19,33,.18);
+  --shadow-card:     0 1px 2px rgba(30,41,59,0.05), 0 1px 3px rgba(30,41,59,0.06);
+  --shadow-hover:    0 10px 24px -12px rgba(30,41,59,.22);
+  --shadow-dropdown: 0 12px 32px -12px rgba(30,41,59,.22);
+  --shadow-modal:    0 24px 60px -20px rgba(30,41,59,.38);
+}
+
+:root[data-theme="dark"]{
+  --bg:              #0A0D16;
+  --surface:         #121726;
+  --surface-2:       #192033;
+  --surface-hover:   #1F2740;
+  --border:          #262D42;
+  --text:            #EDF0F7;
+  --text-muted:      #A6AEC1;
+  --text-subtle:     #8C95AA;
+  --brand:           #8594FF;
+  --brand-hover:     #9DA9FF;
+  --brand-soft:      rgba(133,148,255,.14);
+  --on-brand:        #0A0D16;
+  --positive:        #3DDC97;
+  --positive-soft:   rgba(61,220,151,.14);
+  --negative:        #FF7A8A;
+  --negative-soft:   rgba(255,122,138,.14);
+  --warning:         #FBBF24;
+  --warning-soft:    rgba(251,191,36,.14);
+  --cat-necesidades: #38BDF8;
+  --cat-gustos:      #E879F9;
+  --cat-ahorro:      #A3E635;
+  --shadow-1: none;
+  --shadow-2: 0 8px 24px -12px rgba(0,0,0,.55);
+  --shadow-card:     none;
+  --shadow-hover:    0 10px 24px -12px rgba(0,0,0,.55);
+  --shadow-dropdown: 0 12px 32px -12px rgba(0,0,0,.55);
+  --shadow-modal:    0 24px 60px -20px rgba(0,0,0,.6);
+}

@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -13,36 +13,9 @@
 })();
 </script>
 <title>Ingresar — Finanzas</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
 <style>
-  /* Mismos tokens que base.html (reskin 2026-09-11) -- ver ahí el
-     comentario completo sobre el patrón de los 4 bloques de tema. */
-  :root{
-    /* Claro (default) -- ver base.html para el patrón completo de 4 bloques */
-    --bg: #f6f7fa; --card-solid: #ffffff; --card-border: rgba(15,23,42,0.10);
-    --card-hover: #f1f3f8; --text: #12151c; --text-dim: #5b6472; --text-faint: #6a7285;
-    --accent: #5b6472; --accent-2: #9c6530; --red: #c81e42;
-    --shadow-card: 0 24px 60px -30px rgba(30,41,59,0.28), 0 1px 3px rgba(30,41,59,0.08);
-  }
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){
-      --bg: #090c13; --card-solid: #131928; --card-border: rgba(255,255,255,0.08);
-      --card-hover: #171e30; --text: #eef1f8; --text-dim: #9aa3b8; --text-faint: #6b7488;
-      --accent-2: #c68a4e; --red: #fb7185;
-      --shadow-card: 0 24px 60px -24px rgba(0,0,0,0.55);
-    }
-  }
-  :root[data-theme="light"]{
-    --bg: #f6f7fa; --card-solid: #ffffff; --card-border: rgba(15,23,42,0.10);
-    --card-hover: #f1f3f8; --text: #12151c; --text-dim: #5b6472; --text-faint: #6a7285;
-    --accent-2: #9c6530; --red: #c81e42;
-    --shadow-card: 0 24px 60px -30px rgba(30,41,59,0.28), 0 1px 3px rgba(30,41,59,0.08);
-  }
-  :root[data-theme="dark"]{
-    --bg: #090c13; --card-solid: #131928; --card-border: rgba(255,255,255,0.08);
-    --card-hover: #171e30; --text: #eef1f8; --text-dim: #9aa3b8; --text-faint: #6b7488;
-    --accent-2: #c68a4e; --red: #fb7185;
-    --shadow-card: 0 24px 60px -24px rgba(0,0,0,0.55);
-  }
   *{ box-sizing: border-box; }
   html, body{ margin:0; height:100%; }
   body{

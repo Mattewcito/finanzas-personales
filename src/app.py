@@ -185,14 +185,13 @@ def agregar_cabeceras_seguridad(response):
     # frame-ancestors 'self' (refuerza X-Frame-Options con la directiva
     # moderna) y object-src 'none' (bloquea <object>/<embed>, sin uso
     # legítimo conocido en la app).
-    # style-src/font-src incluyen fonts.googleapis.com/fonts.gstatic.com:
-    # dashboard_finanzas.html carga la tipografía Inter desde Google Fonts
-    # (ver <link> en su <head>) -- sin esto, el CSP rompería esa carga.
+    # Fuentes self-hosted desde /static/fonts/ (F1 rebranding 2026-09-15):
+    # ya no se cargan fuentes externas -- font-src 'self' es suficiente.
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com; "
+        "style-src 'self' 'unsafe-inline'; "
+        "font-src 'self'; "
         "img-src 'self' data:; "
         "object-src 'none'; "
         "frame-ancestors 'self'"

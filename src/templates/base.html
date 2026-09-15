@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -18,6 +18,8 @@
 })();
 </script>
 <title>{% block title %}Finanzas Personales{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
 <style>
   /* ================================================================
      SISTEMA DE DISEÑO -- reskin 2026-09-11
@@ -38,93 +40,6 @@
      fuentes de verdad (default, SO, elección manual) no compitan
      entre sí -- ver comentario junto a cada uno.
   ================================================================ */
-  :root{
-    /* ---- Claro (default) ---- */
-    --bg: #f6f7fa;
-    --bg-soft: #eceff4;
-    --card-solid: #ffffff;
-    --card-border: rgba(15,23,42,0.10);
-    --card-hover: #f1f3f8;
-    --surface-elevated: #ffffff; /* modal/dropdown */
-    --text: #12151c;
-    --text-dim: #5b6472;
-    --text-faint: #6a7285;
-    --accent: #5b6472;   /* grafito -- superficies interactivas, plano en los dos temas */
-    --accent-2: #9c6530; /* cobre claro -- única chispa de marca */
-    --green: #0a7a59;
-    --red: #c81e42;
-    --gold: #92660a;
-    --shadow-card: 0 1px 2px rgba(30,41,59,0.05), 0 1px 3px rgba(30,41,59,0.06);
-    --shadow-hover: 0 10px 24px -12px rgba(30,41,59,0.22);
-    --shadow-dropdown: 0 12px 32px -12px rgba(30,41,59,0.22);
-    --shadow-modal: 0 24px 60px -20px rgba(30,41,59,0.38);
-    --sidebar-w: 226px;
-    --sidebar-w-collapsed: 68px;
-  }
-  /* El SO prefiere oscuro y el usuario nunca eligió nada a mano --
-     :not([data-theme="light"]) deja pasar esto solo mientras no haya
-     una elección explícita guardada (ver script anti-flash arriba). */
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){
-      --bg: #090c13;
-      --bg-soft: #0d111b;
-      --card-solid: #131928;
-      --card-border: rgba(255,255,255,0.08);
-      --card-hover: #171e30;
-      --surface-elevated: #1b2338;
-      --text: #eef1f8;
-      --text-dim: #9aa3b8;
-      --text-faint: #949cb2;
-      --accent-2: #c68a4e;
-      --green: #27d9a8;
-      --red: #fb7185;
-      --gold: #fbbf24;
-      --shadow-card: none;
-      --shadow-hover: 0 10px 24px -12px rgba(0,0,0,0.55);
-      --shadow-dropdown: 0 12px 32px -12px rgba(0,0,0,0.55);
-      --shadow-modal: 0 24px 60px -20px rgba(0,0,0,0.6);
-    }
-  }
-  /* Elección MANUAL guardada -- gana siempre, sin importar el SO. */
-  :root[data-theme="light"]{
-    --bg: #f6f7fa;
-    --bg-soft: #eceff4;
-    --card-solid: #ffffff;
-    --card-border: rgba(15,23,42,0.10);
-    --card-hover: #f1f3f8;
-    --surface-elevated: #ffffff;
-    --text: #12151c;
-    --text-dim: #5b6472;
-    --text-faint: #6a7285;
-    --accent-2: #9c6530;
-    --green: #0a7a59;
-    --red: #c81e42;
-    --gold: #92660a;
-    --shadow-card: 0 1px 2px rgba(30,41,59,0.05), 0 1px 3px rgba(30,41,59,0.06);
-    --shadow-hover: 0 10px 24px -12px rgba(30,41,59,0.22);
-    --shadow-dropdown: 0 12px 32px -12px rgba(30,41,59,0.22);
-    --shadow-modal: 0 24px 60px -20px rgba(30,41,59,0.38);
-  }
-  :root[data-theme="dark"]{
-    --bg: #090c13;
-    --bg-soft: #0d111b;
-    --card-solid: #131928;
-    --card-border: rgba(255,255,255,0.08);
-    --card-hover: #171e30;
-    --surface-elevated: #1b2338;
-    --text: #eef1f8;
-    --text-dim: #9aa3b8;
-    --text-faint: #949cb2; /* antes #6b7488 -- 4.02-4.17:1 (falla AA); mismo valor ya verificado en dashboard_finanzas.html, 7.13:1 sobre --bg */
-    --accent-2: #c68a4e;
-    --green: #27d9a8;
-    --red: #fb7185;
-    --gold: #fbbf24;
-    --shadow-card: none;
-    --shadow-hover: 0 10px 24px -12px rgba(0,0,0,0.55);
-    --shadow-dropdown: 0 12px 32px -12px rgba(0,0,0,0.55);
-    --shadow-modal: 0 24px 60px -20px rgba(0,0,0,0.6);
-  }
-
   *{ box-sizing: border-box; }
   html, body{ margin:0; height:100%; }
   body{
