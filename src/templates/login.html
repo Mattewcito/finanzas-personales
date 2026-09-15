@@ -17,17 +17,18 @@
   /* Mismos tokens que base.html (reskin 2026-09-11) -- ver ahí el
      comentario completo sobre el patrón de los 4 bloques de tema. */
   :root{
-    --bg: #090c13; --card-solid: #131928; --card-border: rgba(255,255,255,0.08);
-    --card-hover: #171e30; --text: #eef1f8; --text-dim: #9aa3b8; --text-faint: #6b7488;
-    --accent: #5b6472; --accent-2: #c68a4e; --red: #fb7185;
-    --shadow-card: 0 24px 60px -24px rgba(0,0,0,0.55);
+    /* Claro (default) -- ver base.html para el patrón completo de 4 bloques */
+    --bg: #f6f7fa; --card-solid: #ffffff; --card-border: rgba(15,23,42,0.10);
+    --card-hover: #f1f3f8; --text: #12151c; --text-dim: #5b6472; --text-faint: #6a7285;
+    --accent: #5b6472; --accent-2: #9c6530; --red: #c81e42;
+    --shadow-card: 0 24px 60px -30px rgba(30,41,59,0.28), 0 1px 3px rgba(30,41,59,0.08);
   }
-  @media (prefers-color-scheme: light){
-    :root:not([data-theme="dark"]){
-      --bg: #f6f7fa; --card-solid: #ffffff; --card-border: rgba(15,23,42,0.10);
-      --card-hover: #f1f3f8; --text: #12151c; --text-dim: #5b6472; --text-faint: #6a7285;
-      --accent-2: #9c6530; --red: #c81e42;
-      --shadow-card: 0 24px 60px -30px rgba(30,41,59,0.28), 0 1px 3px rgba(30,41,59,0.08);
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg: #090c13; --card-solid: #131928; --card-border: rgba(255,255,255,0.08);
+      --card-hover: #171e30; --text: #eef1f8; --text-dim: #9aa3b8; --text-faint: #6b7488;
+      --accent-2: #c68a4e; --red: #fb7185;
+      --shadow-card: 0 24px 60px -24px rgba(0,0,0,0.55);
     }
   }
   :root[data-theme="light"]{
@@ -58,12 +59,15 @@
   }
   .theme-toggle-fab:hover{ background: var(--card-hover); color: var(--text); }
   .theme-toggle-fab svg{ width:17px; height:17px; }
-  .theme-toggle-fab .icon-luna{ display:none; }
+  /* Default light: mostrar luna (para cambiar a oscuro) */
+  .theme-toggle-fab .icon-sol{ display:none; }
+  :root[data-theme="dark"] .theme-toggle-fab .icon-luna{ display:none; }
+  :root[data-theme="dark"] .theme-toggle-fab .icon-sol{ display:block; }
   :root[data-theme="light"] .theme-toggle-fab .icon-sol{ display:none; }
   :root[data-theme="light"] .theme-toggle-fab .icon-luna{ display:block; }
-  @media (prefers-color-scheme: light){
-    :root:not([data-theme="dark"]) .theme-toggle-fab .icon-sol{ display:none; }
-    :root:not([data-theme="dark"]) .theme-toggle-fab .icon-luna{ display:block; }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .theme-toggle-fab .icon-luna{ display:none; }
+    :root:not([data-theme="light"]) .theme-toggle-fab .icon-sol{ display:block; }
   }
 
   .login-card{
@@ -110,6 +114,18 @@
     animation: resultBoxIn .16s ease;
   }
   @keyframes resultBoxIn{ from{ opacity:0; transform:translateY(-3px); } to{ opacity:1; transform:translateY(0); } }
+
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+    body, .login-card, .theme-toggle-fab{
+      transition-property: background-color, color, border-color !important;
+      transition-duration: 0.18s !important;
+    }
+  }
 </style>
 </head>
 <body>
@@ -151,7 +167,7 @@
   function temaActual() {
     const guardado = document.documentElement.getAttribute('data-theme');
     if (guardado === 'light' || guardado === 'dark') return guardado;
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
   boton.addEventListener('click', () => {
     const nuevo = temaActual() === 'light' ? 'dark' : 'light';
