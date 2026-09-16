@@ -41,7 +41,10 @@ def data_dir(tmp_path, monkeypatch):
 
 
 def _journal_mode(conn: sqlite3.Connection) -> str:
-    return conn.execute("PRAGMA journal_mode").fetchone()[0]
+    row = conn.execute("PRAGMA journal_mode").fetchone()
+    # row_factory devuelve dict desde la migración a Turso; mantiene compatibilidad
+    # con acceso por nombre de columna en ambos modos (local y remoto).
+    return row["journal_mode"] if isinstance(row, dict) else row[0]
 
 
 # ----------------------------- Tests -----------------------------
@@ -113,11 +116,11 @@ def test_conectar_en_modo_delete_no_rompe_operaciones_normales(data_dir):
         # vez de WAL: el movimiento se inserta y queda consultable.
         assert resultado["nuevos"] == 1
 
-        filas = conn.execute(
-            "SELECT COUNT(*) FROM movimientos WHERE usuario_id = ?",
+        row_count = conn.execute(
+            "SELECT COUNT(*) AS n FROM movimientos WHERE usuario_id = ?",
             (usuario_id,),
-        ).fetchone()[0]
-        assert filas == 1
+        ).fetchone()
+        assert (row_count["n"] if isinstance(row_count, dict) else row_count[0]) == 1
 
         # journal_mode sigue en delete después de todas estas operaciones
         # (no vuelve a WAL solo por hacer escrituras/commits normales).

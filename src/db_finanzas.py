@@ -26,6 +26,7 @@ Vista:
     saldo corriente, calculado con una función de ventana SQL.
 """
 
+import os
 import re
 import json
 import sqlite3
@@ -348,21 +349,34 @@ ORDER BY fecha, id;
 """
 
 
-def conectar() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    # journal_mode = DELETE (no WAL) a propósito: `data/` está montado
-    # como bind mount de Docker Desktop en Windows, y WAL necesita memoria
-    # compartida (mmap) entre procesos que ese tipo de montaje no soporta
-    # bien -- cada vez que el contenedor se recreaba, la conexión fallaba
-    # con "disk I/O error" al no poder abrir/mapear el -shm (causó una
-    # caída real de `dev` el 2026-09-10). DELETE usa el journal clásico,
-    # sin mmap, 100% compatible con bind mounts. Es un no-op si el archivo
-    # ya está en DELETE (el caso normal); si algo lo vuelve a poner en WAL
-    # (ej. una herramienta externa como DB Browser), esta línea lo corrige
-    # solo en la siguiente conexión.
-    conn.execute("PRAGMA journal_mode = DELETE")
+def _dict_row_factory(cursor, row):
+    """Row factory que devuelve dicts — compatible con sqlite3 y libsql-experimental.
+    Sustituye sqlite3.Row: soporta r["col"], dict(r) y r.keys() igual que
+    antes, y además funciona con cursores de libsql sin depender del tipo C
+    sqlite3.Row que no acepta cursores foráneos."""
+    return {col[0]: row[i] for i, col in enumerate(cursor.description)}
+
+
+def conectar():
+    """Conecta a Turso (remoto) si TURSO_DATABASE_URL y TURSO_AUTH_TOKEN están
+    seteados, o al archivo SQLite local como fallback (dev/tests sin vars).
+    El resto del código no cambia: sigue usando conn.execute(), conn.commit()
+    y db.conexion() exactamente igual que antes."""
+    turso_url = os.environ.get("TURSO_DATABASE_URL", "").strip()
+    turso_token = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
+
+    if turso_url and turso_token:
+        import libsql_experimental as libsql  # lazy: solo cuando hay credenciales
+        conn = libsql.connect(turso_url, auth_token=turso_token)
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        # journal_mode = DELETE (no WAL): `data/` está montado como bind mount
+        # de Docker Desktop en Windows y WAL requiere mmap entre procesos —
+        # causó "disk I/O error" real el 2026-09-10. Solo aplica a SQLite local.
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = DELETE")
+
+    conn.row_factory = _dict_row_factory
     return conn
 
 
