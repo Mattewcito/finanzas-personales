@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block title %}Mis tarjetas{% endblock %}
 
 {% block head %}
@@ -9,17 +9,17 @@
   .aviso-cuenta{
     display:flex; align-items:center; gap:8px; margin: 0 0 18px;
     padding: 10px 14px; border-radius: 10px; font-size: 13px;
-    background: color-mix(in srgb, var(--gold) 10%, transparent);
-    border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent); color: var(--text);
+    background: color-mix(in srgb, var(--warning) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent); color: var(--text);
   }
-  .aviso-cuenta b{ color: var(--gold); }
+  .aviso-cuenta b{ color: var(--warning); }
 
   .btn-secundario{
     padding: 11px 20px; border-radius: 10px;
-    border:1px solid var(--card-border); background: var(--bg-soft); color: var(--text);
+    border:1px solid var(--border); background: var(--surface-2); color: var(--text);
     font-weight:600; font-size:13.5px; cursor:pointer; font-family: inherit;
   }
-  .btn-secundario:hover{ background: var(--card-hover); }
+  .btn-secundario:hover{ background: var(--surface-hover); }
 
   /* Modal crear/editar -- mismo patrón que configurar_correo.html
      (modal de ayuda): esta página NO vive dentro del <iframe> del
@@ -39,8 +39,8 @@
        base.html): el modal es la superficie más cerca del usuario, así
        que arranca más clara que la tarjeta que tiene detrás, no más
        oscura. */
-    background: linear-gradient(180deg, var(--surface-elevated), var(--card-solid));
-    border:1px solid var(--card-border); border-radius:16px; padding:26px 28px;
+    background: linear-gradient(180deg, var(--surface), var(--surface));
+    border:1px solid var(--border); border-radius:16px; padding:26px 28px;
     box-shadow: var(--shadow-modal);
     animation: modalBoxIn .18s cubic-bezier(.2,.9,.3,1.2);
   }
@@ -49,7 +49,7 @@
 
   .section-title-simple{
     font-size:12.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
-    color: var(--text-faint); margin: 26px 0 10px;
+    color: var(--text-subtle); margin: 26px 0 10px;
   }
   .section-title-simple:first-child{ margin-top:0; }
 
@@ -116,22 +116,25 @@
 
   .tarjeta-card-actions{ display:flex; flex-wrap:wrap; gap:8px; }
   .btn-icono{
-    background: var(--bg-soft); border:1px solid var(--card-border); color: var(--text-dim);
+    background: var(--surface-2); border:1px solid var(--border); color: var(--text-muted);
     font-family:inherit; font-size:12px; font-weight:600; padding:7px 11px; border-radius:8px; cursor:pointer;
     transition: background .15s, color .15s;
   }
-  .btn-icono:hover{ background: var(--card-hover); color: var(--text); }
-  .btn-icono.peligro{ color: var(--red); border-color: color-mix(in srgb, var(--red) 30%, transparent); }
-  .btn-icono.peligro:hover{ background: color-mix(in srgb, var(--red) 12%, transparent); }
+  .btn-icono:hover{ background: var(--surface-hover); color: var(--text); }
+  .btn-icono.peligro{ color: var(--negative); border-color: color-mix(in srgb, var(--negative) 30%, transparent); }
+  .btn-icono.peligro:hover{ background: color-mix(in srgb, var(--negative) 12%, transparent); }
 
   .empty-state{
     padding: 22px; border-radius: 12px; text-align:center; font-size:13.5px;
-    color: var(--text-dim); background: var(--bg-soft); border:1px dashed var(--card-border);
+    color: var(--text-muted); background: var(--surface-2); border:1px dashed var(--border);
   }
 
   .tarjeta-wrap{ transition: transform .15s ease; }
   .tarjeta-wrap:hover .tarjeta-card-mgmt{ box-shadow: 0 20px 36px -16px var(--tarjeta-sombra, rgba(0,0,0,0.55)), 0 1px 0 rgba(255,255,255,0.08) inset; }
   .tarjeta-card-mgmt{ transition: box-shadow .18s ease; }
+
+  .spinner { display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--brand); border-radius:50%; animation:spin .7s linear infinite; vertical-align:middle; }
+  @keyframes spin { to { transform:rotate(360deg); } }
 </style>
 {% endblock %}
 
@@ -140,22 +143,23 @@
 
   <div class="page-header" style="display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:12px;">
     <div>
-      <h1>💳 Mis tarjetas de crédito</h1>
-      <p>Registrá tus tarjetas para ver cupo disponible y % de uso por tarjeta en el Dashboard. Archivar una tarjeta no borra su historial de movimientos.</p>
+      <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="22" height="22" aria-hidden="true" style="vertical-align:middle; margin-right:8px;"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>Mis tarjetas de crédito</h1>
+      <p>Registra tus tarjetas para ver cupo disponible y % de uso por tarjeta en el Dashboard. Archivar una tarjeta no borra su historial de movimientos.</p>
     </div>
     <button type="button" class="btn-primary" id="btnNuevaTarjeta" style="margin-top:0; white-space:nowrap;">+ Nueva tarjeta</button>
   </div>
 
   {% if usuario_rol == 'admin' %}
   <div class="aviso-cuenta">
-    ⚠️ Estás gestionando las tarjetas de <b>{{ usuario_viendo_nombre }}</b>.
-    Si no es la cuenta que querés, cambiala primero en "Viendo perfil de" (menú de la izquierda).
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true" style="flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    Estás gestionando las tarjetas de <b>{{ usuario_viendo_nombre }}</b>.
+    Si no es la cuenta que quieres, cámbiala primero en "Viendo perfil de" (menú de la izquierda).
   </div>
   {% endif %}
 
   <div id="resultadoGlobal" class="result-box" style="display:none;"></div>
 
-  <div id="cargandoTarjetas" class="empty-state">⏳ Cargando tus tarjetas...</div>
+  <div id="cargandoTarjetas" class="empty-state"><span class="spinner" style="width:14px;height:14px;"></span> Cargando tus tarjetas...</div>
 
   <div id="seccionActivas" hidden>
     <div class="section-title-simple">Activas</div>
@@ -179,7 +183,7 @@
       <label class="field-label">Nombre / etiqueta</label>
       <input type="text" id="campoNombre" class="field-input" placeholder="Bancolombia Visa Gold" required>
 
-      <label class="field-label">Entidad <span style="color:var(--text-faint); font-weight:400;">(opcional)</span></label>
+      <label class="field-label">Entidad <span style="color:var(--text-subtle); font-weight:400;">(opcional)</span></label>
       <input type="text" id="campoEntidad" class="field-input" list="listaEntidadesTarjeta" placeholder="Bancolombia, Nequi...">
       <datalist id="listaEntidadesTarjeta">
         {% for e in entidades %}<option value="{{ e }}">{% endfor %}
@@ -200,11 +204,11 @@
           <input type="text" inputmode="numeric" id="campoCupo" class="field-input" placeholder="5.000.000" required>
         </div>
         <div>
-          <label class="field-label">Últimos 4 dígitos <span style="color:var(--text-faint); font-weight:400;">(opcional)</span></label>
+          <label class="field-label">Últimos 4 dígitos <span style="color:var(--text-subtle); font-weight:400;">(opcional)</span></label>
           <input type="text" id="campoUltimos4" class="field-input" inputmode="numeric" maxlength="4" pattern="\d{4}" placeholder="2011">
         </div>
       </div>
-      <p style="font-size:11.5px; color:var(--text-faint); margin:6px 0 0;">
+      <p style="font-size:11.5px; color:var(--text-subtle); margin:6px 0 0;">
         Los últimos 4 dígitos solo sirven para asociar automáticamente movimientos nuevos (correo/extractos) que los traigan. Si dos tarjetas tuyas comparten el mismo último-4, nunca se asigna automático.
       </p>
 
@@ -355,9 +359,9 @@ function renderCard(t) {
       <div class="tarjeta-card-cupo"><span>Cupo total</span><b>${fmtCOP(t.cupo_total)}</b></div>
     </div>
     <div class="tarjeta-card-actions">
-      <button type="button" class="btn-icono" data-accion="editar" data-id="${t.id}">✏️ Editar</button>
-      ${t.activa ? `<button type="button" class="btn-icono" data-accion="archivar" data-id="${t.id}">🗄️ Archivar</button>` : ''}
-      <button type="button" class="btn-icono peligro" data-accion="borrar" data-id="${t.id}">🗑️ Borrar</button>
+      <button type="button" class="btn-icono" data-accion="editar" data-id="${t.id}">Editar</button>
+      ${t.activa ? `<button type="button" class="btn-icono" data-accion="archivar" data-id="${t.id}">Archivar</button>` : ''}
+      <button type="button" class="btn-icono peligro" data-accion="borrar" data-id="${t.id}">Borrar</button>
     </div>
   </div>`;
 }
@@ -377,7 +381,7 @@ async function cargarTarjetas() {
     if (!json.ok) throw new Error(json.error || 'Error desconocido');
     tarjetas = json.tarjetas;
   } catch (err) {
-    if (cargando) { cargando.textContent = '⚠️ No se pudieron cargar tus tarjetas. Recargá la página.'; }
+    if (cargando) { cargando.textContent = '⚠️ No se pudieron cargar tus tarjetas. Recarga la página.'; }
     console.error('Error cargando /api/tarjetas:', err);
     return;
   }
@@ -392,7 +396,7 @@ async function cargarTarjetas() {
     const div = document.createElement('div');
     div.id = 'estadoVacioTarjetas';
     div.className = 'empty-state';
-    div.textContent = '💳 Todavía no registraste ninguna tarjeta. Creá la primera con "+ Nueva tarjeta" para ver cupo disponible por tarjeta en el Dashboard.';
+    div.textContent = 'Todavía no registraste ninguna tarjeta. Crea la primera con "+ Nueva tarjeta" para ver cupo disponible por tarjeta en el Dashboard.';
     seccionActivas.parentNode.insertBefore(div, seccionActivas);
     return;
   }
@@ -403,7 +407,7 @@ async function cargarTarjetas() {
   seccionActivas.hidden = activas.length === 0;
   gridActivas.innerHTML = activas.length
     ? activas.map(renderCard).join('')
-    : '<div class="empty-state" style="grid-column:1/-1;">No tenés tarjetas activas.</div>';
+    : '<div class="empty-state" style="grid-column:1/-1;">No tienes tarjetas activas.</div>';
 
   seccionArchivadas.hidden = archivadas.length === 0;
   gridArchivadas.innerHTML = archivadas.map(renderCard).join('');
