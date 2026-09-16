@@ -357,6 +357,98 @@ def _dict_row_factory(cursor, row):
     return {col[0]: row[i] for i, col in enumerate(cursor.description)}
 
 
+class _LibSQLDictCursor:
+    """Cursor wrapper para libsql_experimental: aplica _dict_row_factory en
+    fetchone/fetchall. libsql usa extensiones C y no soporta row_factory como
+    sqlite3, así que aplicamos el factory manualmente en cada fetch."""
+
+    def __init__(self, raw):
+        self._raw = raw
+
+    def execute(self, sql, params=()):
+        self._raw.execute(sql, params)
+        return self
+
+    def executemany(self, sql, params_seq):
+        self._raw.executemany(sql, params_seq)
+        return self
+
+    def fetchone(self):
+        row = self._raw.fetchone()
+        return None if row is None else _dict_row_factory(self._raw, row)
+
+    def fetchall(self):
+        return [_dict_row_factory(self._raw, r) for r in self._raw.fetchall()]
+
+    def __iter__(self):
+        rows = self._raw.fetchall()
+        desc = self._raw.description or []
+        for row in rows:
+            yield {col[0]: row[i] for i, col in enumerate(desc)}
+
+    @property
+    def description(self):
+        return self._raw.description
+
+    @property
+    def lastrowid(self):
+        return self._raw.lastrowid
+
+    @property
+    def rowcount(self):
+        return self._raw.rowcount
+
+
+class _LibSQLDictConn:
+    """Wrapper sobre una conexión libsql_experimental que emula row_factory=dict.
+    libsql devuelve un objeto C que no acepta atributos dinámicos, así que
+    este wrapper intercepta execute/executemany y devuelve _LibSQLDictCursor."""
+
+    def __init__(self, raw):
+        self._raw = raw
+
+    def execute(self, sql, params=()):
+        return _LibSQLDictCursor(self._raw.cursor()).execute(sql, params)
+
+    def executemany(self, sql, params_seq):
+        cur = _LibSQLDictCursor(self._raw.cursor())
+        cur.executemany(sql, params_seq)
+        return cur
+
+    def cursor(self):
+        return _LibSQLDictCursor(self._raw.cursor())
+
+    def executescript(self, sql):
+        # libsql no tiene executescript; lo emulamos ejecutando cada sentencia.
+        # Primero eliminamos comentarios de línea (-- ...) para que los `;`
+        # dentro de ellos no rompan el split (ej: "por ahora; futuro:").
+        import re
+        sql_clean = re.sub(r'--[^\n]*', '', sql)
+        for stmt in sql_clean.split(";"):
+            s = stmt.strip()
+            if s:
+                self._raw.execute(s)
+        self._raw.commit()
+
+    def rollback(self):
+        try:
+            self._raw.execute("ROLLBACK")
+        except Exception:
+            pass
+
+    def commit(self):
+        self._raw.commit()
+
+    def close(self):
+        self._raw.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+
 def conectar():
     """Conecta a Turso (remoto) si TURSO_DATABASE_URL y TURSO_AUTH_TOKEN están
     seteados, o al archivo SQLite local como fallback (dev/tests sin vars).
@@ -367,15 +459,15 @@ def conectar():
 
     if turso_url and turso_token:
         import libsql_experimental as libsql  # lazy: solo cuando hay credenciales
-        conn = libsql.connect(turso_url, auth_token=turso_token)
-    else:
-        conn = sqlite3.connect(DB_PATH)
-        # journal_mode = DELETE (no WAL): `data/` está montado como bind mount
-        # de Docker Desktop en Windows y WAL requiere mmap entre procesos —
-        # causó "disk I/O error" real el 2026-09-10. Solo aplica a SQLite local.
-        conn.execute("PRAGMA foreign_keys = ON")
-        conn.execute("PRAGMA journal_mode = DELETE")
+        raw = libsql.connect(turso_url, auth_token=turso_token)
+        return _LibSQLDictConn(raw)  # wrapper que aplica dict factory
 
+    conn = sqlite3.connect(DB_PATH)
+    # journal_mode = DELETE (no WAL): `data/` está montado como bind mount
+    # de Docker Desktop en Windows y WAL requiere mmap entre procesos —
+    # causó "disk I/O error" real el 2026-09-10. Solo aplica a SQLite local.
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = DELETE")
     conn.row_factory = _dict_row_factory
     return conn
 

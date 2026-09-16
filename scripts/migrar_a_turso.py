@@ -62,16 +62,17 @@ def main() -> None:
     db.crear_esquema(remote)
 
     # --- tablas a migrar (en orden para respetar FK) ---
+    # Orden respeta FKs: tablas padre antes que hijas
     TABLAS = [
         "usuarios",
+        "tarjetas_credito",       # referenciada por movimientos.tarjeta_id
+        "metas_ahorro",           # referenciada por movimientos.meta_ahorro_id
         "movimientos",
         "historial_actualizaciones",
         "correo_config",
         "vistas_ocultas",
-        "tarjetas_credito",
         "presupuesto",
         "presupuesto_categorias",
-        "metas_ahorro",
     ]
 
     tablas_existentes = {
