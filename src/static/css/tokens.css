@@ -50,39 +50,20 @@
   --radius-full: 999px;
 
   /* === Sombras === */
-  --shadow-1: 0 1px 2px rgba(14,19,33,.06);
-  --shadow-2: 0 8px 24px -12px rgba(14,19,33,.18);
+  --shadow-1:        0 1px 2px rgba(14,19,33,.06);
+  --shadow-2:        0 8px 24px -12px rgba(14,19,33,.18);
+  --shadow-dropdown: 0 12px 32px -12px rgba(14,19,33,.22);
+  --shadow-modal:    0 24px 60px -20px rgba(14,19,33,.38);
+
+  /* === Layout === */
+  --sidebar-w:           226px;
+  --sidebar-w-collapsed: 68px;
 
   /* === Movimiento === */
   --dur-fast: 120ms;
   --dur-base: 200ms;
   --ease:     cubic-bezier(.2,.8,.2,1);
 
-  /* === Compatibilidad — mantener hasta Fase 5 === */
-  /* Nombres viejos que aún usa el CSS inline de base.html/dashboard */
-  --bg-soft:           var(--surface-2);
-  --card-solid:        var(--surface);
-  --card-solid-2:      var(--surface-2);
-  --card-border:       var(--border);
-  --card-hover:        var(--surface-hover);
-  --surface-elevated:  var(--surface);
-  --text-dim:          var(--text-muted);
-  --text-faint:        var(--text-subtle);
-  --accent:            var(--brand);
-  --accent-2:          var(--brand);
-  --green:             var(--positive);
-  --red:               var(--negative);
-  --gold:              var(--warning);
-  --balde-necesidades: var(--cat-necesidades);
-  --balde-gustos:      var(--cat-gustos);
-  --balde-ahorro:      var(--cat-ahorro);
-  --sidebar-w:         226px;
-  --sidebar-w-collapsed: 68px;
-  /* Sombras viejas */
-  --shadow-card:     var(--shadow-1);
-  --shadow-hover:    var(--shadow-2);
-  --shadow-dropdown: 0 12px 32px -12px rgba(14,19,33,.22);
-  --shadow-modal:    0 24px 60px -20px rgba(14,19,33,.38);
 }
 
 @media (prefers-color-scheme: dark){
@@ -141,8 +122,6 @@
   --cat-ahorro:      #3F6212;
   --shadow-1: 0 1px 2px rgba(14,19,33,.06);
   --shadow-2: 0 8px 24px -12px rgba(14,19,33,.18);
-  --shadow-card:     0 1px 2px rgba(30,41,59,0.05), 0 1px 3px rgba(30,41,59,0.06);
-  --shadow-hover:    0 10px 24px -12px rgba(30,41,59,.22);
   --shadow-dropdown: 0 12px 32px -12px rgba(30,41,59,.22);
   --shadow-modal:    0 24px 60px -20px rgba(30,41,59,.38);
 }
