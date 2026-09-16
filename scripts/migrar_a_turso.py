@@ -97,8 +97,12 @@ def main() -> None:
         placeholders = ", ".join(["?"] * len(cols))
         sql          = f"INSERT OR IGNORE INTO {tabla} ({col_names}) VALUES ({placeholders})"
 
+        # Turso no respeta OR IGNORE en violaciones de FK; deshabilitamos
+        # temporalmente para este INSERT (idéntico a sqlite3 con fk=OFF).
+        remote._raw.execute("PRAGMA foreign_keys = OFF")
         remote.executemany(sql, [tuple(r) for r in filas])
         remote.commit()
+        remote._raw.execute("PRAGMA foreign_keys = ON")
         print(f"  {tabla:<30} {len(filas)} filas migradas")
         total += len(filas)
 
