@@ -36,6 +36,29 @@ Dos checkouts/entornos separados que comparten solo `data/finanzas.db`:
   vez de un servicio pago, `ruff`/`bandit` en vez de SonarQube).
 - `pytest -q`/`-v` tiene que estar en verde antes de dar cualquier
   cambio de backend por terminado.
+- **La suite corre sobre dos motores.** `pytest` a secas usa SQLite (el
+  fallback de `db.conectar()` sin `DATABASE_URL`); producción usa
+  PostgreSQL. La capa de adaptación entre ambos (`_PGConn`/
+  `_adapt_sql_pg`) dejó pasar cinco bugs a `dev` con la suite en verde
+  (2026-09-16/17), así que **cualquier cambio que toque `db_finanzas.py`
+  se valida además contra PostgreSQL**:
+
+  ```
+  docker compose up -d postgres
+  TEST_DATABASE_URL=postgresql://finanzas:finanzas_local@127.0.0.1:5433/finanzas_test pytest -q
+  ```
+
+  Cada test corre en su propio esquema, creado y borrado por
+  `tests/conftest.py`. La base `finanzas_test` es OTRA base, separada de
+  la real (`finanzas`): el conftest se niega a arrancar si la URL no
+  termina en `_test`. Usar `127.0.0.1` y no `localhost` -- en Windows
+  `localhost` resuelve primero a IPv6 y cuesta ~2 s por conexión.
+  En CI esto ya corre solo (job `test-postgres` de `deploy.yml`).
+- El motor de BD queda expuesto en `127.0.0.1:5433` para inspeccionarlo
+  con psql/DBeaver/pgAdmin (`docker-compose.override.yml`, no
+  versionado, solo en la carpeta de trabajo -- nunca en el
+  `docker-compose.yml` que comparte la carpeta de despliegue, o los dos
+  postgres pelearían por el mismo puerto del host).
 - Agentes de proyecto en `.claude/agents/`: `product-owner`,
   `backend-engineer`, `frontend-dataviz`, `devops-engineer`,
   `test-engineer`, `qa-responsive`, `product-designer`,

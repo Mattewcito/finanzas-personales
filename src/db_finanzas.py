@@ -486,6 +486,15 @@ _RE_STRING_LITERAL = re.compile(r"'(?:[^']|'')*'")
 _RE_VIEW_IF_NOT_EXISTS = re.compile(
     r'CREATE\s+VIEW\s+IF\s+NOT\s+EXISTS\s+', re.IGNORECASE)
 
+# "id INTEGER PRIMARY KEY AUTOINCREMENT" es la forma de SQLite; el
+# equivalente en PostgreSQL es SERIAL. ESQUEMA_SQL_PG ya viene escrito en
+# dialecto PostgreSQL, así que esto no toca el esquema de producción --
+# cubre el DDL suelto en dialecto SQLite (las pruebas de migración arman
+# a mano una versión "vieja" de una tabla para después migrarla, y esas
+# pruebas tienen que poder correr contra los dos motores).
+_RE_AUTOINCREMENT = re.compile(
+    r'\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b', re.IGNORECASE)
+
 
 def _adapt_sql_pg(sql: str) -> str:
     """Convierte SQL SQLite-compatible a PostgreSQL-compatible en el momento
@@ -498,6 +507,7 @@ def _adapt_sql_pg(sql: str) -> str:
         sql = _RE_INSERT_OR_IGNORE.sub('INSERT INTO', sql)
         sql = sql.rstrip().rstrip(';') + '\nON CONFLICT DO NOTHING'
     sql = _RE_VIEW_IF_NOT_EXISTS.sub('CREATE OR REPLACE VIEW ', sql)
+    sql = _RE_AUTOINCREMENT.sub('SERIAL PRIMARY KEY', sql)
     return _sustituir_placeholders(sql)
 
 
@@ -723,9 +733,14 @@ def _agregar_columna_si_falta(conn, tabla: str, columna: str, tipo_sql: str) -> 
     """ALTER TABLE ... ADD COLUMN, tolerante a la carrera entre procesos.
     Compatible con SQLite y PostgreSQL."""
     if isinstance(conn, _PGConn):
+        # current_schema() en vez de 'public' hardcodeado: así la migración
+        # mira el MISMO esquema donde el search_path va a hacer el ALTER.
+        # Con un search_path distinto (los tests aíslan cada caso en su
+        # propio esquema) el literal 'public' no encontraba la tabla y la
+        # columna se intentaba agregar de nuevo sobre una que ya existía.
         rows = conn.execute(
             "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name = %s AND table_schema = 'public'",
+            "WHERE table_name = %s AND table_schema = current_schema()",
             (tabla,),
         ).fetchall()
         columnas = [r["column_name"] for r in rows]
@@ -856,7 +871,7 @@ def _reparar_timestamps_corruptos_pg(conn) -> None:
         return  # el bug es exclusivo de la capa de adaptación a PostgreSQL
     columnas = conn.execute(
         "SELECT table_name, column_name FROM information_schema.columns "
-        "WHERE table_schema = 'public' AND column_default LIKE '%(MI)s%'"
+        "WHERE table_schema = current_schema() AND column_default LIKE '%(MI)s%'"
     ).fetchall()
     for fila in columnas:
         tabla, col = fila["table_name"], fila["column_name"]

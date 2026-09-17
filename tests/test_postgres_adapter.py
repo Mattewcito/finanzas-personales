@@ -10,15 +10,15 @@ columna INTEGER, el ':' de 'HH24:MI:SS' convertido en placeholder, y el
 'RETURNING id' agregado a tablas que no tienen columna id (que dejó el
 panel de "Visibilidad de vistas" sin guardar nada, 2026-09-17).
 
-Se saltan enteras si no hay DATABASE_URL: en local la suite sigue
-corriendo sobre SQLite como siempre. Para correrlas de verdad hay que
-hacerlo donde SÍ hay PostgreSQL -- el contenedor dev:
+Se saltan enteras si no hay TEST_DATABASE_URL: en local la suite corre
+sobre SQLite como siempre. Para correrlas:
 
-    docker exec finanzas-app-dev python -m pytest tests/test_postgres_adapter.py -q
+    docker compose up -d postgres
+    TEST_DATABASE_URL=postgresql://finanzas:finanzas_local@127.0.0.1:5433/finanzas_test pytest -q
 
-AISLAMIENTO: nunca tocan las tablas reales. Cada prueba trabaja sobre dos
-tablas propias con prefijo _qa_adapter_*, creadas y borradas en la
-fixture.
+AISLAMIENTO: db.conectar() ya viene apuntado por tests/conftest.py al
+esquema propio de este test, que se borra al terminar -- las tablas
+_qa_adapter_* viven ahí y nunca tocan nada real.
 """
 import os
 
@@ -28,20 +28,17 @@ import db_finanzas as db
 
 
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("DATABASE_URL", "").strip(),
-    reason="Requiere PostgreSQL (DATABASE_URL); en local la suite corre sobre SQLite.",
+    not os.environ.get("TEST_DATABASE_URL", "").strip(),
+    reason="Requiere PostgreSQL (TEST_DATABASE_URL); en local la suite corre sobre SQLite.",
 )
 
 
 @pytest.fixture
 def pg():
-    """Conexión PostgreSQL real + dos tablas desechables: una con columna
-    `id` y otra identificada por una PK natural (sin `id`), que es el caso
-    que rompía."""
+    """Dos tablas desechables: una con columna `id` y otra identificada
+    por una PK natural (sin `id`), que es el caso que rompía."""
     conn = db.conectar()
-    assert isinstance(conn, db._PGConn), "DATABASE_URL está seteada pero conectar() no dio un _PGConn"
-    conn.execute("DROP TABLE IF EXISTS _qa_adapter_sin_id")
-    conn.execute("DROP TABLE IF EXISTS _qa_adapter_con_id")
+    assert isinstance(conn, db._PGConn), "TEST_DATABASE_URL está seteada pero conectar() no dio un _PGConn"
     conn.execute(
         "CREATE TABLE _qa_adapter_sin_id ("
         "  usuario_id INTEGER NOT NULL,"
@@ -53,9 +50,8 @@ def pg():
     conn.execute("CREATE TABLE _qa_adapter_con_id (id SERIAL PRIMARY KEY, valor TEXT)")
     conn.commit()
     yield conn
-    conn.execute("DROP TABLE IF EXISTS _qa_adapter_sin_id")
-    conn.execute("DROP TABLE IF EXISTS _qa_adapter_con_id")
-    conn.commit()
+    # No hace falta borrar las tablas: el esquema entero lo destruye
+    # tests/conftest.py al terminar el test.
     conn.close()
 
 

@@ -1,15 +1,16 @@
 name: CI/CD
 
-# Se dispara en cada push/PR a master. El job "test" corre siempre (en la
-# nube de GitHub, gratis, no necesita Docker). El job "deploy" SOLO corre
-# si "test" pasó Y el evento fue un push directo a master (no en PRs) --
-# corre en el runner auto-hospedado de esta PC, porque ahí vive el
-# contenedor.
+# Los jobs de test corren en cada push/PR a master Y a dev (en la nube de
+# GitHub, gratis, sin Docker) -- dev es donde se trabaja a diario, así que
+# es donde más sirve enterarse de que algo se rompió. El job "deploy" SOLO
+# corre si los tests pasaron Y el evento fue un push directo a master (no
+# en PRs, no desde dev) -- corre en el runner auto-hospedado de esta PC,
+# porque ahí vive el contenedor.
 on:
   push:
-    branches: [master]
+    branches: [master, dev]
   pull_request:
-    branches: [master]
+    branches: [master, dev]
 
 jobs:
   test:
@@ -24,8 +25,44 @@ jobs:
       - name: Correr pruebas unitarias y de integración
         run: pytest -v
 
+  # La suite de arriba corre sobre SQLite (el fallback de db.conectar()
+  # cuando no hay DATABASE_URL). Producción usa PostgreSQL, y la capa de
+  # adaptación entre ambos (_PGConn/_adapt_sql_pg) no tenía cobertura:
+  # cinco bugs seguidos llegaron a dev con la suite en verde -- _PGConn sin
+  # cursor(), bool de Python contra columna INTEGER, el ':' de 'HH24:MI:SS'
+  # roto, timestamps corruptos, y el 'RETURNING id' en tablas sin columna
+  # id (que dejó "Visibilidad de vistas" sin guardar nada). Este job corre
+  # exactamente los mismos tests contra el motor real.
+  test-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: finanzas_test
+          POSTGRES_USER: finanzas
+          POSTGRES_PASSWORD: finanzas_local
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U finanzas -d finanzas_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instalar dependencias
+        run: pip install -r requirements-dev.txt
+      - name: Correr la suite contra PostgreSQL
+        env:
+          TEST_DATABASE_URL: postgresql://finanzas:finanzas_local@localhost:5432/finanzas_test
+        run: pytest -v
+
   deploy:
-    needs: test
+    needs: [test, test-postgres]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: self-hosted
 

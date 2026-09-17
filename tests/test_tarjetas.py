@@ -367,22 +367,22 @@ def _crear_tabla_movimientos_vieja(conn):
     conn.commit()
 
 
-def test_migrar_columna_tarjeta_id_agrega_tabla_y_columna_a_bd_vieja(conn_sin_esquema):
+def test_migrar_columna_tarjeta_id_agrega_tabla_y_columna_a_bd_vieja(conn_sin_esquema, columnas_de, tablas_de):
     conn = conn_sin_esquema
     _crear_tabla_movimientos_vieja(conn)
-    columnas_antes = [r["name"] for r in conn.execute("PRAGMA table_info(movimientos)")]
+    columnas_antes = columnas_de(conn, "movimientos")
     assert "tarjeta_id" not in columnas_antes
 
     db.crear_esquema(conn)  # crea tarjetas_credito Y agrega la columna, en ese orden
 
-    columnas_despues = [r["name"] for r in conn.execute("PRAGMA table_info(movimientos)")]
+    columnas_despues = columnas_de(conn, "movimientos")
     assert "tarjeta_id" in columnas_despues
-    tablas = [r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+    tablas = tablas_de(conn)
     assert "tarjetas_credito" in tablas
 
     # Idempotencia: correrlo de nuevo no debe romper nada ni duplicar la columna.
     db.crear_esquema(conn)
-    columnas_final = [r["name"] for r in conn.execute("PRAGMA table_info(movimientos)")]
+    columnas_final = columnas_de(conn, "movimientos")
     assert columnas_final.count("tarjeta_id") == 1
 
 

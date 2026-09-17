@@ -22,6 +22,8 @@ Este archivo NO hace "import app" (esa importación está reservada a
 tests/test_app_integration.py, ver su docstring), así que puede convivir
 sin problema con el resto de la suite.
 """
+import os
+
 import openpyxl
 import pytest
 
@@ -147,6 +149,10 @@ def test_main_sin_excel_ni_usuarios_ni_movimientos_no_revienta(dashboard_ctx):
     assert "OK" in log_texto
 
 
+@pytest.mark.skipif(
+    bool(os.environ.get("TEST_DATABASE_URL", "").strip()),
+    reason="Comprueba que se cree el ARCHIVO .db; en PostgreSQL no hay archivo que crear.",
+)
 def test_main_crea_el_esquema_si_la_bd_no_existia_todavia(dashboard_ctx):
     """main() debe poder correr desde cero (BD inexistente, primera
     corrida) sin que haga falta invocar crear_esquema() a mano antes --

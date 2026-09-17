@@ -18,11 +18,23 @@ patrón que tests/test_tarjetas.py). Nunca toca data/finanzas.db real.
 Este archivo NO hace "import app" (reservado a
 tests/test_app_integration.py).
 """
+import os
 import sqlite3
 
 import pytest
 
 import db_finanzas as db
+
+
+# journal_mode/WAL es un mecanismo EXCLUSIVO de SQLite: PostgreSQL no
+# tiene PRAGMA ni journal_mode, y el bug que motivó este archivo (el bind
+# mount de Docker Desktop en Windows con WAL) no puede darse ahí. Cuando
+# la suite corre contra PostgreSQL (ver tests/conftest.py) estas pruebas
+# no aplican -- se saltan en vez de fallar pidiéndole PRAGMA a psycopg2.
+pytestmark = pytest.mark.skipif(
+    bool(os.environ.get("TEST_DATABASE_URL", "").strip()),
+    reason="journal_mode/PRAGMA es exclusivo de SQLite; no aplica en PostgreSQL.",
+)
 
 
 # ----------------------------- Fixtures -----------------------------

@@ -493,7 +493,7 @@ def conn_sin_esquema(tmp_path, monkeypatch):
     c.close()
 
 
-def test_migrar_columna_referencia_bancaria_agrega_columna_a_tabla_vieja(conn_sin_esquema):
+def test_migrar_columna_referencia_bancaria_agrega_columna_a_tabla_vieja(conn_sin_esquema, columnas_de):
     conn = conn_sin_esquema
     conn.execute("""
         CREATE TABLE movimientos (
@@ -513,21 +513,21 @@ def test_migrar_columna_referencia_bancaria_agrega_columna_a_tabla_vieja(conn_si
         )
     """)
     conn.commit()
-    columnas_antes = [r["name"] for r in conn.execute("PRAGMA table_info(movimientos)")]
+    columnas_antes = columnas_de(conn, "movimientos")
     assert "referencia_bancaria" not in columnas_antes
 
     db.crear_esquema(conn)  # no debe reventar sobre la tabla vieja
 
-    columnas_despues = [r["name"] for r in conn.execute("PRAGMA table_info(movimientos)")]
+    columnas_despues = columnas_de(conn, "movimientos")
     assert "referencia_bancaria" in columnas_despues
 
     # Idempotencia: correrlo de nuevo no debe romper nada.
     db.crear_esquema(conn)
-    columnas_final = [r["name"] for r in conn.execute("PRAGMA table_info(movimientos)")]
+    columnas_final = columnas_de(conn, "movimientos")
     assert columnas_final.count("referencia_bancaria") == 1
 
 
-def test_migrar_columna_cedula_correo_config_agrega_columna_a_tabla_vieja(conn_sin_esquema):
+def test_migrar_columna_cedula_correo_config_agrega_columna_a_tabla_vieja(conn_sin_esquema, columnas_de):
     conn = conn_sin_esquema
     conn.execute("""
         CREATE TABLE correo_config (
@@ -547,12 +547,12 @@ def test_migrar_columna_cedula_correo_config_agrega_columna_a_tabla_vieja(conn_s
         )
     """)
     conn.commit()
-    columnas_antes = [r["name"] for r in conn.execute("PRAGMA table_info(correo_config)")]
+    columnas_antes = columnas_de(conn, "correo_config")
     assert "cedula" not in columnas_antes
 
     db.crear_esquema(conn)  # no debe reventar sobre la tabla vieja
 
-    columnas_despues = [r["name"] for r in conn.execute("PRAGMA table_info(correo_config)")]
+    columnas_despues = columnas_de(conn, "correo_config")
     assert "cedula" in columnas_despues
 
     # Ya con la columna, guardar_correo_config debe funcionar normal.
