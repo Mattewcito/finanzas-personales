@@ -138,17 +138,48 @@ def api_dashboard_data():
 @dashboard_bp.route("/registrar")
 @login_required
 def registrar():
+    """Enlace profundo al diálogo de "Registrar movimiento".
+
+    Desde 2026-09-17 el formulario NO es una página propia: vive en un
+    modal que abre el CTA del menú (ver templates/base.html, bloque
+    "Modal Registrar movimiento"), así que registrar un gasto ya no te
+    saca de donde estabas -- era un formulario chico ocupando una vista
+    entera. Esta ruta sigue existiendo porque la URL estaba en el menú y
+    puede estar en un favorito: entra a la app con el diálogo ya abierto.
+    No carga categorías/entidades/tarjetas -- eso lo pide el propio modal
+    a /api/registrar-opciones recién cuando se abre.
+    """
+    return render_template("registrar.html", activo="registrar")
+
+
+@dashboard_bp.route("/api/registrar-opciones")
+@login_required
+def api_registrar_opciones():
+    """Lo que el modal de "Registrar movimiento" necesita para llenar sus
+    autocompletados: categorías y entidades ya usadas por la cuenta que se
+    está viendo, y sus tarjetas ACTIVAS (las archivadas no se ofrecen como
+    destino de movimientos nuevos, ver
+    requisitos/2026-09-07_tarjetas-credito-cupo.md).
+
+    Es un endpoint aparte, y no parte del contexto global de las
+    plantillas, justamente para no pagar estas tres consultas en CADA
+    página de la app: el modal existe en todas, pero lo abre una minoría
+    de las visitas. Se pide una sola vez, al primer abrir.
+    """
     with db.conexion() as conn:
         db.crear_esquema(conn)
         categorias = db.obtener_categorias(conn, usuario_id=viendo_id())
         entidades = db.obtener_entidades(conn, usuario_id=viendo_id())
-        # Tarjetas ACTIVAS de viendo_id() -- para el selector opcional de
-        # "a qué tarjeta pertenece este movimiento" (ver
-        # requisitos/2026-09-07_tarjetas-credito-cupo.md). Las archivadas
-        # no se ofrecen como destino de movimientos nuevos.
         tarjetas = db.obtener_tarjetas(conn, usuario_id=viendo_id(), solo_activas=True)
-    return render_template("registrar.html", activo="registrar", categorias=categorias,
-                            entidades=entidades, tarjetas=tarjetas)
+    return jsonify(
+        ok=True,
+        categorias=categorias,
+        entidades=entidades,
+        # Solo lo que el <select> necesita -- no se filtra la fila entera
+        # de la tarjeta a una vista que solo muestra su nombre.
+        tarjetas=[{"id": t["id"], "nombre": t["nombre"], "ultimos4": t.get("ultimos4")}
+                  for t in tarjetas],
+    )
 
 
 @dashboard_bp.route("/api/registrar-movimiento", methods=["POST"])

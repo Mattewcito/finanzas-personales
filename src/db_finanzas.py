@@ -1553,9 +1553,9 @@ def _resolver_tarjeta_por_ultimos4(conn: sqlite3.Connection, usuario_id: int, ul
 # cta *5360", ver tools/reconciliar_extractos.py::_formatear_movimiento):
 # sin ese contexto, un "*XXXX" suelto es ambiguo y NO debe capturarse.
 # "terminada/termina en XXXX" es el otro patrón frecuente cuando alguien
-# lo escribe a mano en la descripción de un registro manual (ver
-# templates/registrar.html, que no tiene un campo dedicado de
-# últimos4).
+# lo escribe a mano en la descripción de un registro manual (el modal
+# "Registrar movimiento" de templates/base.html no tiene un campo
+# dedicado de últimos4: solo el selector de tarjeta, que es opcional).
 _RE_ULTIMOS4_EN_TEXTO = re.compile(
     r"(?:tarjeta|t\.?\s*cred(?:ito)?|card)\D{0,20}?\*\s*(\d{4})\b"
     r"|termin(?:ada|a)\s+en\s+(\d{4})\b",
@@ -2169,8 +2169,9 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
         # monto el mismo día -- bug real reportado 2026-09-10 (usuario
         # registró 16.500000 y después 16.5: la segunda "desaparecía", el
         # saldo de la tarjeta quedaba corto). El formulario ya protege
-        # contra doble-click (deshabilita el botón al enviar, ver
-        # templates/registrar.html), así que no hace falta este mecanismo
+        # contra doble-click (deshabilita el botón al enviar, ver el modal
+        # "Registrar movimiento" en templates/base.html), así que no hace
+        # falta este mecanismo
         # para ese caso -- una fila manual existente solo puede seguir
         # absorbiendo coincidencias que lleguen de una fuente automática
         # (correo/PDF/Excel).

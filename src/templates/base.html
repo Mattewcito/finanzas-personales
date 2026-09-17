@@ -50,7 +50,7 @@
   .app-shell{ display:flex; min-height:100vh; }
 
   .app-sidebar{
-    width: 226px;
+    width: var(--sidebar-w);
     flex-shrink:0;
     background: var(--surface-2);
     border-right: 1px solid var(--border);
@@ -59,7 +59,7 @@
     transition: width .18s ease, background-color .18s ease, border-color .18s ease;
     overflow: hidden;
   }
-  .app-sidebar.collapsed{ width: 68px; }
+  .app-sidebar.collapsed{ width: var(--sidebar-w-collapsed); }
 
   .sidebar-brand{
     display:flex; align-items:center; gap:10px;
@@ -78,18 +78,29 @@
   .sidebar-brand span{ font-weight:700; font-size:14.5px; white-space:nowrap; }
   .app-sidebar.collapsed .sidebar-brand span{ display:none; }
 
+  /* `position: fixed` A PROPÓSITO (2026-09-17). Como botón `absolute`
+     dentro de .sidebar-brand quedaba cortado por la mitad: .app-sidebar
+     tiene overflow:hidden y este botón asoma 12px por fuera del borde,
+     así que colapsado no se veía con qué volver a abrir el menú. Un
+     elemento fijo NO lo recorta el overflow de un ancestro (su bloque
+     contenedor es el viewport), y así puede quedar montado sobre el
+     borde como pide el patrón. Sigue siendo hijo de .sidebar-brand, que
+     en celular es display:none -- eso lo esconde también acá, que es lo
+     que queremos: ahí el menú es una barra inferior y no se colapsa. */
   .sidebar-toggle{
-    position:absolute; right:-12px; top:22px;
+    position: fixed; top: 22px; right: auto;
+    left: calc(var(--sidebar-w) - 12px);
     width:24px; height:24px; border-radius:50%;
     background: var(--surface); border:1px solid var(--border);
-    color: var(--text-muted); cursor:pointer; z-index:5;
+    color: var(--text-muted); cursor:pointer; z-index:120;
     display:flex; align-items:center; justify-content:center;
-    box-shadow: var(--shadow-1);
-    transition: background-color .15s ease, color .15s ease, transform .15s ease;
+    box-shadow: var(--shadow-2);
+    transition: left .18s ease, background-color .15s ease, color .15s ease, border-color .15s ease;
   }
+  .app-sidebar.collapsed .sidebar-toggle{ left: calc(var(--sidebar-w-collapsed) - 12px); }
   .sidebar-toggle svg{ width:13px; height:13px; transition: transform .18s ease; }
   .app-sidebar.collapsed .sidebar-toggle svg{ transform: rotate(180deg); }
-  .sidebar-toggle:hover{ color: var(--text); background:var(--surface-hover); }
+  .sidebar-toggle:hover{ color: var(--brand); border-color: var(--brand); }
 
   .sidebar-nav{ flex:1; padding: 14px 10px; overflow-y:auto; overflow-x:hidden; }
   .sidebar-nav a{
@@ -114,10 +125,18 @@
     font-size:11.5px; color:var(--text-subtle); white-space:nowrap; overflow:hidden;
     flex-shrink:0;
   }
-  .app-sidebar.collapsed .sidebar-footer{ text-align:center; padding:13px 4px; }
+  /* Colapsado, el pie NO se vacía (2026-09-17): antes se escondía todo
+     lo marcado .full-text y quedaba un "●" suelto -- no había forma de
+     ver de quién era la sesión ni de cerrarla sin volver a expandir el
+     menú. Ahora se esconde solo lo que no entra en 68px (el selector de
+     perfil y las etiquetas de texto) y quedan el avatar y el botón de
+     cerrar sesión como íconos centrados, cada uno con su tooltip. */
+  .app-sidebar.collapsed .sidebar-footer{ padding:12px 8px; }
   .app-sidebar.collapsed .sidebar-footer .full-text{ display:none; }
-  .app-sidebar.collapsed .sidebar-footer .dot-text{ display:inline; }
-  .sidebar-footer .dot-text{ display:none; }
+  .app-sidebar.collapsed .sidebar-user{ justify-content:center; gap:0; }
+  .app-sidebar.collapsed .sidebar-user-info{ display:none; }
+  .app-sidebar.collapsed .sidebar-logout{ justify-content:center; padding:8px 0; }
+  .app-sidebar.collapsed .sidebar-logout span{ display:none; }
 
   /* Interruptor de tema -- vive en el pie del menú, junto a los datos
      de la cuenta. Sol/luna en un solo <svg> (dos grupos, se muestra
@@ -372,7 +391,14 @@
     }
     .sidebar-footer.abierto{ transform: translateY(0); opacity: 1; pointer-events: auto; }
     .sidebar-footer .full-text{ display: block !important; }
-    .sidebar-footer .dot-text{ display: none !important; }
+    /* El menú puede venir con .collapsed guardado desde escritorio
+       (localStorage). En celular el pie es un desplegable de ancho
+       completo, así que hay que deshacer ahí las reglas de colapsado. */
+    .app-sidebar.collapsed .sidebar-footer{ padding: 14px 16px; }
+    .app-sidebar.collapsed .sidebar-user{ justify-content: flex-start; gap: 8px; }
+    .app-sidebar.collapsed .sidebar-user-info{ display: block !important; }
+    .app-sidebar.collapsed .sidebar-logout{ justify-content: flex-start; padding: 7px 10px; }
+    .app-sidebar.collapsed .sidebar-logout span{ display: inline !important; }
 
     .app-main{ padding-bottom: calc(var(--mobile-nav-h, 62px) + 4px); }
     .app-main iframe{ height: calc(100vh - var(--mobile-nav-h, 62px) - 4px) !important; }
@@ -460,6 +486,145 @@
   .toast-ok .toast-icon{ color: var(--positive); }
   .toast-error .toast-icon{ color: var(--negative); }
   .toast-info .toast-icon{ color: var(--brand); }
+
+  /* ================= Tooltips del menú colapsado (2026-09-17) =========
+     UN solo nodo, hijo de <body> y position:fixed, en vez de un ::after
+     por ítem: los ítems viven dentro de contenedores que recortan
+     (.sidebar-nav necesita overflow-y:auto para hacer scroll, y eso
+     obliga a recortar también en X; .sidebar-footer es overflow:hidden),
+     así que un pseudo-elemento saldría cortado justo del lado en que
+     tiene que aparecer. Colores de marca, como el resto de los acentos.
+     Contraste: --on-brand sobre --brand da 7.1:1 en los dos temas (AAA).
+  ==================================================================== */
+  .sidebar-tooltip{
+    position: fixed; z-index: 1200; pointer-events: none;
+    max-width: 240px; padding: 7px 11px; border-radius: 8px;
+    background: var(--brand); color: var(--on-brand);
+    font-family: inherit; font-size: 12.5px; font-weight: 600; line-height: 1.35;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    box-shadow: var(--shadow-dropdown);
+    opacity: 0; transform: translateX(-6px);
+    transition: opacity .12s var(--ease), transform .12s var(--ease);
+  }
+  .sidebar-tooltip::before{
+    content: ""; position: absolute; left: -3px; top: 50%;
+    width: 8px; height: 8px; margin-top: -4px; border-radius: 2px;
+    background: var(--brand); transform: rotate(45deg);
+  }
+  .sidebar-tooltip.visible{ opacity: 1; transform: translateX(0); }
+  /* En celular el menú es una barra inferior CON etiquetas visibles: el
+     tooltip no agrega nada y no hay hover que lo dispare. */
+  @media (max-width: 720px){ .sidebar-tooltip{ display: none; } }
+
+  /* ============ Modal "Registrar movimiento" (2026-09-17) =============
+     <dialog> nativo, y no el patrón overlay+div de .alerta-app-overlay
+     de arriba: este modal lleva un formulario entero, así que la trampa
+     de foco, el cierre con Escape y el quedar por encima del <iframe>
+     del dashboard dejan de ser detalles -- showModal() los resuelve bien
+     (top layer del navegador) en vez de reimplementados a mano.
+  ==================================================================== */
+  .modal-reg{
+    width: min(560px, calc(100vw - 32px));
+    max-height: min(88vh, 780px);
+    padding: 0; border: 1px solid var(--border); border-radius: 18px;
+    background: var(--surface); color: var(--text);
+    box-shadow: var(--shadow-modal);
+    overflow: hidden;
+  }
+  /* display:flex SOLO con [open] -- el user-agent pone display:none en
+     dialog:not([open]), y pisarlo sin esa condición dejaría el modal
+     visible siempre. */
+  .modal-reg[open]{ display: flex; flex-direction: column; animation: modalRegIn .2s var(--ease); }
+  .modal-reg::backdrop{
+    background: rgba(5,7,12,.55);
+    backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  }
+  .modal-reg[open]::backdrop{ animation: modalRegFondo .2s ease; }
+  .modal-reg.cerrando{ animation: modalRegOut .14s ease forwards; }
+  .modal-reg.cerrando::backdrop{ animation: modalRegFondoOut .14s ease forwards; }
+  @keyframes modalRegIn{ from{ opacity:0; transform: translateY(12px) scale(.97); } to{ opacity:1; transform:none; } }
+  @keyframes modalRegOut{ from{ opacity:1; transform:none; } to{ opacity:0; transform: translateY(8px) scale(.98); } }
+  @keyframes modalRegFondo{ from{ opacity:0; } to{ opacity:1; } }
+  @keyframes modalRegFondoOut{ from{ opacity:1; } to{ opacity:0; } }
+
+  .modal-reg-form{ display:flex; flex-direction:column; min-height:0; flex:1; width:100%; }
+  .modal-reg-head{
+    display:flex; align-items:flex-start; gap:12px; flex-shrink:0;
+    padding: 20px 22px 16px; border-bottom: 1px solid var(--border);
+  }
+  .modal-reg-head-icono{
+    width:38px; height:38px; border-radius:11px; flex-shrink:0;
+    background: var(--brand-soft); color: var(--brand);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .modal-reg-head-icono svg{ width:20px; height:20px; }
+  .modal-reg-head-textos{ flex:1; min-width:0; }
+  .modal-reg-head h2{
+    margin:0; font-family: var(--font-display);
+    font-size: var(--fs-h2); line-height: var(--lh-h2); font-weight:700; color: var(--text);
+  }
+  .modal-reg-head p{ margin:2px 0 0; font-size:12.5px; color: var(--text-muted); line-height:1.45; }
+  .modal-reg-cerrar{
+    width:30px; height:30px; border-radius:50%; flex-shrink:0;
+    border:none; background: var(--surface-2); color: var(--text-muted); cursor:pointer;
+    display:flex; align-items:center; justify-content:center; font-family:inherit;
+    transition: background-color .15s ease, color .15s ease;
+  }
+  .modal-reg-cerrar svg{ width:13px; height:13px; }
+  .modal-reg-cerrar:hover{ background: var(--surface-hover); color: var(--text); }
+
+  .modal-reg-cuerpo{ padding: 18px 22px 20px; overflow-y:auto; flex:1; min-height:0; }
+  .modal-reg-pie{
+    display:flex; gap:10px; justify-content:flex-end; flex-shrink:0;
+    padding: 14px 22px; border-top:1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .modal-reg-pie .btn-primary{ margin-top:0; }
+  .modal-reg-pie .alerta-app-btn-secundario{ flex:0 0 auto; max-width:none; }
+
+  .modal-reg-aviso{
+    display:flex; align-items:flex-start; gap:8px; margin: 0 0 18px;
+    padding: 10px 12px; border-radius: 10px; font-size:12.5px; line-height:1.45;
+    background: var(--warning-soft); color: var(--text);
+    border:1px solid color-mix(in srgb, var(--warning) 32%, transparent);
+  }
+  .modal-reg-aviso svg{ width:15px; height:15px; flex-shrink:0; margin-top:1px; color: var(--warning); }
+  .modal-reg .result-box{ margin-top:18px; }
+
+  /* Control segmentado Gasto/Ingreso -- vivía en registrar.html, que
+     desde 2026-09-17 ya no tiene el formulario. */
+  .seg-control{
+    display: inline-flex; border: 1.5px solid var(--border); border-radius: 10px;
+    overflow: hidden; width: 100%; box-sizing: border-box;
+  }
+  .seg-input{ position: absolute; opacity: 0; width: 0; height: 0; }
+  .seg-label{
+    flex: 1; text-align: center; padding: 9px 14px; font-size: 13.5px;
+    font-weight: 600; cursor: pointer; color: var(--text-muted);
+    background: var(--surface-2); transition: background .15s, color .15s;
+    user-select: none;
+  }
+  .seg-label:not(:last-of-type){ border-right: 1.5px solid var(--border); }
+  .seg-input:checked + .seg-label{ background: var(--brand); color: var(--on-brand); }
+  /* El foco del radio es invisible (el input está fuera de pantalla): se
+     dibuja sobre su etiqueta, que es lo que el usuario realmente ve. */
+  .seg-input:focus-visible + .seg-label{ outline: 2px solid var(--brand); outline-offset: -2px; }
+
+  @media (max-width: 560px){
+    /* Hoja inferior en celular -- el patrón que ya espera el pulgar. */
+    .modal-reg{
+      width:100%; max-width:100%; max-height: 92vh;
+      position: fixed; bottom:0; left:0; right:0; top:auto;
+      margin:0; border-radius: 20px 20px 0 0; border-bottom:none;
+    }
+    .modal-reg[open]{ animation: modalRegHojaIn .22s var(--ease); }
+    .modal-reg.cerrando{ animation: modalRegHojaOut .16s ease forwards; }
+    @keyframes modalRegHojaIn{ from{ transform: translateY(100%); } to{ transform:none; } }
+    @keyframes modalRegHojaOut{ from{ transform:none; } to{ transform: translateY(100%); } }
+  }
+
+  /* Mientras el modal está abierto, el fondo no scrollea. */
+  body.modal-abierto{ overflow: hidden; }
 </style>
 {% block head %}{% endblock %}
 </head>
@@ -474,13 +639,21 @@
         </svg>
       </div>
       <span style="font-family:var(--font-display); font-weight:700; font-size:15px;">Cuadre</span>
-      <button class="sidebar-toggle" id="sidebarToggle" title="Colapsar/expandir menú" aria-label="Colapsar menú">
+      <!-- Sin title=: el tooltip propio (colores de marca) reemplaza al nativo
+           del navegador -- tener los dos encima se lee como un bug. El texto
+           lo mantiene sincronizado el script del final (Colapsar/Expandir). -->
+      <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-label="Colapsar menú" data-tooltip-siempre>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
       </button>
     </div>
 
     <div class="sidebar-cta">
-      <a href="/registrar" class="btn-sidebar-cta {{ 'active' if activo == 'registrar' else '' }}" aria-label="Registrar movimiento">
+      <!-- Sigue siendo un <a> con href real: el click lo intercepta el script
+           del final para abrir el modal sin salir de la página, pero abrir en
+           pestaña nueva / copiar enlace siguen llevando a /registrar, que entra
+           a la app con el diálogo ya abierto. -->
+      <a href="/registrar" id="ctaRegistrar" data-tooltip="Registrar movimiento"
+         class="btn-sidebar-cta {{ 'active' if activo == 'registrar' else '' }}" aria-label="Registrar movimiento">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
         <span>Registrar movimiento</span>
       </a>
@@ -589,7 +762,7 @@
       {% endif %}
 
       <!-- Usuario + acciones -->
-      <div class="sidebar-user full-text">
+      <div class="sidebar-user" data-tooltip="{{ usuario_nombre }} · {{ modo }}">
         <div class="sidebar-user-avatar" aria-hidden="true">{{ (usuario_nombre or '?')[0]|upper }}</div>
         <div class="sidebar-user-info">
           <span class="sidebar-user-name">{{ usuario_nombre }}</span>
@@ -605,13 +778,12 @@
         </svg>
         <span class="full-text">Cambiar tema</span>
       </button>
-      <a href="/logout" class="full-text sidebar-logout" aria-label="Cerrar sesión">
+      <a href="/logout" class="sidebar-logout" data-tooltip="Cerrar sesión" aria-label="Cerrar sesión">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
         </svg>
-        Cerrar sesión
+        <span>Cerrar sesión</span>
       </a>
-      <span class="dot-text">●</span>
     </div>
   </nav>
 
@@ -640,6 +812,117 @@
   </div>
 </div>
 
+<!-- Tooltip del menú colapsado: un solo nodo reposicionado por JS (ver
+     el porqué en el CSS). aria-hidden porque cada ítem ya trae su propio
+     aria-label -- si no, el lector de pantalla diría el nombre dos veces. -->
+<div class="sidebar-tooltip" id="sidebarTooltip" aria-hidden="true"></div>
+
+<!-- ================== Modal "Registrar movimiento" ===================
+     Antes era /registrar, una vista entera para un formulario chico
+     (2026-09-17). Vive acá, en base.html, para poder abrirse desde
+     cualquier página sin sacar al usuario de donde está. Las opciones de
+     autocompletado NO se renderizan acá: las pide a /api/registrar-opciones
+     la primera vez que se abre, así ninguna página paga esas consultas
+     por un diálogo que la mayoría de las visitas no abre.
+================================================================== -->
+<dialog class="modal-reg" id="modalRegistrar" aria-labelledby="modalRegistrarTitulo">
+  <form class="modal-reg-form" id="formRegistrar" novalidate>
+    <header class="modal-reg-head">
+      <div class="modal-reg-head-icono" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+      </div>
+      <div class="modal-reg-head-textos">
+        <h2 id="modalRegistrarTitulo">Registrar movimiento</h2>
+        <p>Un gasto o ingreso puntual. Queda registrado al instante y aparece en el resumen.</p>
+      </div>
+      <button type="button" class="modal-reg-cerrar" id="modalRegistrarCerrar" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+
+    <div class="modal-reg-cuerpo">
+      {% if usuario_rol == 'admin' and viendo_id != usuario_id %}
+      <div class="modal-reg-aviso">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>Se va a registrar en la cuenta de <b>{{ usuario_viendo_nombre }}</b>. Cambiá el perfil en &laquo;Viendo perfil de&raquo; si no es el que querés.</span>
+      </div>
+      {% endif %}
+
+      <div class="field-row">
+        <div>
+          <label class="field-label" for="regFecha">Fecha</label>
+          <input type="date" name="fecha" id="regFecha" class="field-input" required>
+        </div>
+        <div>
+          <label class="field-label" id="regTipoLabel">Tipo</label>
+          <div class="seg-control" role="group" aria-labelledby="regTipoLabel">
+            <input type="radio" name="tipo" id="regTipoGasto" value="gasto" class="seg-input" checked>
+            <label for="regTipoGasto" class="seg-label">Gasto</label>
+            <input type="radio" name="tipo" id="regTipoIngreso" value="ingreso" class="seg-input">
+            <label for="regTipoIngreso" class="seg-label">Ingreso</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div>
+          <label class="field-label" for="regMonto">Monto</label>
+          <!-- type="text" + máscara de miles, NO type="number" (2026-09-10,
+               bug real reportado: cargar "16.600.000" en COP se guardaba mal
+               "por los ceros"): un <input type="number"> nativo descarta el
+               segundo punto en cuanto se tipea, así que ese valor terminaba
+               siendo "16.600" (16,6). Acá el punto es SIEMPRE separador de
+               miles (igual que en el resto de la app, ver fmtCOP) y la coma
+               es el separador decimal -- hace falta para USD con centavos.
+               El valor que se manda al backend se normaliza en el submit
+               (ver el listener de "input" del script del final), nunca el
+               texto con puntos tal cual. -->
+          <input type="text" inputmode="decimal" name="monto" id="regMonto" class="field-input" placeholder="23.000" required>
+        </div>
+        <div>
+          <label class="field-label" for="regMoneda">Moneda</label>
+          <select name="moneda" id="regMoneda" class="field-select">
+            <option value="COP">COP</option>
+            <option value="USD">USD</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="field-label" for="regDescripcion">Descripción</label>
+      <input type="text" name="descripcion" id="regDescripcion" class="field-input" placeholder="Uber, Mercado, Salario..." required>
+
+      <div class="field-row">
+        <div>
+          <label class="field-label" for="regCategoria">Categoría</label>
+          <input type="text" name="categoria" id="regCategoria" class="field-input" list="regListaCategorias" placeholder="transporte, comida...">
+          <datalist id="regListaCategorias"></datalist>
+        </div>
+        <div>
+          <label class="field-label" for="regEntidad">Entidad</label>
+          <input type="text" name="entidad" id="regEntidad" class="field-input" list="regListaEntidades" placeholder="Bancolombia, Nequi...">
+          <datalist id="regListaEntidades"></datalist>
+        </div>
+      </div>
+
+      <!-- Solo se muestra si la cuenta tiene tarjetas activas -- lo decide
+           el script cuando llegan las opciones. -->
+      <div id="regTarjetaCampo" hidden>
+        <label class="field-label" for="regTarjeta">Tarjeta de crédito <span style="color:var(--text-subtle); font-weight:400;">(opcional -- solo si este movimiento es de una tarjeta registrada)</span></label>
+        <select name="tarjeta_id" id="regTarjeta" class="field-select">
+          <option value="">Sin asignar</option>
+        </select>
+      </div>
+
+      <div id="regResultado" class="result-box" role="status" style="display:none;"></div>
+    </div>
+
+    <footer class="modal-reg-pie">
+      <button type="button" class="alerta-app-btn-secundario" id="regCancelar">Cancelar</button>
+      <button type="submit" class="btn-primary" id="regEnviar">Registrar</button>
+    </footer>
+  </form>
+</dialog>
+
 <script>
 (function(){
   const sidebar = document.getElementById('appSidebar');
@@ -647,14 +930,90 @@
   let colapsado = false;
   try { colapsado = localStorage.getItem('finanzas_sidebar_colapsado') === '1'; } catch(e) {}
 
-  const aplicar = () => { sidebar.classList.toggle('collapsed', colapsado); };
+  const aplicar = () => {
+    sidebar.classList.toggle('collapsed', colapsado);
+    // Es el único control del menú que nunca tiene etiqueta visible: su
+    // nombre accesible tiene que decir qué va a pasar si lo apretás.
+    toggle.setAttribute('aria-label', colapsado ? 'Expandir menú' : 'Colapsar menú');
+  };
   aplicar();
 
   toggle.addEventListener('click', () => {
     colapsado = !colapsado;
     aplicar();
     try { localStorage.setItem('finanzas_sidebar_colapsado', colapsado ? '1' : '0'); } catch(e) {}
+    // Los tooltips dependen de si está colapsado y de dónde quedó cada
+    // ítem: que se enteren en vez de sondear la clase.
+    document.dispatchEvent(new CustomEvent('sidebar:colapso'));
   });
+})();
+
+// ---- Tooltips del menú colapsado (2026-09-17) ----
+// Colapsado, cada ítem queda reducido a su ícono y no había forma de
+// saber qué era sin volver a expandir. Se dibuja un único nodo fijo (ver
+// el CSS para por qué no es un ::after por ítem) reposicionado al vuelo
+// junto al ítem apuntado.
+(function(){
+  const sidebar = document.getElementById('appSidebar');
+  const tip = document.getElementById('sidebarTooltip');
+  if (!sidebar || !tip) return;
+
+  const SELECTOR = '.btn-sidebar-cta, .sidebar-nav a, .sidebar-logout, .sidebar-user, .sidebar-toggle';
+  let sobre = null;
+
+  function texto(el){
+    if (el.dataset.tooltip) return el.dataset.tooltip;
+    const span = el.querySelector('span');
+    if (span && span.textContent.trim()) return span.textContent.trim();
+    return el.getAttribute('aria-label') || '';
+  }
+
+  function ocultar(){
+    sobre = null;
+    tip.classList.remove('visible');
+  }
+
+  function mostrar(el){
+    // En celular el menú es una barra inferior CON etiquetas visibles.
+    if (window.innerWidth <= 720) return;
+    // Salvo el botón de colapsar (que nunca tiene etiqueta), el tooltip
+    // solo aporta algo cuando el texto del ítem está escondido.
+    if (!el.hasAttribute('data-tooltip-siempre') && !sidebar.classList.contains('collapsed')) return;
+    const txt = texto(el);
+    if (!txt) return;
+
+    tip.textContent = txt;
+    tip.classList.add('visible');
+    sobre = el;
+
+    const caja = el.getBoundingClientRect();
+    const alto = tip.offsetHeight;
+    let top = caja.top + caja.height / 2 - alto / 2;
+    top = Math.max(8, Math.min(top, window.innerHeight - alto - 8));
+    tip.style.top = top + 'px';
+    tip.style.left = (caja.right + 12) + 'px';
+  }
+
+  sidebar.querySelectorAll(SELECTOR).forEach((el) => {
+    el.addEventListener('mouseenter', () => mostrar(el));
+    el.addEventListener('mouseleave', ocultar);
+    // Con teclado vale lo mismo: al tabular tampoco se ve la etiqueta.
+    el.addEventListener('focus', () => mostrar(el));
+    el.addEventListener('blur', ocultar);
+    el.addEventListener('click', ocultar);
+  });
+
+  // Si se colapsa/expande con un tooltip abierto, el texto y la posición
+  // dejan de corresponder: se recalcula sobre el mismo ítem una vez que
+  // terminó la transición de ancho.
+  document.addEventListener('sidebar:colapso', () => {
+    const el = sobre;
+    ocultar();
+    if (el) setTimeout(() => mostrar(el), 200);
+  });
+  window.addEventListener('resize', ocultar);
+  window.addEventListener('scroll', ocultar, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') ocultar(); });
 })();
 
 function alHacerClickEnCualquierDocumento(handler) {
@@ -937,6 +1296,209 @@ window.autoDismissAlert = function(el, delay) {
       btnOk.focus();
     });
   };
+})();
+
+// ============ Modal "Registrar movimiento" (2026-09-17) ==============
+// Antes era /registrar, una vista entera para un formulario chico. Ahora
+// se abre sobre lo que el usuario esté mirando: registrar un gasto dejó
+// de costar perder el contexto. Ver el <dialog id="modalRegistrar">.
+(function(){
+  const dlg = document.getElementById('modalRegistrar');
+  const form = document.getElementById('formRegistrar');
+  if (!dlg || !form) return;
+
+  const campoFecha = document.getElementById('regFecha');
+  const campoMonto = document.getElementById('regMonto');
+  const resultado  = document.getElementById('regResultado');
+  const btnEnviar  = document.getElementById('regEnviar');
+  const listaCat   = document.getElementById('regListaCategorias');
+  const listaEnt   = document.getElementById('regListaEntidades');
+  const campoTar   = document.getElementById('regTarjetaCampo');
+  const selTarjeta = document.getElementById('regTarjeta');
+
+  let opcionesPedidas = false;
+  let cancelarDismiss = null;
+
+  // ---- Monto con separador de miles en vivo ----
+  // El punto es SIEMPRE separador de miles y la coma el decimal, igual
+  // que en el resto de la app (ver el comentario largo junto al input).
+  campoMonto.addEventListener('input', function(){
+    const partes = campoMonto.value.split(',');
+    const entero = (partes[0] || '').replace(/[^0-9]/g, '').replace(/^0+(?=[0-9])/, '');
+    const conMiles = entero.replace(/\B(?=([0-9]{3})+(?![0-9]))/g, '.');
+    campoMonto.value = campoMonto.value.indexOf(',') !== -1
+      ? conMiles + ',' + (partes[1] || '').replace(/[^0-9]/g, '').slice(0, 2)
+      : conMiles;
+  });
+
+  function limpiarResultado(){
+    if (cancelarDismiss) { cancelarDismiss(); cancelarDismiss = null; }
+    resultado.style.display = 'none';
+    resultado.className = 'result-box';
+    resultado.textContent = '';
+  }
+
+  function mostrarResultado(clase, texto){
+    if (cancelarDismiss) { cancelarDismiss(); cancelarDismiss = null; }
+    resultado.className = 'result-box ' + clase;
+    resultado.textContent = texto;
+    resultado.style.display = 'block';
+    if (clase !== 'loading') {
+      // El error se queda con el modal abierto, así que se auto-descarta
+      // como cualquier alerta de la app (con pausa al pasar el cursor).
+      cancelarDismiss = window.autoDismissAlert(resultado, 6000);
+      resultado.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  // ---- Opciones de autocompletado ----
+  // Se piden una sola vez, al primer abrir: la mayoría de las visitas no
+  // abren este diálogo y no tienen por qué pagar esas consultas.
+  function cargarOpciones(){
+    if (opcionesPedidas) return;
+    opcionesPedidas = true;
+    fetch('/api/registrar-opciones')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(json){
+        if (!json || !json.ok) { opcionesPedidas = false; return; }
+        listaCat.innerHTML = '';
+        (json.categorias || []).forEach(function(c){
+          const op = document.createElement('option');
+          op.value = c;
+          listaCat.appendChild(op);
+        });
+        listaEnt.innerHTML = '';
+        (json.entidades || []).forEach(function(en){
+          const op = document.createElement('option');
+          op.value = en;
+          listaEnt.appendChild(op);
+        });
+        const tarjetas = json.tarjetas || [];
+        selTarjeta.length = 1;  // conserva "Sin asignar"
+        tarjetas.forEach(function(t){
+          const op = document.createElement('option');
+          op.value = t.id;
+          op.textContent = t.nombre + (t.ultimos4 ? ' · Terminada en ' + t.ultimos4 : '');
+          selTarjeta.appendChild(op);
+        });
+        // Sin tarjetas activas el campo no se muestra, como antes.
+        campoTar.hidden = tarjetas.length === 0;
+      })
+      .catch(function(){ opcionesPedidas = false; });  // se reintenta al próximo abrir
+  }
+
+  // ---- Abrir / cerrar ----
+  function abrir(){
+    if (dlg.open) return;
+    limpiarResultado();
+    if (!campoFecha.value) campoFecha.valueAsDate = new Date();
+    cargarOpciones();
+    dlg.classList.remove('cerrando');
+    dlg.showModal();
+    document.body.classList.add('modal-abierto');
+    // Al primer campo, no al botón de cerrar: el diálogo existe para
+    // escribir en él.
+    campoFecha.focus();
+  }
+
+  function cerrar(alTerminar){
+    if (!dlg.open || dlg.classList.contains('cerrando')) return;
+    dlg.classList.add('cerrando');
+    const terminar = function(){
+      dlg.classList.remove('cerrando');
+      if (dlg.open) dlg.close();
+      document.body.classList.remove('modal-abierto');
+      if (alTerminar) { const fn = alTerminar; alTerminar = null; fn(); }
+    };
+    // Solo la animación del propio diálogo: animationend BURBUJEA, y un
+    // .result-box entrando o saliendo adentro del modal cerraría el
+    // diálogo antes de tiempo.
+    const alTerminarAnimacion = function(e){
+      if (e.target !== dlg) return;
+      dlg.removeEventListener('animationend', alTerminarAnimacion);
+      terminar();
+    };
+    dlg.addEventListener('animationend', alTerminarAnimacion);
+    setTimeout(terminar, 400);  // red de seguridad si animationend no dispara
+  }
+
+  // Escape lo maneja el navegador con "cancel": se lo frena para cerrar
+  // por el mismo camino (con animación y sin dejar el body bloqueado).
+  dlg.addEventListener('cancel', function(e){ e.preventDefault(); cerrar(); });
+  // Click en el fondo oscuro: con padding 0 el contenido cubre el
+  // diálogo entero, así que el target solo es <dialog> si fue el backdrop.
+  dlg.addEventListener('click', function(e){ if (e.target === dlg) cerrar(); });
+  document.getElementById('modalRegistrarCerrar').addEventListener('click', function(){ cerrar(); });
+  document.getElementById('regCancelar').addEventListener('click', function(){ cerrar(); });
+
+  const cta = document.getElementById('ctaRegistrar');
+  if (cta) {
+    cta.addEventListener('click', function(e){
+      // Ctrl/Cmd/Shift o botón del medio: que siga andando como enlace.
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+      e.preventDefault();
+      abrir();
+    });
+  }
+  // Lo usa /registrar (enlace profundo) para entrar con el diálogo abierto.
+  window.abrirModalRegistrar = abrir;
+
+  // El dashboard se dibuja dentro de un <iframe> (ver dashboard.html): si
+  // el movimiento se registró desde ahí, el resumen de atrás tiene que
+  // reflejarlo -- si no, el usuario ve el aviso de éxito sobre números
+  // viejos y parece que no se guardó nada.
+  function refrescarVistaDeAtras(){
+    document.querySelectorAll('.app-main iframe').forEach(function(frame){
+      try { frame.contentWindow.location.reload(); } catch (e) {}
+    });
+  }
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    // El form es novalidate para decidir nosotros cuándo validar, pero
+    // los required siguen valiendo: esto muestra los mensajes nativos.
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+
+    const datos = new FormData(form);
+    datos.set('monto', campoMonto.value.replace(/\./g, '').replace(',', '.'));
+
+    mostrarResultado('loading', 'Guardando...');
+    btnEnviar.disabled = true;
+
+    fetch('/api/registrar-movimiento', { method: 'POST', body: datos })
+      .then(function(res){
+        return res.json()
+          .catch(function(){ return {}; })
+          .then(function(json){ return { res: res, json: json }; });
+      })
+      .then(function(r){
+        if (!r.res.ok || !r.json.ok) {
+          mostrarResultado('error', r.json.error || 'No se pudo registrar el movimiento.');
+          return;
+        }
+        if (r.json.duplicados > 0) {
+          mostrarResultado('error', 'No se guardó: ya existe un movimiento con la misma fecha y monto (posible duplicado).');
+          return;
+        }
+        form.reset();
+        campoFecha.valueAsDate = new Date();
+        // La próxima apertura vuelve a pedir las opciones: la categoría
+        // o entidad recién usada tiene que salir en el autocompletado.
+        opcionesPedidas = false;
+        limpiarResultado();
+        // El aviso se muestra DESPUÉS de cerrar: mientras el <dialog>
+        // está abierto vive en el top layer del navegador y taparía
+        // cualquier toast, sin importar su z-index.
+        cerrar(function(){
+          window.mostrarAlertaApp('ok', 'Movimiento registrado.');
+          refrescarVistaDeAtras();
+        });
+      })
+      .catch(function(){
+        mostrarResultado('error', 'No se pudo conectar con el servidor.');
+      })
+      .then(function(){ btnEnviar.disabled = false; });
+  });
 })();
 </script>
 </body>
