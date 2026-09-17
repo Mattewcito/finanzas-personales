@@ -532,6 +532,21 @@ class _PGCursor:
         return iter(rows)
 
 
+def _coerce_bools(params):
+    """psycopg2 adapta un bool de Python a un boolean de SQL, pero el
+    esquema guarda esos campos como INTEGER (es_deuda, activa, activo...)
+    igual que en SQLite, donde bool -> 0/1 es automático y silencioso. Sin
+    esta coerción PostgreSQL rechaza el INSERT con DatatypeMismatch
+    ("column es_deuda is of type integer but expression is of type
+    boolean"). No hay ninguna columna BOOLEAN real en el esquema, así que
+    convertir siempre es seguro."""
+    if isinstance(params, dict):
+        return {k: int(v) if isinstance(v, bool) else v for k, v in params.items()}
+    if isinstance(params, (list, tuple)):
+        return [int(v) if isinstance(v, bool) else v for v in params]
+    return params
+
+
 class _PGConn:
     """Connection wrapper de psycopg2 que emula la interfaz de sqlite3."""
 
@@ -544,6 +559,7 @@ class _PGConn:
     def execute(self, sql: str, params=()):
         import psycopg2.extras
         adapted = _adapt_sql_pg(sql)
+        params = _coerce_bools(params)
         is_insert = re.match(r'\s*INSERT\s+INTO\s+', adapted, re.IGNORECASE)
         has_returning = re.search(r'\bRETURNING\b', adapted, re.IGNORECASE)
         if is_insert and not has_returning:
@@ -562,7 +578,7 @@ class _PGConn:
         import psycopg2.extras
         adapted = _adapt_sql_pg(sql)
         cur = self._raw.cursor()
-        psycopg2.extras.execute_batch(cur, adapted, list(params_seq))
+        psycopg2.extras.execute_batch(cur, adapted, [_coerce_bools(p) for p in params_seq])
         return _PGCursor(cur)
 
     def executescript(self, sql: str):
