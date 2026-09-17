@@ -595,16 +595,38 @@ class _PGConn:
         params = _coerce_bools(params)
         is_insert = re.match(r'\s*INSERT\s+INTO\s+', adapted, re.IGNORECASE)
         has_returning = re.search(r'\bRETURNING\b', adapted, re.IGNORECASE)
-        if is_insert and not has_returning:
-            adapted_ret = adapted.rstrip('; \n') + ' RETURNING id'
-        else:
-            adapted_ret = adapted
-        cur = self._raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        try:
-            cur.execute(adapted_ret, params or None)
-        except Exception:
+
+        if not is_insert or has_returning:
             cur = self._raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute(adapted, params or None)
+            return _PGCursor(cur)
+
+        # INSERT sin RETURNING: se intenta primero con "RETURNING id" para
+        # poder emular cursor.lastrowid de sqlite3. Pero no todas las tablas
+        # tienen columna id -- las que se identifican por una PK natural
+        # (vistas_ocultas, correo_config, presupuesto,
+        # presupuesto_categorias) no la tienen, y ahí ese INSERT falla.
+        #
+        # En PostgreSQL un statement que falla ABORTA la transacción entera,
+        # así que el reintento moría con InFailedSqlTransaction y se perdía
+        # toda la operación: el panel de "Visibilidad de vistas" no guardaba
+        # nada (bug reportado 2026-09-17). El SAVEPOINT acota el intento
+        # fallido para que el reintento sí pueda correr -- mismo mecanismo
+        # que ya usa executescript() para la carrera de CREATE TABLE.
+        #
+        # Los SAVEPOINT van en un cursor APARTE: ejecutar en el mismo
+        # cursor pisaría el result set del INSERT que hay que devolver.
+        ctl = self._raw.cursor()
+        cur = self._raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        ctl.execute("SAVEPOINT sp_returning_id")
+        try:
+            cur.execute(adapted.rstrip('; \n') + ' RETURNING id', params or None)
+        except Exception:
+            ctl.execute("ROLLBACK TO SAVEPOINT sp_returning_id")
+            cur = self._raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(adapted, params or None)
+        else:
+            ctl.execute("RELEASE SAVEPOINT sp_returning_id")
         return _PGCursor(cur)
 
     def executemany(self, sql: str, params_seq):
