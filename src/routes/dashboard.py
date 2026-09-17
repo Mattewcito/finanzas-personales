@@ -389,9 +389,12 @@ def api_cargar_extracto():
                 # quedó guardada (cifrada) con ella -- no hace falta reescribirla.
                 with db.conexion() as conn:
                     cedula = db.obtener_cedula_tarjeta(conn, viendo_id(), ultimos4) or ""
-            crudos, _intereses, _desde, _hasta = rex.parse_card_statement(
+            crudos, intereses, _desde, _hasta = rex.parse_card_statement(
                 destino, ultimos4, password=cedula or None)
             movimientos = [rex.normalizar_card(m, marca) for m in crudos]
+            # Los intereses corrientes vienen aparte de los movimientos: sin
+            # esto quedaban fuera y la deuda del extracto no cerraba.
+            movimientos += rex.normalizar_intereses_card(intereses, ultimos4)
         else:
             return jsonify(ok=False, error=f"Tipo de archivo desconocido: {tipo!r}"), 400
     except Exception as e:

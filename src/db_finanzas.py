@@ -1997,6 +1997,75 @@ def _mejor_coincidencia(m: dict, candidatos: list[dict]) -> dict | None:
     return min(en_ventana, key=_orden)
 
 
+# Orígenes que son el extracto OFICIAL de una tarjeta -- la autoridad
+# sobre qué se cargó a esa tarjeta. Deliberadamente NO incluye
+# 'correo_imap': una alerta de correo es un aviso suelto, no el documento
+# de cierre, y ahí sigue valiendo la regla conservadora de no reasignar
+# nada retroactivamente (ver _conciliar_fila_existente).
+ORIGENES_EXTRACTO_TARJETA = ("upload_pdf_tarjeta",)
+
+
+def _conciliar_fila_existente(conn, cur, match: dict, entrante: dict, origen: str, usuario_id: int) -> bool:
+    """Enriquece la fila YA existente cuando el movimiento entrante resultó
+    ser la MISMA transacción real. Nunca inserta nada: devuelve True solo
+    si hubo una RECLASIFICACIÓN de medio de pago (para poder reportarla).
+
+    Dos casos:
+
+    1. referencia_bancaria -- si la fila era un registro MANUAL y lo que
+       llega es de una fuente automática, se guarda la descripción
+       "oficial" del banco sin pisar la que escribió el usuario.
+
+    2. Reclasificación a deuda -- si lo que llega es un cargo de tarjeta
+       (es_deuda) proveniente del EXTRACTO OFICIAL de esa tarjeta y la fila
+       existente NO estaba marcada como deuda, gana el entrante. El
+       extracto es la AUTORIDAD sobre qué se cargó a esa tarjeta: la
+       clasificación previa salió de adivinar el medio de pago leyendo el
+       texto de la descripción (ver clasificar_medio_pago), que para algo
+       como "SR WOK VIVA ENVIGADO" no tiene forma de saber si se pagó con
+       débito o con crédito. Sin esto la deuda quedaba subestimada -- el
+       extracto de la *2011 reportaba $2.105.617 y la app mostraba
+       $1.157.457 porque 5 compras ya estaban cargadas como débito desde un
+       Excel (bug reportado 2026-09-17).
+
+       Dos límites deliberados para no pisarse con la regla de "nada se
+       reasigna retroactivamente" (ver requisitos de tarjetas, y
+       test_insertar_movimientos_duplicado_nunca_reasigna_tarjeta_id...):
+         - Solo desde ORIGENES_EXTRACTO_TARJETA. Una alerta de correo
+           ('correo_imap') sigue sin reasignar nada.
+         - Unidireccional: débito -> deuda sí, deuda -> débito nunca. Solo
+           el extracto prueba la pertenencia a la tarjeta; nada prueba lo
+           contrario."""
+    cambios: dict[str, object] = {}
+
+    if match["origen"] == "app_manual" and origen != "app_manual" and not match.get("referencia_bancaria"):
+        referencia = (entrante.get("descripcion") or "").strip()
+        if referencia:
+            cambios["referencia_bancaria"] = referencia
+
+    reclasificado = (
+        origen in ORIGENES_EXTRACTO_TARJETA
+        and bool(entrante.get("es_deuda"))
+        and not match.get("es_deuda")
+    )
+    if reclasificado:
+        cambios["medio_pago"] = entrante.get("medio_pago")
+        cambios["es_deuda"] = 1
+        if not match.get("tarjeta_id"):
+            ultimos4 = entrante.get("ultimos4") or _extraer_ultimos4_de_texto(entrante.get("descripcion"))
+            tarjeta_id = _resolver_tarjeta_por_ultimos4(conn, usuario_id, ultimos4)
+            if tarjeta_id:
+                cambios["tarjeta_id"] = tarjeta_id
+
+    if cambios:
+        asignaciones = ", ".join(f"{campo} = ?" for campo in cambios)
+        cur.execute(
+            f"UPDATE movimientos SET {asignaciones} WHERE id = ?",
+            (*cambios.values(), match["id"]),
+        )
+    return reclasificado
+
+
 def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], origen: str, usuario_id: int) -> dict:
     """Inserta los movimientos de `movimientos` que no correspondan a una
     transacción YA registrada para ese usuario -- cada usuario tiene sus
@@ -2046,7 +2115,8 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
     cur = conn.cursor()
     existentes = [
         dict(r) for r in cur.execute(
-            "SELECT id, fecha, moneda, monto, tipo, descripcion, entidad, origen, referencia_bancaria "
+            "SELECT id, fecha, moneda, monto, tipo, descripcion, entidad, origen, referencia_bancaria, "
+            "medio_pago, es_deuda, tarjeta_id "
             "FROM movimientos WHERE usuario_id = ? "
             "AND NOT (origen = 'app_manual' AND referencia_bancaria IS NOT NULL)",
             (usuario_id,),
@@ -2080,6 +2150,9 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
     #     misma dos veces en la misma carga).
     vistos_en_lote = set()
     nuevos, duplicados_bd, duplicados_lote = [], 0, 0
+    # Duplicados que además corrigieron la clasificación de la fila ya
+    # guardada (débito -> deuda de tarjeta) -- ver _conciliar_fila_existente.
+    reclasificados = 0
     for m_crudo in movimientos:
         # Enriquecer ANTES de armar la clave de match: enriquecer_movimiento
         # puede reclasificar 'tipo' (ej. avance de tarjeta: 'gasto' ->
@@ -2099,10 +2172,8 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
         if match:
             candidatos.remove(match)  # consumida -- una segunda coincidencia real no la vuelve a encontrar
             duplicados_bd += 1
-            if match["origen"] == "app_manual" and origen != "app_manual" and not match.get("referencia_bancaria"):
-                referencia = (m.get("descripcion") or "").strip()
-                if referencia:
-                    cur.execute("UPDATE movimientos SET referencia_bancaria = ? WHERE id = ?", (referencia, match["id"]))
+            if _conciliar_fila_existente(conn, cur, match, m, origen, usuario_id):
+                reclasificados += 1
             continue
 
         vistos_en_lote.add(clave_lote)
@@ -2137,6 +2208,7 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
         "duplicados": duplicados_bd + duplicados_lote,
         "duplicados_bd": duplicados_bd,
         "duplicados_lote": duplicados_lote,
+        "reclasificados": reclasificados,
     }
 
 

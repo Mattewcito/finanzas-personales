@@ -250,6 +250,8 @@ document.getElementById('formCarga').addEventListener('submit', async (e) => {
       partes.push(`${json.duplicados_bd} ${json.duplicados_bd === 1 ? 'ya estaba guardado' : 'ya estaban guardados'} de antes (mismo día y monto).`);
     if (json.duplicados_lote > 0)
       partes.push(`${json.duplicados_lote} ${json.duplicados_lote === 1 ? 'estaba repetido' : 'estaban repetidos'} dentro del mismo archivo.`);
+    if (json.reclasificados > 0)
+      partes.push(`${json.reclasificados} ${json.reclasificados === 1 ? 'movimiento que estaba' : 'movimientos que estaban'} como débito ${json.reclasificados === 1 ? 'pasó' : 'pasaron'} a deuda de esta tarjeta.`);
     if (json.tarjeta_creada) {
       const t = json.tarjeta_creada;
       const cupo = t.cupo_total.toLocaleString('es-CO', { maximumFractionDigits: 0 });

@@ -950,3 +950,83 @@ def test_registro_manual_con_tarjeta_ya_registrada_se_auto_asocia_sin_elegirla(c
 
     fila_id = db.obtener_movimientos(conn, usuario_id=uid)[0]["id"]
     assert _tarjeta_id_de(conn, fila_id) == tid
+
+
+# ============================================================================
+# Reclasificación a deuda cuando el EXTRACTO OFICIAL de la tarjeta confirma
+# un movimiento que ya estaba cargado como débito (bug 2026-09-17: el
+# extracto de la *2011 reportaba $2.105.617 y la app mostraba $1.157.457).
+# Ver db_finanzas._conciliar_fila_existente / ORIGENES_EXTRACTO_TARJETA.
+# ============================================================================
+
+def test_extracto_tarjeta_reclasifica_a_deuda_una_compra_ya_cargada_como_debito(conn):
+    """El caso real: la compra entró primero por un Excel, donde el texto
+    no permitía saber que se pagó con crédito, y quedó como débito. Cuando
+    llega el extracto de la tarjeta -- que SÍ lo prueba -- la fila
+    existente tiene que pasar a deuda en vez de descartarse en silencio."""
+    uid = crear_usuario(conn, "ana")
+    tid = db.crear_tarjeta(conn, uid, "Mastercard", 15500000, ultimos4="2011")
+
+    db.insertar_movimientos(
+        conn, [mov("2026-08-23", "gasto", "restaurantes", 90700, "SR WOK VIVA ENVIGADO")],
+        origen="upload_excel", usuario_id=uid,
+    )
+    fila_id = db.obtener_movimientos(conn, usuario_id=uid)[0]["id"]
+    assert db.obtener_tarjetas_con_deuda(conn, uid)["activas"][0]["deuda_actual"] == 0
+
+    stats = db.insertar_movimientos(
+        conn, [mov_tarjeta("2026-08-23", 90700, "Sr Wok Viva Envigado", ultimos4="2011")],
+        origen="upload_pdf_tarjeta", usuario_id=uid,
+    )
+
+    assert stats["nuevos"] == 0, "no debe duplicar la compra"
+    assert stats["duplicados_bd"] == 1
+    assert stats["reclasificados"] == 1
+    assert _tarjeta_id_de(conn, fila_id) == tid
+    assert db.obtener_tarjetas_con_deuda(conn, uid)["activas"][0]["deuda_actual"] == 90700
+
+
+def test_extracto_tarjeta_no_desclasifica_una_deuda_ya_existente(conn):
+    """La reclasificación es unidireccional: débito -> deuda sí, pero nada
+    puede sacar de deuda a una fila que ya estaba marcada como tal."""
+    uid = crear_usuario(conn, "ana")
+    db.crear_tarjeta(conn, uid, "Mastercard", 15500000, ultimos4="2011")
+
+    db.insertar_movimientos(
+        conn, [mov_tarjeta("2026-08-23", 90700, "Sr Wok", ultimos4="2011")],
+        origen="upload_pdf_tarjeta", usuario_id=uid,
+    )
+    deuda_antes = db.obtener_tarjetas_con_deuda(conn, uid)["activas"][0]["deuda_actual"]
+
+    stats = db.insertar_movimientos(
+        conn, [mov("2026-08-23", "gasto", "restaurantes", 90700, "SR WOK VIVA ENVIGADO")],
+        origen="upload_excel", usuario_id=uid,
+    )
+
+    assert stats["reclasificados"] == 0
+    assert db.obtener_tarjetas_con_deuda(conn, uid)["activas"][0]["deuda_actual"] == deuda_antes
+
+
+def test_alerta_de_correo_no_reclasifica_retroactivamente(conn):
+    """Una alerta de correo es un aviso suelto, no el documento de cierre:
+    ahí sigue valiendo la regla conservadora de no reasignar nada
+    retroactivamente (mismo criterio que
+    test_insertar_movimientos_duplicado_nunca_reasigna_tarjeta_id...)."""
+    uid = crear_usuario(conn, "ana")
+    db.crear_tarjeta(conn, uid, "Mastercard", 15500000, ultimos4="2011")
+
+    db.insertar_movimientos(
+        conn, [mov("2026-08-23", "gasto", "restaurantes", 90700, "SR WOK VIVA ENVIGADO")],
+        origen="upload_excel", usuario_id=uid,
+    )
+    fila_id = db.obtener_movimientos(conn, usuario_id=uid)[0]["id"]
+
+    stats = db.insertar_movimientos(
+        conn, [mov_tarjeta("2026-08-23", 90700, "Sr Wok", ultimos4="2011")],
+        origen="correo_imap", usuario_id=uid,
+    )
+
+    assert stats["duplicados_bd"] == 1
+    assert stats["reclasificados"] == 0
+    assert _tarjeta_id_de(conn, fila_id) is None
+    assert db.obtener_tarjetas_con_deuda(conn, uid)["activas"][0]["deuda_actual"] == 0

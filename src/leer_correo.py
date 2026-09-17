@@ -492,18 +492,10 @@ def _parsear_pdf_adjunto(datos: bytes, cedula: str) -> list[dict]:
         except Exception:
             return []
         movimientos = [rex.normalizar_card(m, "Credito") for m in crudos]
-        for (fecha_interes, moneda), val in intereses_por_moneda.items():
-            if abs(val) < 0.001:
-                continue
-            movimientos.append({
-                "fecha": fecha_interes, "tipo": "gasto", "categoria": "intereses", "moneda": moneda,
-                "monto": round(val, 2), "descripcion": f"Interes corriente T.Cred *{ultimos4}",
-                "entidad": "Bancolombia",
-                # Solo si el último-4 se detectó de verdad (no el "????" de
-                # mejor-esfuerzo) -- un valor inventado nunca debe intentar
-                # matchear una tarjeta real.
-                "ultimos4": ultimos4 if m4 else None,
-            })
+        # asociar=bool(m4): solo si el último-4 se detectó de verdad (no el
+        # "????" de mejor-esfuerzo) -- ver normalizar_intereses_card.
+        movimientos += rex.normalizar_intereses_card(
+            intereses_por_moneda, ultimos4, asociar=bool(m4))
         return movimientos
 
     return []

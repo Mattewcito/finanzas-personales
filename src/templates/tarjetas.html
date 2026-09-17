@@ -67,11 +67,31 @@
      acá la tarjeta muestra identidad + cupo total, sin barra de %. */
   .tarjeta-wrap{ display:flex; flex-direction:column; gap:10px; min-width:0; }
 
+  /* Tokens de superficie -- mismos que dashboard_finanzas.html::.tarjeta-card:
+     una tarjeta CLARA (Lulo neón, Platinum plateada) necesita texto oscuro
+     o el nombre desaparece. .tc-claro los invierte en bloque. */
   .tarjeta-card-mgmt{
-    position:relative; overflow:hidden; min-width:0; color:#fff;
-    border-radius:16px; padding:18px 20px; box-sizing:border-box;
-    aspect-ratio:1.6; display:flex; flex-direction:column; justify-content:space-between;
+    --tc-texto:        #fff;
+    --tc-texto-suave:  rgba(255,255,255,0.72);
+    --tc-scrim:        rgba(0,0,0,0.45);
+    --tc-linea:        rgba(255,255,255,0.35);
+    --tc-relleno:      rgba(255,255,255,0.16);
+    --tc-sombra-texto: 0 1px 3px rgba(0,0,0,0.55);
+    --tc-brillo:       rgba(255,255,255,0.22);
+    position:relative; overflow:hidden; min-width:0; color:var(--tc-texto);
+    /* 1.586 = proporción real de una tarjeta física (ISO/IEC 7810 ID-1). */
+    border-radius:20px; padding:18px 20px; box-sizing:border-box;
+    aspect-ratio:1.586; display:flex; flex-direction:column; justify-content:space-between;
     box-shadow: 0 16px 30px -16px var(--tarjeta-sombra, rgba(0,0,0,0.5)), 0 1px 0 rgba(255,255,255,0.08) inset;
+  }
+  .tarjeta-card-mgmt.tc-claro{
+    --tc-texto:        #10131C;
+    --tc-texto-suave:  rgba(16,19,28,0.78);
+    --tc-scrim:        rgba(255,255,255,0.30);
+    --tc-linea:        rgba(0,0,0,0.16);
+    --tc-relleno:      rgba(0,0,0,0.07);
+    --tc-sombra-texto: none;
+    --tc-brillo:       rgba(255,255,255,0.55);
   }
   .tarjeta-card-mgmt::before{
     content:''; position:absolute; inset:0; pointer-events:none;
@@ -83,12 +103,15 @@
        superior sube el contraste real ahí sin apagar el color vivo del
        resto de la tarjeta. */
     background:
-      linear-gradient(180deg, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.45) 42%, transparent 68%),
-      radial-gradient(120% 80% at 12% -10%, rgba(255,255,255,0.22), transparent 55%);
+      linear-gradient(180deg, var(--tc-scrim) 0%, var(--tc-scrim) 42%, transparent 68%),
+      radial-gradient(120% 80% at 12% -10%, var(--tc-brillo), transparent 55%);
   }
+  /* Franja diagonal de brillo -- el "gloss" de una tarjeta real bajo la luz. */
   .tarjeta-card-mgmt::after{
-    content:''; position:absolute; right:-36px; bottom:-46px; width:160px; height:160px; border-radius:50%; pointer-events:none;
-    background: radial-gradient(circle, rgba(255,255,255,0.10), transparent 70%);
+    content:''; position:absolute; inset:0; pointer-events:none;
+    background:
+      linear-gradient(104deg, transparent 38%, rgba(255,255,255,0.10) 47%, rgba(255,255,255,0.03) 55%, transparent 62%),
+      radial-gradient(circle at 118% 118%, rgba(255,255,255,0.12), transparent 42%);
   }
   /* Archivada: se apaga (grises + menos opacidad) en vez de perder el
      color -- sigue siendo SU tarjeta, solo ya no está en uso. */
@@ -96,23 +119,32 @@
 
   .tarjeta-card-head{ position:relative; display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
   .tarjeta-card-titulo{ min-width:0; }
-  .tarjeta-card-nombre{ display:block; font-size:14.5px; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 3px rgba(0,0,0,0.55); }
+  .tarjeta-card-nombre{ display:block; font-size:14.5px; font-weight:700; color:var(--tc-texto); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:var(--tc-sombra-texto); }
   .tag-archivada{
     font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
-    color:#fff; background: rgba(0,0,0,0.38); border:1px solid rgba(255,255,255,0.25);
+    color:var(--tc-texto); background: var(--tc-relleno); border:1px solid var(--tc-linea);
     padding:2px 7px; border-radius:999px; margin-left:6px; vertical-align:middle;
   }
-  .tarjeta-card-meta{ display:block; font-size:10.5px; font-weight:700; color:rgba(255,255,255,0.7); margin-top:3px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .tarjeta-card-chip{ flex-shrink:0; opacity:.9; position:relative; }
+  .tarjeta-card-meta{ display:block; font-size:10.5px; font-weight:700; color:var(--tc-texto-suave); margin-top:3px; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  /* Chip + contactless juntos, como en la tarjeta física (y en Wallet). */
+  .tarjeta-card-marcas{ flex-shrink:0; position:relative; display:flex; align-items:center; gap:7px; opacity:.92; }
+  .tarjeta-card-chip{ flex-shrink:0; position:relative; }
+  .tarjeta-card-nfc{ flex-shrink:0; opacity:.8; }
 
   .tarjeta-card-digits{
     position:relative; font-family: ui-monospace, 'SF Mono', 'IBM Plex Mono', monospace;
-    font-size:16px; font-weight:600; color:#fff; letter-spacing:.14em;
-    text-shadow:0 1px 3px rgba(0,0,0,0.55);
+    font-size:16px; font-weight:600; color:var(--tc-texto); letter-spacing:.14em;
+    text-shadow:var(--tc-sombra-texto);
   }
 
-  .tarjeta-card-cupo{ position:relative; display:flex; justify-content:space-between; align-items:baseline; font-size:11.5px; color:rgba(255,255,255,0.85); }
-  .tarjeta-card-cupo b{ font-size:15px; font-weight:700; color:#fff; font-variant-numeric:tabular-nums; }
+  .tarjeta-card-footer-mgmt{ position:relative; display:flex; align-items:flex-end; justify-content:space-between; gap:12px; }
+  .tarjeta-card-cupo{ flex:1; min-width:0; display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-size:11.5px; color:var(--tc-texto-suave); }
+  .tarjeta-card-cupo b{ font-size:15px; font-weight:700; color:var(--tc-texto); font-variant-numeric:tabular-nums; }
+  .tarjeta-card-red{ flex-shrink:0; display:flex; align-items:center; opacity:.95; }
+  .tarjeta-card-red-texto{
+    font-size:13px; font-weight:800; letter-spacing:.06em; font-style:italic;
+    color:var(--tc-texto); text-shadow:var(--tc-sombra-texto);
+  }
 
   .tarjeta-card-actions{ display:flex; flex-wrap:wrap; gap:8px; }
   .btn-icono{
@@ -337,26 +369,74 @@ form.addEventListener('submit', async (e) => {
 // Color de identidad por tarjeta (mismo criterio y misma paleta que
 // dashboard_finanzas.html::renderTarjetas() -- fijo por tarjeta, no
 // depende de ningún campo nuevo en el esquema, se deriva del id).
+// Identidad por MARCA (rediseño Wallet 2026-09-17) -- MISMA tabla y mismo
+// orden que dashboard_finanzas.html::ESTILOS_MARCA: las dos pantallas
+// muestran las mismas tarjetas y tienen que verse idénticas. Si se toca
+// una, tocar la otra.
+const ESTILOS_MARCA = [
+  { re: /platinum|platino/i,        grad: 'linear-gradient(135deg,#E9EBEF 0%,#B9BFC9 48%,#8E96A3 100%)', sombra: 'rgba(142,150,163,.5)', claro: true },
+  { re: /\bnu\b|nubank/i,           grad: 'linear-gradient(135deg,#A020E0 0%,#820AD1 55%,#5B0894 100%)', sombra: 'rgba(130,10,209,.5)' },
+  { re: /lulo/i,                    grad: 'linear-gradient(135deg,#E8FF63 0%,#D6F84C 55%,#B4D92F 100%)', sombra: 'rgba(182,217,47,.55)', claro: true },
+  { re: /davivienda/i,              grad: 'linear-gradient(135deg,#F0364B 0%,#D4132B 55%,#960C1E 100%)', sombra: 'rgba(212,19,43,.5)' },
+  { re: /bbva/i,                    grad: 'linear-gradient(135deg,#1C86D6 0%,#0B5FA5 55%,#043A6B 100%)', sombra: 'rgba(11,95,165,.5)' },
+  { re: /falabella|cmr/i,           grad: 'linear-gradient(135deg,#3FBF6E 0%,#1E9950 55%,#106634 100%)', sombra: 'rgba(30,153,80,.5)' },
+  { re: /scotiabank|colpatria/i,    grad: 'linear-gradient(135deg,#F0364B 0%,#C4122B 55%,#7D0A1C 100%)', sombra: 'rgba(196,18,43,.5)' },
+  { re: /c[ií]vica/i,               grad: 'linear-gradient(135deg,#A8D94A 0%,#7FBB2E 55%,#55831C 100%)', sombra: 'rgba(127,187,46,.5)' },
+  { re: /amex|american\s*express/i, grad: 'linear-gradient(135deg,#3AA9D6 0%,#1C7FA8 55%,#0F5673 100%)', sombra: 'rgba(28,127,168,.5)' },
+  { re: /bancolombia/i,             grad: 'linear-gradient(135deg,#FFD200 0%,#F5B500 45%,#2B2A26 100%)', sombra: 'rgba(245,181,0,.5)' },
+  { re: /mastercard|master/i,       grad: 'linear-gradient(135deg,#3A3F4B 0%,#22262F 50%,#111318 100%)', sombra: 'rgba(17,19,24,.6)' },
+  { re: /visa/i,                    grad: 'linear-gradient(135deg,#2A4FB8 0%,#1A3A8F 55%,#0E2359 100%)', sombra: 'rgba(26,58,143,.5)' },
+];
 const PALETA_IDENTIDAD_TARJETA = ['#7c6cfb', '#38bdf8', '#27d9a8', '#f97316', '#ec4899', '#fbbf24'];
-const colorTarjeta = (id) => PALETA_IDENTIDAD_TARJETA[Math.abs(Number(id) || 0) % PALETA_IDENTIDAD_TARJETA.length];
-const ICON_CHIP = '<svg width="30" height="22" viewBox="0 0 34 26" fill="none"><rect x="0.5" y="0.5" width="33" height="25" rx="5" fill="rgba(255,255,255,0.16)" stroke="rgba(255,255,255,0.4)"></rect><line x1="0.5" y1="9" x2="33.5" y2="9" stroke="rgba(255,255,255,0.35)"></line><line x1="0.5" y1="17" x2="33.5" y2="17" stroke="rgba(255,255,255,0.35)"></line><line x1="11" y1="0.5" x2="11" y2="25.5" stroke="rgba(255,255,255,0.35)"></line><line x1="23" y1="0.5" x2="23" y2="25.5" stroke="rgba(255,255,255,0.35)"></line></svg>';
+
+function estiloTarjeta(t) {
+  const marca = ESTILOS_MARCA.find(e => e.re.test(`${t.nombre || ''} ${t.entidad || ''}`));
+  if (marca) return marca;
+  const color = PALETA_IDENTIDAD_TARJETA[Math.abs(Number(t.id) || 0) % PALETA_IDENTIDAD_TARJETA.length];
+  return {
+    grad: `linear-gradient(135deg, ${color} 0%, color-mix(in oklch, ${color} 60%, black) 100%)`,
+    sombra: `color-mix(in srgb, ${color} 45%, transparent)`,
+    claro: false,
+  };
+}
+
+function marcaRedHTML(t) {
+  const texto = `${t.nombre || ''} ${t.entidad || ''}`;
+  if (/mastercard|master/i.test(texto)) {
+    return '<div class="tarjeta-card-red" aria-hidden="true"><svg width="38" height="24" viewBox="0 0 38 24" fill="none"><circle cx="14" cy="12" r="9.5" fill="#EB001B" opacity="0.92"></circle><circle cx="24" cy="12" r="9.5" fill="#F79E1B" opacity="0.92"></circle><path d="M19 4.9a9.47 9.47 0 0 0 0 14.2 9.47 9.47 0 0 0 0-14.2z" fill="#FF5F00"></path></svg></div>';
+  }
+  if (/visa/i.test(texto)) return '<div class="tarjeta-card-red"><span class="tarjeta-card-red-texto">VISA</span></div>';
+  if (/amex|american\s*express/i.test(texto)) return '<div class="tarjeta-card-red"><span class="tarjeta-card-red-texto">AMEX</span></div>';
+  return '';
+}
+
+const ICON_NFC = '<svg aria-hidden="true" width="15" height="18" viewBox="0 0 16 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 6.2a7 7 0 0 1 0 7.6"></path><path d="M6.4 4.4a11 11 0 0 1 0 11.2"></path><path d="M9.8 2.6a15 15 0 0 1 0 14.8"></path></svg>';
+// El chip usa los tokens de superficie, así se ve bien igual sobre una
+// tarjeta clara que sobre una oscura (ver .tc-claro en el CSS).
+const ICON_CHIP = '<svg width="30" height="22" viewBox="0 0 34 26" fill="none"><rect x="0.5" y="0.5" width="33" height="25" rx="5" fill="var(--tc-relleno)" stroke="var(--tc-linea)"></rect><line x1="0.5" y1="9" x2="33.5" y2="9" stroke="var(--tc-linea)"></line><line x1="0.5" y1="17" x2="33.5" y2="17" stroke="var(--tc-linea)"></line><line x1="11" y1="0.5" x2="11" y2="25.5" stroke="var(--tc-linea)"></line><line x1="23" y1="0.5" x2="23" y2="25.5" stroke="var(--tc-linea)"></line></svg>';
 
 function renderCard(t) {
   const metaTexto = t.entidad ? `${t.entidad}${t.ultimos4 ? ` · Terminada en ${t.ultimos4}` : ''}` : (t.ultimos4 ? `Terminada en ${t.ultimos4}` : 'Tarjeta de crédito');
-  const color = colorTarjeta(t.id);
+  const estilo = estiloTarjeta(t);
   const digitosHTML = t.ultimos4 ? `<div class="tarjeta-card-digits">•••• •••• •••• ${t.ultimos4}</div>` : '';
   return `
   <div class="tarjeta-wrap">
-    <div class="tarjeta-card-mgmt ${t.activa ? '' : 'archivada'}" style="background: linear-gradient(135deg, ${color} 0%, color-mix(in oklch, ${color} 60%, black) 100%); --tarjeta-sombra: color-mix(in srgb, ${color} 45%, transparent);">
+    <div class="tarjeta-card-mgmt ${t.activa ? '' : 'archivada'} ${estilo.claro ? 'tc-claro' : ''}" style="background: ${estilo.grad}; --tarjeta-sombra: ${estilo.sombra};">
       <div class="tarjeta-card-head">
         <div class="tarjeta-card-titulo">
           <span class="tarjeta-card-nombre">${t.nombre}${t.activa ? '' : ' <span class="tag-archivada">archivada</span>'}</span>
           <span class="tarjeta-card-meta">${metaTexto}</span>
         </div>
-        <div class="tarjeta-card-chip">${ICON_CHIP}</div>
+        <div class="tarjeta-card-marcas">
+          <span class="tarjeta-card-nfc">${ICON_NFC}</span>
+          <span class="tarjeta-card-chip">${ICON_CHIP}</span>
+        </div>
       </div>
       ${digitosHTML}
-      <div class="tarjeta-card-cupo"><span>Cupo total</span><b>${fmtCOP(t.cupo_total)}</b></div>
+      <div class="tarjeta-card-footer-mgmt">
+        <div class="tarjeta-card-cupo"><span>Cupo total</span><b>${fmtCOP(t.cupo_total)}</b></div>
+        ${marcaRedHTML(t)}
+      </div>
     </div>
     <div class="tarjeta-card-actions">
       <button type="button" class="btn-icono" data-accion="editar" data-id="${t.id}">Editar</button>

@@ -138,7 +138,8 @@ def test_insertar_movimientos_lista_vacia_no_rompe_y_no_inserta_nada(conn):
 
     stats = db.insertar_movimientos(conn, [], origen="app_manual", usuario_id=uid)
 
-    assert stats == {"nuevos": 0, "duplicados": 0, "duplicados_bd": 0, "duplicados_lote": 0}
+    assert stats == {"nuevos": 0, "duplicados": 0, "duplicados_bd": 0,
+                     "duplicados_lote": 0, "reclasificados": 0}
     assert db.obtener_movimientos(conn, usuario_id=uid) == []
 
 

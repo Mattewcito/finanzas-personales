@@ -262,6 +262,34 @@ def parse_card_statement(path, ultimos4, password=None):
     return movimientos, intereses_total_por_moneda, periodo_desde, periodo_hasta
 
 
+def normalizar_intereses_card(intereses_por_moneda, ultimos4, asociar=True):
+    """Los intereses corrientes de tarjeta vienen consolidados por (fecha,
+    moneda) en vez de una fila por día (ver el encabezado del módulo);
+    parse_card_statement los devuelve aparte de los movimientos, así que
+    hay que convertirlos explícitamente o se pierden. Eso pasaba al subir
+    un extracto a mano: el camino de correo sí los cargaba y el de la
+    pantalla de Extractos no, dejando la deuda corta (bug 2026-09-17).
+
+    `asociar=False` cuando el último-4 se detectó por mejor esfuerzo y
+    puede ser "????": un valor inventado nunca debe intentar matchear una
+    tarjeta real."""
+    movimientos = []
+    for (fecha, moneda), valor in intereses_por_moneda.items():
+        if abs(valor) < 0.001:
+            continue
+        movimientos.append({
+            "fecha": fecha,
+            "tipo": "gasto",
+            "categoria": "intereses",
+            "moneda": moneda,
+            "monto": round(valor, 2),
+            "descripcion": f"Interes corriente T.Cred *{ultimos4}",
+            "entidad": "Bancolombia",
+            "ultimos4": ultimos4 if asociar else None,
+        })
+    return movimientos
+
+
 _RE_CUPO_TOTAL = re.compile(r"Cupo\s+total:\s*\$?\s*([\d\.]+,\d{2})", re.IGNORECASE)
 
 
