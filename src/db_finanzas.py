@@ -348,94 +348,228 @@ WHERE medio_pago IN ('credito', 'avance_credito', 'pago_tarjeta_credito')
 ORDER BY fecha, id;
 """
 
+_NOW_PG = "TO_CHAR(NOW() AT TIME ZONE 'America/Bogota', 'YYYY-MM-DD HH24:MI:SS')"
+
+ESQUEMA_SQL_PG = f"""
+CREATE TABLE IF NOT EXISTS movimientos (
+    id SERIAL PRIMARY KEY,
+    fecha TEXT NOT NULL,
+    tipo TEXT NOT NULL,
+    categoria TEXT,
+    moneda TEXT NOT NULL DEFAULT 'COP',
+    monto REAL NOT NULL,
+    descripcion TEXT,
+    entidad TEXT,
+    medio_pago TEXT NOT NULL DEFAULT 'debito',
+    es_deuda INTEGER NOT NULL DEFAULT 0,
+    origen TEXT NOT NULL DEFAULT 'gmail_bot_excel',
+    referencia_bancaria TEXT,
+    creado_en TEXT NOT NULL DEFAULT {_NOW_PG}
+);
+
+CREATE INDEX IF NOT EXISTS idx_movimientos_fecha ON movimientos(fecha);
+CREATE INDEX IF NOT EXISTS idx_movimientos_fecha_monto ON movimientos(fecha, monto);
+CREATE INDEX IF NOT EXISTS idx_movimientos_origen ON movimientos(origen);
+
+CREATE TABLE IF NOT EXISTS historial_actualizaciones (
+    id SERIAL PRIMARY KEY,
+    fecha_actualizacion TEXT NOT NULL,
+    fecha_inicio_importada TEXT,
+    fecha_fin_importada TEXT,
+    movimientos_agregados INTEGER,
+    origen TEXT DEFAULT 'gmail_bot_excel'
+);
+
+CREATE TABLE IF NOT EXISTS usuarios (
+    id SERIAL PRIMARY KEY,
+    username TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    rol TEXT NOT NULL DEFAULT 'usuario',
+    nombre_mostrado TEXT,
+    creado_en TEXT NOT NULL DEFAULT {_NOW_PG}
+);
+CREATE INDEX IF NOT EXISTS idx_usuarios_username ON usuarios(username);
+
+CREATE TABLE IF NOT EXISTS correo_config (
+    usuario_id INTEGER PRIMARY KEY REFERENCES usuarios(id),
+    email TEXT NOT NULL,
+    app_password TEXT NOT NULL,
+    imap_host TEXT NOT NULL DEFAULT 'imap.gmail.com',
+    imap_port INTEGER NOT NULL DEFAULT 993,
+    cedula TEXT,
+    activo INTEGER NOT NULL DEFAULT 1,
+    frecuencia_tipo TEXT NOT NULL DEFAULT 'intervalo',
+    frecuencia_minutos INTEGER NOT NULL DEFAULT 30,
+    frecuencia_hora TEXT,
+    ultima_corrida TEXT,
+    ultima_corrida_ok INTEGER,
+    ultimo_error TEXT,
+    ultima_corrida_detalle TEXT,
+    actualizado_en TEXT NOT NULL DEFAULT {_NOW_PG}
+);
+
+CREATE TABLE IF NOT EXISTS vistas_ocultas (
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+    vista TEXT NOT NULL,
+    PRIMARY KEY (usuario_id, vista)
+);
+
+CREATE TABLE IF NOT EXISTS tarjetas_credito (
+    id SERIAL PRIMARY KEY,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+    nombre TEXT NOT NULL,
+    entidad TEXT,
+    cupo_total REAL NOT NULL,
+    ultimos4 TEXT,
+    activa INTEGER NOT NULL DEFAULT 1,
+    creado_en TEXT NOT NULL DEFAULT {_NOW_PG},
+    actualizado_en TEXT NOT NULL DEFAULT {_NOW_PG}
+);
+CREATE INDEX IF NOT EXISTS idx_tarjetas_credito_usuario ON tarjetas_credito(usuario_id);
+
+CREATE TABLE IF NOT EXISTS presupuesto (
+    usuario_id INTEGER PRIMARY KEY REFERENCES usuarios(id),
+    pct_necesidades REAL NOT NULL DEFAULT 50,
+    pct_gustos REAL NOT NULL DEFAULT 30,
+    pct_ahorro_deudas REAL NOT NULL DEFAULT 20,
+    actualizado_en TEXT NOT NULL DEFAULT {_NOW_PG}
+);
+
+CREATE TABLE IF NOT EXISTS presupuesto_categorias (
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+    categoria TEXT NOT NULL,
+    balde TEXT NOT NULL,
+    actualizado_en TEXT NOT NULL DEFAULT {_NOW_PG},
+    PRIMARY KEY (usuario_id, categoria)
+);
+
+CREATE TABLE IF NOT EXISTS metas_ahorro (
+    id SERIAL PRIMARY KEY,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+    nombre TEXT NOT NULL,
+    monto_objetivo REAL NOT NULL,
+    fecha_objetivo TEXT,
+    activa INTEGER NOT NULL DEFAULT 1,
+    creado_en TEXT NOT NULL DEFAULT {_NOW_PG},
+    actualizado_en TEXT NOT NULL DEFAULT {_NOW_PG}
+);
+CREATE INDEX IF NOT EXISTS idx_metas_ahorro_usuario ON metas_ahorro(usuario_id);
+"""
+
 
 def _dict_row_factory(cursor, row):
-    """Row factory que devuelve dicts — compatible con sqlite3 y libsql-experimental.
-    Sustituye sqlite3.Row: soporta r["col"], dict(r) y r.keys() igual que
-    antes, y además funciona con cursores de libsql sin depender del tipo C
-    sqlite3.Row que no acepta cursores foráneos."""
+    """Row factory que devuelve dicts (SQLite)."""
     return {col[0]: row[i] for i, col in enumerate(cursor.description)}
 
 
-class _LibSQLDictCursor:
-    """Cursor wrapper para libsql_experimental: aplica _dict_row_factory en
-    fetchone/fetchall. libsql usa extensiones C y no soporta row_factory como
-    sqlite3, así que aplicamos el factory manualmente en cada fetch."""
+# ---------------------------------------------------------------------------
+# Capa de adaptación PostgreSQL
+# ---------------------------------------------------------------------------
 
-    def __init__(self, raw):
-        self._raw = raw
+_RE_DATETIME_NOW = re.compile(r"datetime\s*\(\s*'now'[^)]*\)", re.IGNORECASE)
+_RE_INSERT_OR_IGNORE = re.compile(r'INSERT\s+OR\s+IGNORE\s+INTO', re.IGNORECASE)
+_RE_NAMED_PARAM = re.compile(r':(\w+)')
 
-    def execute(self, sql, params=()):
-        if isinstance(params, list):
-            params = tuple(params)
-        self._raw.execute(sql, params)
-        return self
 
-    def executemany(self, sql, params_seq):
-        params_seq = [tuple(p) if isinstance(p, list) else p for p in params_seq]
-        self._raw.executemany(sql, params_seq)
-        return self
+def _adapt_sql_pg(sql: str) -> str:
+    """Convierte SQL SQLite-compatible a PostgreSQL-compatible en el momento
+    de ejecutar, sin modificar las constantes de texto del módulo.
+    Conversiones: datetime('now',...) → TO_CHAR(NOW()...), INSERT OR IGNORE
+    → INSERT ... ON CONFLICT DO NOTHING, ? → %s, :name → %(name)s."""
+    sql = _RE_DATETIME_NOW.sub(_NOW_PG, sql)
+    if _RE_INSERT_OR_IGNORE.search(sql):
+        sql = _RE_INSERT_OR_IGNORE.sub('INSERT INTO', sql)
+        sql = sql.rstrip().rstrip(';') + '\nON CONFLICT DO NOTHING'
+    sql = sql.replace('?', '%s')
+    sql = _RE_NAMED_PARAM.sub(r'%(\1)s', sql)
+    return sql
 
-    def fetchone(self):
-        row = self._raw.fetchone()
-        return None if row is None else _dict_row_factory(self._raw, row)
 
-    def fetchall(self):
-        return [_dict_row_factory(self._raw, r) for r in self._raw.fetchall()]
+class _PGCursor:
+    """Cursor wrapper de psycopg2 que emula la interfaz de sqlite3 con dict rows."""
 
-    def __iter__(self):
-        rows = self._raw.fetchall()
-        desc = self._raw.description or []
-        for row in rows:
-            yield {col[0]: row[i] for i, col in enumerate(desc)}
+    def __init__(self, raw_cur):
+        self._raw = raw_cur
+        self._rows: list = []
+        self._lastrowid = None
+        self._rowcount = max(raw_cur.rowcount, 0)
+        if raw_cur.description is not None:
+            try:
+                rows = raw_cur.fetchall()
+                self._rows = [dict(r) for r in rows]
+                if self._rows and 'id' in self._rows[0]:
+                    self._lastrowid = self._rows[0]['id']
+            except Exception:
+                pass
+
+    @property
+    def lastrowid(self):
+        return self._lastrowid
+
+    @property
+    def rowcount(self):
+        return self._rowcount
 
     @property
     def description(self):
         return self._raw.description
 
-    @property
-    def lastrowid(self):
-        return self._raw.lastrowid
+    def fetchone(self):
+        return self._rows.pop(0) if self._rows else None
 
-    @property
-    def rowcount(self):
-        return self._raw.rowcount
+    def fetchall(self):
+        rows, self._rows = self._rows, []
+        return rows
+
+    def __iter__(self):
+        rows, self._rows = self._rows, []
+        return iter(rows)
 
 
-class _LibSQLDictConn:
-    """Wrapper sobre una conexión libsql_experimental que emula row_factory=dict.
-    libsql devuelve un objeto C que no acepta atributos dinámicos, así que
-    este wrapper intercepta execute/executemany y devuelve _LibSQLDictCursor."""
+class _PGConn:
+    """Connection wrapper de psycopg2 que emula la interfaz de sqlite3."""
 
     def __init__(self, raw):
         self._raw = raw
 
-    def execute(self, sql, params=()):
-        return _LibSQLDictCursor(self._raw.cursor()).execute(sql, params)
+    def execute(self, sql: str, params=()):
+        import psycopg2.extras
+        adapted = _adapt_sql_pg(sql)
+        is_insert = re.match(r'\s*INSERT\s+INTO\s+', adapted, re.IGNORECASE)
+        has_returning = re.search(r'\bRETURNING\b', adapted, re.IGNORECASE)
+        if is_insert and not has_returning:
+            adapted_ret = adapted.rstrip('; \n') + ' RETURNING id'
+        else:
+            adapted_ret = adapted
+        cur = self._raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        try:
+            cur.execute(adapted_ret, params or None)
+        except Exception:
+            cur = self._raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(adapted, params or None)
+        return _PGCursor(cur)
 
-    def executemany(self, sql, params_seq):
-        cur = _LibSQLDictCursor(self._raw.cursor())
-        cur.executemany(sql, params_seq)
-        return cur
+    def executemany(self, sql: str, params_seq):
+        import psycopg2.extras
+        adapted = _adapt_sql_pg(sql)
+        cur = self._raw.cursor()
+        psycopg2.extras.execute_batch(cur, adapted, list(params_seq))
+        return _PGCursor(cur)
 
-    def cursor(self):
-        return _LibSQLDictCursor(self._raw.cursor())
-
-    def executescript(self, sql):
-        # libsql no tiene executescript; lo emulamos ejecutando cada sentencia.
-        # Primero eliminamos comentarios de línea (-- ...) para que los `;`
-        # dentro de ellos no rompan el split (ej: "por ahora; futuro:").
-        import re
+    def executescript(self, sql: str):
+        """Ejecuta SQL multi-sentencia dividiendo por ';' (psycopg2 no acepta
+        múltiples statements en un execute)."""
         sql_clean = re.sub(r'--[^\n]*', '', sql)
-        for stmt in sql_clean.split(";"):
+        cur = self._raw.cursor()
+        for stmt in sql_clean.split(';'):
             s = stmt.strip()
             if s:
-                self._raw.execute(s)
+                cur.execute(_adapt_sql_pg(s))
         self._raw.commit()
 
     def rollback(self):
         try:
-            self._raw.execute("ROLLBACK")
+            self._raw.rollback()
         except Exception:
             pass
 
@@ -443,7 +577,10 @@ class _LibSQLDictConn:
         self._raw.commit()
 
     def close(self):
-        self._raw.close()
+        try:
+            self._raw.close()
+        except Exception:
+            pass
 
     def __enter__(self):
         return self
@@ -453,17 +590,16 @@ class _LibSQLDictConn:
 
 
 def conectar():
-    """Conecta a Turso (remoto) si TURSO_DATABASE_URL y TURSO_AUTH_TOKEN están
-    seteados, o al archivo SQLite local como fallback (dev/tests sin vars).
-    El resto del código no cambia: sigue usando conn.execute(), conn.commit()
-    y db.conexion() exactamente igual que antes."""
-    turso_url = os.environ.get("TURSO_DATABASE_URL", "").strip()
-    turso_token = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
+    """Conecta a PostgreSQL si DATABASE_URL está seteada, o al archivo
+    SQLite local como fallback (dev/tests sin vars). El resto del código
+    no cambia: sigue usando conn.execute(), conn.commit() y db.conexion()."""
+    database_url = os.environ.get("DATABASE_URL", "").strip()
 
-    if turso_url and turso_token:
-        import libsql_experimental as libsql  # lazy: solo cuando hay credenciales
-        raw = libsql.connect(turso_url, auth_token=turso_token)
-        return _LibSQLDictConn(raw)  # wrapper que aplica dict factory
+    if database_url:
+        import psycopg2
+        raw = psycopg2.connect(database_url)
+        raw.autocommit = False
+        return _PGConn(raw)
 
     conn = sqlite3.connect(DB_PATH)
     # journal_mode = DELETE (no WAL): `data/` está montado como bind mount
@@ -489,26 +625,29 @@ def conexion():
         conn.close()
 
 
-def _agregar_columna_si_falta(conn: sqlite3.Connection, tabla: str, columna: str, tipo_sql: str) -> None:
-    """ALTER TABLE ... ADD COLUMN, tolerante a la carrera entre procesos:
-    gunicorn arranca esta app con varios workers (ver Dockerfile), cada
-    uno importa app.py por separado y cada uno corre crear_esquema() al
-    boot -- si dos lo hacen casi al mismo tiempo, el chequeo previo de
-    PRAGMA table_info() puede pasar en los dos ANTES de que cualquiera
-    haya hecho el ALTER, y el segundo revienta con "duplicate column
-    name" (esto pasó de verdad al desplegar referencia_bancaria).
-    SQLite no tiene 'ADD COLUMN IF NOT EXISTS', así que se ataja acá:
-    chequeo previo (evita el ALTER en el caso común) + tolerar el error
-    puntual de "ya existe" si igual se cuela la carrera."""
-    columnas = [r["name"] for r in conn.execute(f"PRAGMA table_info({tabla})")]
+def _agregar_columna_si_falta(conn, tabla: str, columna: str, tipo_sql: str) -> None:
+    """ALTER TABLE ... ADD COLUMN, tolerante a la carrera entre procesos.
+    Compatible con SQLite y PostgreSQL."""
+    if isinstance(conn, _PGConn):
+        rows = conn.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = %s AND table_schema = 'public'",
+            (tabla,),
+        ).fetchall()
+        columnas = [r["column_name"] for r in rows]
+    else:
+        columnas = [r["name"] for r in conn.execute(f"PRAGMA table_info({tabla})")]
     if columna in columnas:
         return
     try:
         conn.execute(f"ALTER TABLE {tabla} ADD COLUMN {columna} {tipo_sql}")
         conn.commit()
-    except sqlite3.OperationalError as e:
-        if "duplicate column name" not in str(e):
-            raise  # cualquier otro error sí debe reventar, no ocultarlo
+    except Exception as e:
+        err = str(e).lower()
+        if "duplicate column" in err or "already exists" in err:
+            pass
+        else:
+            raise
 
 
 def _migrar_columna_usuario_id(conn: sqlite3.Connection) -> None:
@@ -600,17 +739,16 @@ def _migrar_columna_detalle_correo_config(conn: sqlite3.Connection) -> None:
     _agregar_columna_si_falta(conn, "correo_config", "ultima_corrida_detalle", "TEXT")
 
 
-def crear_esquema(conn: sqlite3.Connection) -> None:
-    conn.executescript(ESQUEMA_SQL)
+def crear_esquema(conn) -> None:
+    esquema = ESQUEMA_SQL_PG if isinstance(conn, _PGConn) else ESQUEMA_SQL
+    conn.executescript(esquema)
     _migrar_columna_usuario_id(conn)
     _migrar_columna_referencia_bancaria(conn)
-    _migrar_columna_tarjeta_id(conn)  # después de ESQUEMA_SQL: necesita que tarjetas_credito ya exista (FK)
-    _migrar_columna_meta_ahorro_id(conn)  # después de ESQUEMA_SQL: necesita que metas_ahorro ya exista (FK)
+    _migrar_columna_tarjeta_id(conn)
+    _migrar_columna_meta_ahorro_id(conn)
     _migrar_columna_cedula_correo_config(conn)
     _migrar_columna_detalle_correo_config(conn)
     _migrar_cifrado_correo_config(conn)
-    # DROP + recrear la vista: si ya existía de antes de agregar usuario_id
-    # a su SELECT, "CREATE VIEW IF NOT EXISTS" no la actualiza sola.
     conn.execute("DROP VIEW IF EXISTS v_deuda_ledger")
     conn.executescript(VISTA_DEUDA_SQL)
     conn.commit()
@@ -1201,9 +1339,11 @@ def borrar_tarjeta(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: int) -
         conn.execute("DELETE FROM tarjetas_credito WHERE id = ? AND usuario_id = ?", (tarjeta_id, usuario_id))
         conn.commit()
         return True, None
-    except sqlite3.IntegrityError:
-        conn.rollback()
-        return False, "Esa tarjeta tiene movimientos asociados -- archivala en vez de borrarla."
+    except Exception as e:
+        if "foreign key" in str(e).lower() or "integrity" in str(e).lower():
+            conn.rollback()
+            return False, "Esa tarjeta tiene movimientos asociados -- archivala en vez de borrarla."
+        raise
 
 
 def _resolver_tarjeta_por_ultimos4(conn: sqlite3.Connection, usuario_id: int, ultimos4: str | None) -> int | None:
@@ -1670,9 +1810,11 @@ def borrar_meta_ahorro(conn: sqlite3.Connection, usuario_id: int, meta_id: int) 
         conn.execute("DELETE FROM metas_ahorro WHERE id = ? AND usuario_id = ?", (meta_id, usuario_id))
         conn.commit()
         return True, None
-    except sqlite3.IntegrityError:
-        conn.rollback()
-        return False, "Esa meta tiene aportes (movimientos) asociados -- archivala en vez de borrarla."
+    except Exception as e:
+        if "foreign key" in str(e).lower() or "integrity" in str(e).lower():
+            conn.rollback()
+            return False, "Esa meta tiene aportes (movimientos) asociados -- archivala en vez de borrarla."
+        raise
 
 
 # ----------------------------- Inserción con dedup (usada por cualquier fuente de ingesta) -----------------------------
