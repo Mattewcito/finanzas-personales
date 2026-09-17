@@ -99,15 +99,27 @@
           ¿No sabes qué formato usar? <a href="/plantilla-excel" style="color:var(--brand); font-weight:600;">Descarga la plantilla</a>, complétala y súbela aquí mismo.
         </p>
 
-        <div id="camposTarjeta" class="field-row" style="display:none;">
-          <div>
-            <label class="field-label">Marca de la tarjeta</label>
-            <input type="text" name="marca" class="field-input" placeholder="Mastercard, Amex...">
+        <div id="camposTarjeta" style="display:none;">
+          <div class="field-row">
+            <div>
+              <label class="field-label">Marca de la tarjeta</label>
+              <input type="text" name="marca" class="field-input" placeholder="Mastercard, Amex...">
+            </div>
+            <div>
+              <label class="field-label">Últimos 4 dígitos</label>
+              <input type="text" name="ultimos4" maxlength="4" class="field-input" placeholder="2011">
+            </div>
           </div>
-          <div>
-            <label class="field-label">Últimos 4 dígitos</label>
-            <input type="text" name="ultimos4" maxlength="4" class="field-input" placeholder="2011">
-          </div>
+
+          <label class="field-label">Cédula del titular
+            <span style="color:var(--text-subtle); font-weight:400;">(solo si el PDF viene protegido)</span>
+          </label>
+          <input type="text" name="cedula" class="field-input" inputmode="numeric" autocomplete="off"
+                 placeholder="Bancolombia cifra estos PDF con este número">
+          <p style="margin:6px 0 0; font-size:12px; color:var(--text-subtle);">
+            Se usa para abrir el PDF y queda guardada cifrada junto a la tarjeta,
+            así no tienes que escribirla de nuevo la próxima vez.
+          </p>
         </div>
 
         <label class="field-label" id="archivoLabel">Archivo</label>
@@ -167,7 +179,7 @@ const archivoInput = document.getElementById('archivoInput');
 const dzFile = document.getElementById('dzFile');
 
 document.getElementById('tipoArchivo').addEventListener('change', (e) => {
-  document.getElementById('camposTarjeta').style.display = e.target.value === 'pdf_tarjeta' ? 'grid' : 'none';
+  document.getElementById('camposTarjeta').style.display = e.target.value === 'pdf_tarjeta' ? 'block' : 'none';
   document.getElementById('ayudaPlantilla').style.display = e.target.value === 'excel' ? 'block' : 'none';
 });
 
@@ -238,6 +250,11 @@ document.getElementById('formCarga').addEventListener('submit', async (e) => {
       partes.push(`${json.duplicados_bd} ${json.duplicados_bd === 1 ? 'ya estaba guardado' : 'ya estaban guardados'} de antes (mismo día y monto).`);
     if (json.duplicados_lote > 0)
       partes.push(`${json.duplicados_lote} ${json.duplicados_lote === 1 ? 'estaba repetido' : 'estaban repetidos'} dentro del mismo archivo.`);
+    if (json.tarjeta_creada) {
+      const t = json.tarjeta_creada;
+      const cupo = t.cupo_total.toLocaleString('es-CO', { maximumFractionDigits: 0 });
+      partes.push(`Se creó la tarjeta <strong>${t.nombre} *${t.ultimos4}</strong> con cupo $${cupo}, tomado del extracto.`);
+    }
     partes.push('El dashboard ya refleja estos datos.');
     resultado.className = 'result-box ok';
     resultado.innerHTML =

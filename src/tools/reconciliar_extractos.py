@@ -262,6 +262,23 @@ def parse_card_statement(path, ultimos4, password=None):
     return movimientos, intereses_total_por_moneda, periodo_desde, periodo_hasta
 
 
+_RE_CUPO_TOTAL = re.compile(r"Cupo\s+total:\s*\$?\s*([\d\.]+,\d{2})", re.IGNORECASE)
+
+
+def parse_card_cupo(path, password=None):
+    """Cupo total declarado en el extracto ("Cupo total: $ 15.500.000,00"),
+    o None si el PDF no lo trae. Se usa para dar de alta la tarjeta con su
+    cupo REAL cuando se sube el extracto de una que todavía no existe (ver
+    routes/dashboard.py::api_cargar_extracto) -- inventar un cupo falsearía
+    el "disponible" que el dashboard le muestra al usuario, así que sin
+    este dato la tarjeta no se crea sola."""
+    for page_text in pdf_text(path, password=password):
+        m = _RE_CUPO_TOTAL.search(page_text)
+        if m:
+            return to_float_latam(m.group(1))
+    return None
+
+
 # ---------------------------------------------------------------------------
 # NORMALIZACIÓN a esquema del Excel
 # ---------------------------------------------------------------------------

@@ -134,6 +134,12 @@ CREATE TABLE IF NOT EXISTS vistas_ocultas (
 -- (v_deuda_ledger). Sin cifrado a propósito: nombre/entidad/cupo_total/
 -- ultimos4 son datos financieros equivalentes a "monto"/"saldo", no
 -- credenciales -- ver la sección "Cifrado" del documento de requisitos.
+-- ÚNICA excepción: "cedula" SÍ va cifrada (mismo criterio que
+-- correo_config.cedula) porque no es un dato financiero sino la
+-- contraseña con la que Bancolombia cifra los PDF de extracto de esa
+-- tarjeta. Nunca sale de esta capa hacia las rutas/frontend: los dicts
+-- públicos exponen solo el booleano "tiene_cedula" (ver
+-- _fila_tarjeta_publica) y para usarla está obtener_cedula_tarjeta().
 -- cupo_total se valida > 0 en la capa de Python (crear_tarjeta/
 -- actualizar_tarjeta), no solo en la UI. "activa" es el soft-delete
 -- (archivar_tarjeta): una tarjeta archivada conserva su historial de
@@ -146,6 +152,7 @@ CREATE TABLE IF NOT EXISTS tarjetas_credito (
     entidad TEXT,
     cupo_total REAL NOT NULL,
     ultimos4 TEXT,
+    cedula TEXT,          -- CIFRADA: contraseña de los PDF de extracto de esta tarjeta
     activa INTEGER NOT NULL DEFAULT 1,
     creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
     actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
@@ -421,6 +428,7 @@ CREATE TABLE IF NOT EXISTS tarjetas_credito (
     entidad TEXT,
     cupo_total REAL NOT NULL,
     ultimos4 TEXT,
+    cedula TEXT,
     activa INTEGER NOT NULL DEFAULT 1,
     creado_en TEXT NOT NULL DEFAULT {_NOW_PG},
     actualizado_en TEXT NOT NULL DEFAULT {_NOW_PG}
@@ -468,7 +476,11 @@ def _dict_row_factory(cursor, row):
 
 _RE_DATETIME_NOW = re.compile(r"datetime\s*\(\s*'now'[^)]*\)", re.IGNORECASE)
 _RE_INSERT_OR_IGNORE = re.compile(r'INSERT\s+OR\s+IGNORE\s+INTO', re.IGNORECASE)
-_RE_NAMED_PARAM = re.compile(r':(\w+)')
+# El (?<!:) evita romper los casts de PostgreSQL ('x'::text no es el
+# parámetro ":text").
+_RE_NAMED_PARAM = re.compile(r'(?<!:):(\w+)')
+# Literal de texto SQL, con '' como comilla escapada adentro.
+_RE_STRING_LITERAL = re.compile(r"'(?:[^']|'')*'")
 
 
 _RE_VIEW_IF_NOT_EXISTS = re.compile(
@@ -486,9 +498,30 @@ def _adapt_sql_pg(sql: str) -> str:
         sql = _RE_INSERT_OR_IGNORE.sub('INSERT INTO', sql)
         sql = sql.rstrip().rstrip(';') + '\nON CONFLICT DO NOTHING'
     sql = _RE_VIEW_IF_NOT_EXISTS.sub('CREATE OR REPLACE VIEW ', sql)
-    sql = sql.replace('?', '%s')
-    sql = _RE_NAMED_PARAM.sub(r'%(\1)s', sql)
-    return sql
+    return _sustituir_placeholders(sql)
+
+
+def _sustituir_placeholders(sql: str) -> str:
+    """Traduce los placeholders de SQLite (? y :name) a los de psycopg2
+    (%s y %(name)s), pero SOLO fuera de los literales de texto.
+
+    Sustituir a ciegas rompía cualquier literal con ':' adentro que no
+    fuera un parámetro. El caso real era el formato de TO_CHAR de _NOW_PG
+    ('YYYY-MM-DD HH24:MI:SS'), que quedaba como 'HH24%(MI)s%(SS)s': el
+    DEFAULT de creado_en/actualizado_en de 9 tablas quedó con ese formato
+    y guardó timestamps corruptos del tipo '2026-09-16 23%(50)s%(56)s'
+    (ver _reparar_timestamps_corruptos_pg, que repara lo ya escrito)."""
+    partes, pos = [], 0
+    for m in _RE_STRING_LITERAL.finditer(sql):
+        partes.append(_sub_placeholders_fragmento(sql[pos:m.start()]))
+        partes.append(m.group(0))  # el literal se copia intacto
+        pos = m.end()
+    partes.append(_sub_placeholders_fragmento(sql[pos:]))
+    return ''.join(partes)
+
+
+def _sub_placeholders_fragmento(fragmento: str) -> str:
+    return _RE_NAMED_PARAM.sub(r'%(\1)s', fragmento.replace('?', '%s'))
 
 
 class _PGCursor:
@@ -778,6 +811,42 @@ def _migrar_columna_detalle_correo_config(conn: sqlite3.Connection) -> None:
     _agregar_columna_si_falta(conn, "correo_config", "ultima_corrida_detalle", "TEXT")
 
 
+def _migrar_columna_cedula_tarjetas(conn: sqlite3.Connection) -> None:
+    """tarjetas_credito ya existía (2026-09-07) sin esta columna en
+    cualquier BD real -- mismo patrón que
+    _migrar_columna_cedula_correo_config. Va CIFRADA (ver el comentario
+    de la tabla en el esquema)."""
+    _agregar_columna_si_falta(conn, "tarjetas_credito", "cedula", "TEXT")
+
+
+def _reparar_timestamps_corruptos_pg(conn) -> None:
+    """Repara el daño del bug de _sustituir_placeholders (ver su docstring):
+    el DEFAULT de las columnas de timestamp quedó con el formato
+    'YYYY-MM-DD HH24%(MI)s%(SS)s' y toda fila insertada con ese DEFAULT
+    guardó la hora como '2026-09-16 23%(50)s%(56)s'.
+
+    Arreglar el código no alcanza: CREATE TABLE IF NOT EXISTS no vuelve a
+    tocar una tabla que ya existe, así que el DEFAULT corrupto sigue ahí.
+    La reparación del valor es exacta (no se pierde información: los
+    dígitos están todos, solo sobra el envoltorio '%(' / ')s') y solo
+    toca filas efectivamente corruptas, así que es idempotente."""
+    if not isinstance(conn, _PGConn):
+        return  # el bug es exclusivo de la capa de adaptación a PostgreSQL
+    columnas = conn.execute(
+        "SELECT table_name, column_name FROM information_schema.columns "
+        "WHERE table_schema = 'public' AND column_default LIKE '%(MI)s%'"
+    ).fetchall()
+    for fila in columnas:
+        tabla, col = fila["table_name"], fila["column_name"]
+        conn.execute(f"ALTER TABLE {tabla} ALTER COLUMN {col} SET DEFAULT {_NOW_PG}")
+        conn.execute(
+            f"UPDATE {tabla} SET {col} = REPLACE(REPLACE({col}, '%(', ':'), ')s', '') "
+            f"WHERE POSITION('%(' IN {col}) > 0"
+        )
+    if columnas:
+        conn.commit()
+
+
 def crear_esquema(conn) -> None:
     esquema = ESQUEMA_SQL_PG if isinstance(conn, _PGConn) else ESQUEMA_SQL
     conn.executescript(esquema)
@@ -787,7 +856,9 @@ def crear_esquema(conn) -> None:
     _migrar_columna_meta_ahorro_id(conn)
     _migrar_columna_cedula_correo_config(conn)
     _migrar_columna_detalle_correo_config(conn)
+    _migrar_columna_cedula_tarjetas(conn)
     _migrar_cifrado_correo_config(conn)
+    _reparar_timestamps_corruptos_pg(conn)
     conn.execute("DROP VIEW IF EXISTS v_deuda_ledger")
     conn.executescript(VISTA_DEUDA_SQL)
     conn.commit()
@@ -1254,8 +1325,41 @@ def obtener_ledger_deuda(conn: sqlite3.Connection, usuario_id: int | None = None
 # datos/contenido de la cuenta que se esté viendo, mismo criterio que el
 # resto del dashboard (ver auth.py::viendo_id()).
 
+def _fila_tarjeta_publica(fila) -> dict:
+    """Dict "público" de una tarjeta: el que las rutas serializan tal cual
+    a JSON (ver routes/tarjetas.py). La cédula está cifrada en la columna y
+    NO sale de esta capa -- se reemplaza por el booleano `tiene_cedula`
+    para que la UI pueda decir si hace falta pedirla. Para usarla de
+    verdad está obtener_cedula_tarjeta()."""
+    d = dict(fila)
+    d["activa"] = bool(d["activa"])
+    d["tiene_cedula"] = bool(d.pop("cedula", None))
+    return d
+
+
+def obtener_cedula_tarjeta(conn: sqlite3.Connection, usuario_id: int, ultimos4: str | None) -> str | None:
+    """Cédula DESCIFRADA guardada para la tarjeta activa de usuario_id con
+    esos últimos4 -- la contraseña de sus PDF de extracto, para no tener
+    que reescribirla en cada carga. Mismo criterio de "exactamente una
+    coincidencia" que _resolver_tarjeta_por_ultimos4: con 0 o 2+ no se
+    adivina."""
+    if not ultimos4:
+        return None
+    filas = conn.execute(
+        "SELECT cedula FROM tarjetas_credito WHERE usuario_id = ? AND activa = 1 AND ultimos4 = ?",
+        (usuario_id, ultimos4),
+    ).fetchall()
+    if len(filas) != 1 or not filas[0]["cedula"]:
+        return None
+    try:
+        return cifrado.descifrar(filas[0]["cedula"])
+    except ValueError:
+        return None
+
+
 def crear_tarjeta(conn: sqlite3.Connection, usuario_id: int, nombre: str, cupo_total: float,
-                   entidad: str | None = None, ultimos4: str | None = None) -> int:
+                   entidad: str | None = None, ultimos4: str | None = None,
+                   cedula: str | None = None) -> int:
     """cupo_total es obligatorio y > 0 (validado acá, no solo en la UI --
     ver requisitos, "Cupo total es obligatorio").
 
@@ -1271,9 +1375,12 @@ def crear_tarjeta(conn: sqlite3.Connection, usuario_id: int, nombre: str, cupo_t
         raise ValueError("El cupo total tiene que ser mayor a 0.")
     entidad = (entidad or "").strip() or None
     ultimos4 = (ultimos4 or "").strip() or None
+    cedula = (cedula or "").strip()
+    cedula_cifrada = cifrado.cifrar(cedula) if cedula else None
     cur = conn.execute(
-        "INSERT INTO tarjetas_credito (usuario_id, nombre, entidad, cupo_total, ultimos4) VALUES (?, ?, ?, ?, ?)",
-        (usuario_id, nombre, entidad, cupo_total, ultimos4),
+        "INSERT INTO tarjetas_credito (usuario_id, nombre, entidad, cupo_total, ultimos4, cedula) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (usuario_id, nombre, entidad, cupo_total, ultimos4, cedula_cifrada),
     )
     tarjeta_id = cur.lastrowid
     conn.commit()
@@ -1290,12 +1397,7 @@ def obtener_tarjetas(conn: sqlite3.Connection, usuario_id: int, solo_activas: bo
     if solo_activas:
         sql += " AND activa = 1"
     sql += " ORDER BY activa DESC, nombre"
-    out = []
-    for r in conn.execute(sql, params).fetchall():
-        d = dict(r)
-        d["activa"] = bool(d["activa"])
-        out.append(d)
-    return out
+    return [_fila_tarjeta_publica(r) for r in conn.execute(sql, params).fetchall()]
 
 
 def obtener_tarjeta(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: int) -> dict | None:
@@ -1306,11 +1408,7 @@ def obtener_tarjeta(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: int) 
     r = conn.execute(
         "SELECT * FROM tarjetas_credito WHERE id = ? AND usuario_id = ?", (tarjeta_id, usuario_id)
     ).fetchone()
-    if not r:
-        return None
-    d = dict(r)
-    d["activa"] = bool(d["activa"])
-    return d
+    return _fila_tarjeta_publica(r) if r else None
 
 
 def actualizar_tarjeta(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: int, nombre: str | None = None,

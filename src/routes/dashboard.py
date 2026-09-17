@@ -371,6 +371,7 @@ def api_cargar_extracto():
     destino = UPLOADS_DIR / f"{uuid.uuid4().hex}_{nombre_seguro}"
     archivo.save(destino)
 
+    marca = ultimos4 = cedula = ""
     try:
         if tipo == "excel":
             movimientos = _leer_excel_generico(destino)
@@ -380,23 +381,69 @@ def api_cargar_extracto():
         elif tipo == "pdf_tarjeta":
             marca = (request.form.get("marca") or "Credito").strip()
             ultimos4 = (request.form.get("ultimos4") or "").strip()
+            cedula = (request.form.get("cedula") or "").strip()
             if not ultimos4:
                 return jsonify(ok=False, error="Falta indicar los últimos 4 dígitos de la tarjeta."), 400
-            crudos, _intereses, _desde, _hasta = rex.parse_card_statement(destino, ultimos4)
+            if not cedula:
+                # Si ya se cargó un extracto de esta tarjeta antes, la cédula
+                # quedó guardada (cifrada) con ella -- no hace falta reescribirla.
+                with db.conexion() as conn:
+                    cedula = db.obtener_cedula_tarjeta(conn, viendo_id(), ultimos4) or ""
+            crudos, _intereses, _desde, _hasta = rex.parse_card_statement(
+                destino, ultimos4, password=cedula or None)
             movimientos = [rex.normalizar_card(m, marca) for m in crudos]
         else:
             return jsonify(ok=False, error=f"Tipo de archivo desconocido: {tipo!r}"), 400
     except Exception as e:
-        return jsonify(ok=False, error=f"No pude leer el archivo: {e}"), 400
+        return jsonify(ok=False, error=_mensaje_error_extracto(e)), 400
 
     if not movimientos:
         return jsonify(ok=False, error="No encontré movimientos en ese archivo."), 400
 
+    tarjeta_creada = None
     with db.conexion() as conn:
         db.crear_esquema(conn)
+        if tipo == "pdf_tarjeta":
+            # El alta va ANTES de insertar: insertar_movimientos() resuelve
+            # tarjeta_id por ultimos4 contra las tarjetas que existen en ese
+            # momento -- si la creáramos después, todos los movimientos de
+            # este extracto quedarían huérfanos.
+            tarjeta_creada = _crear_tarjeta_si_falta(conn, destino, marca, ultimos4, cedula)
         stats = db.insertar_movimientos(conn, movimientos, origen=f"upload_{tipo}", usuario_id=viendo_id())
 
-    return jsonify(ok=True, **stats)
+    return jsonify(ok=True, tarjeta_creada=tarjeta_creada, **stats)
+
+
+def _mensaje_error_extracto(e: Exception) -> str:
+    """PDFPasswordIncorrect llega con str(e) vacío -- el mensaje quedaba en
+    "No pude leer el archivo:" a secas, sin decir qué pasó. Es de lejos el
+    error más común al subir un extracto de tarjeta: Bancolombia los cifra
+    con la cédula del titular."""
+    texto = str(e).strip()
+    if "password" in f"{texto} {type(e).__name__} {e!r}".lower():
+        return ("Ese PDF está protegido con contraseña. Escribí la cédula del "
+                "titular (solo números, sin puntos) para poder abrirlo.")
+    return f"No pude leer el archivo: {texto}" if texto else "No pude leer el archivo."
+
+
+def _crear_tarjeta_si_falta(conn, pdf_path, marca: str, ultimos4: str, cedula: str) -> dict | None:
+    """Da de alta la tarjeta del extracto si el usuario todavía no la tiene
+    (match por últimos4 entre sus tarjetas ACTIVAS). El cupo sale del propio
+    extracto ("Cupo total: $ ..."): si el PDF no lo trae, NO se crea nada --
+    un cupo inventado falsearía el "disponible" del dashboard. Devuelve el
+    resumen de lo creado, o None si no hizo falta crear (o no se pudo)."""
+    activas = db.obtener_tarjetas(conn, viendo_id(), solo_activas=True)
+    if any(t["ultimos4"] == ultimos4 for t in activas):
+        return None
+    cupo = rex.parse_card_cupo(pdf_path, password=cedula or None)
+    if not cupo:
+        return None
+    nombre = marca or "Tarjeta de crédito"
+    tarjeta_id = db.crear_tarjeta(
+        conn, viendo_id(), nombre=nombre, cupo_total=cupo,
+        entidad="Bancolombia", ultimos4=ultimos4, cedula=cedula or None,
+    )
+    return {"id": tarjeta_id, "nombre": nombre, "ultimos4": ultimos4, "cupo_total": cupo}
 
 
 def _leer_excel_generico(path) -> list[dict]:
