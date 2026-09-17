@@ -1,5 +1,5 @@
 ﻿{% extends "base.html" %}
-{% block title %}Cargar extractos{% endblock %}
+{% block title %}Extractos bancarios · Cuadre{% endblock %}
 
 {% block head %}
 <style>
@@ -53,14 +53,14 @@
 
   <div class="page-header">
     <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="22" height="22" aria-hidden="true" style="vertical-align:middle; margin-right:8px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Extractos bancarios</h1>
-    <p>Sube un Excel o un PDF de extracto — se procesa y se inserta en <b style="color:var(--text-muted)">finanzas.db</b> sin duplicar lo que ya esté registrado.</p>
+    <p>Sube un Excel o un PDF de extracto bancario. Se procesa automáticamente y los movimientos quedan en tu historial, sin duplicar lo que ya está registrado.</p>
   </div>
 
-  {% if usuario_rol == 'admin' %}
+  {% if usuario_rol == 'admin' and viendo_id != usuario_id %}
   <div class="aviso-cuenta">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true" style="flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-    Estás por cargar movimientos para la cuenta de <b>{{ usuario_viendo_nombre }}</b>.
-    Si no es la que quieres, cámbiala primero en "Viendo perfil de" (menú de la izquierda).
+    Vas a cargar movimientos para la cuenta de <b>{{ usuario_viendo_nombre }}</b>.
+    Cambia el perfil en "Viendo perfil de" (menú izquierdo) si no es el que quieres.
   </div>
   {% endif %}
 
@@ -70,7 +70,7 @@
       <form id="formCarga">
         <label class="field-label">Tipo de archivo</label>
         <select name="tipo" id="tipoArchivo" class="field-select">
-          <option value="excel">Excel (mismo formato que la base de datos)</option>
+          <option value="excel">Excel (.xlsx — plantilla descargable)</option>
           <option value="pdf_ahorros">PDF — Extracto de cuenta de ahorros</option>
           <option value="pdf_tarjeta">PDF — Extracto de tarjeta de crédito</option>
         </select>
@@ -122,7 +122,7 @@
       <h3>Cómo funciona</h3>
       <div class="item">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
-        <p><b>Excel:</b> mismas columnas que la tabla movimientos — fecha, tipo, categoria, moneda, monto, descripcion, entidad.</p>
+        <p><b>Excel:</b> columnas requeridas — fecha, tipo, categoría, moneda, monto, descripción, entidad. Descarga la plantilla para ver el formato exacto.</p>
       </div>
       <div class="item">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
@@ -181,10 +181,8 @@ archivoInput.addEventListener('change', () => {
 document.getElementById('formCarga').addEventListener('submit', async (e) => {
   e.preventDefault();
 
-  {% if usuario_rol == 'admin' %}
-  // Confirmación explícita solo para admin -- es quien puede tener
-  // seleccionado el perfil de OTRA persona en "Viendo perfil de" y no
-  // haberse dado cuenta (esto ya pasó una vez de verdad).
+  {% if usuario_rol == 'admin' and viendo_id != usuario_id %}
+  // Confirmación solo cuando admin está viendo perfil de otra cuenta
   const confirmado = await confirmarApp('¿Confirmas que este archivo es de la cuenta de "{{ usuario_viendo_nombre }}"?');
   if (!confirmado) return;
   {% endif %}
@@ -206,7 +204,7 @@ document.getElementById('formCarga').addEventListener('submit', async (e) => {
       await mostrarAlertaApp('error', json.error || 'Error desconocido');
       return;
     }
-    const lineas = [`${json.nuevos} movimiento(s) nuevo(s) insertado(s).`];
+    const lineas = [`${json.nuevos} ${json.nuevos === 1 ? 'movimiento nuevo insertado' : 'movimientos nuevos insertados'}.`];
     if (json.duplicados_bd > 0) lineas.push(`${json.duplicados_bd} ya estaban guardados de antes (mismo día y monto).`);
     if (json.duplicados_lote > 0) lineas.push(`${json.duplicados_lote} estaban repetidos dentro del mismo archivo.`);
     lineas.push('El dashboard ya se actualizó con estos datos.');

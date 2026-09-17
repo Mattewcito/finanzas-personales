@@ -155,6 +155,7 @@ def inyectar_globales():
                     usuario_viendo_nombre = cuenta_vista["nombre_mostrado"]
     return {
         "modo": MODO,
+        "usuario_id": session.get("usuario_id"),
         "usuario_nombre": session.get("nombre"),
         "usuario_rol": session.get("rol"),
         "viendo_id": viendo_id(),
@@ -168,6 +169,8 @@ def inyectar_globales():
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "GET":
+        if session.get("usuario_id"):
+            return redirect(url_for("dashboard.home"))
         return render_template("login.html", error=None)
 
     username = request.form.get("username", "").strip()

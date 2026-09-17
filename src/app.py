@@ -52,7 +52,7 @@ import secrets
 import threading
 import webbrowser
 
-from flask import Flask, jsonify, request, abort
+from flask import Flask, jsonify, request, abort, render_template
 from urllib.parse import urlparse
 
 for _stream in (sys.stdout, sys.stderr):
@@ -118,6 +118,16 @@ app.register_blueprint(correo_bp)
 app.register_blueprint(admin_vistas_bp)
 app.register_blueprint(tarjetas_bp)
 app.register_blueprint(presupuesto_bp)
+
+
+@app.errorhandler(404)
+def pagina_no_encontrada(e):
+    return render_template("404.html"), 404
+
+
+@app.errorhandler(500)
+def error_interno(e):
+    return render_template("500.html"), 500
 
 
 @app.route("/health")

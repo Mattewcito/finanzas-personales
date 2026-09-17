@@ -3199,7 +3199,7 @@ if (haySoloUnaMoneda) {
       cutout: '70%',
       plugins: {
         legend: { position:'bottom', labels:{ boxWidth:10, padding:14, color: CT.texto } },
-        tooltip: tooltipBase(CT, { label:(ctx)=> `${ctx.label}: ${ctx.parsed} movimiento(s)` })
+        tooltip: tooltipBase(CT, { label:(ctx)=> `${ctx.label}: ${ctx.parsed} ${ctx.parsed === 1 ? 'movimiento' : 'movimientos'}` })
       }
     }
   });
@@ -3408,7 +3408,7 @@ const subsUSD = subs.filter(r=>r.moneda==='USD');
 if (subs.length) {
   insights.push({
     icon: iconoSVG('smartphone', 18),
-    title: `${new Set(subs.map(r=>r.descripcion.split(' - ')[0])).size} servicio(s) de suscripción detectados`,
+    title: `${new Set(subs.map(r=>r.descripcion.split(' - ')[0])).size} ${new Set(subs.map(r=>r.descripcion.split(' - ')[0])).size === 1 ? 'servicio de suscripción detectado' : 'servicios de suscripción detectados'}`,
     text: `${[...subsPorServicio.entries()].map(([s,v])=>`<b>${escapeHtml(s)}</b> (${fmtCOP(v)} acumulado)`).join(', ')}${subsUSD.length? ` y <b>${escapeHtml(subsUSD[0].descripcion)}</b> (${fmtUSD(subsUSD[0].monto)}/mes)` : ''}. Los cargos de Apple varían mes a mes — vale la pena revisar qué apps se están renovando.`
   });
 }
@@ -3456,7 +3456,7 @@ if (totalGastosCOP) {
   insights.push({
     icon: iconoSVG('coins', 18),
     title: `${fmtPct(totalDiscrecional/totalGastosCOP*100)} del gasto es discrecional`,
-    text: `Restaurantes, entretenimiento, compras y ropa suman <b>${fmtCOP(totalDiscrecional)}</b>.${diasFraccionados.length ? ` Además, se detectaron <b>${diasFraccionados.length} día(s)</b> con 3+ compras de la misma categoría (ej. ${escapeHtml(capitalize(ejemploCat))} el ${fmtDate(ejemploFecha)}) — posibles compras impulsivas fraccionadas.` : ''}`
+    text: `Restaurantes, entretenimiento, compras y ropa suman <b>${fmtCOP(totalDiscrecional)}</b>.${diasFraccionados.length ? ` Además, se detectaron <b>${diasFraccionados.length} ${diasFraccionados.length === 1 ? 'día' : 'días'}</b> con 3+ compras de la misma categoría (ej. ${escapeHtml(capitalize(ejemploCat))} el ${fmtDate(ejemploFecha)}) — posibles compras impulsivas fraccionadas.` : ''}`
   });
 }
 
