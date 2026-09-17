@@ -4,14 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='brand/favicon.svg') }}">
-<script>
-(function(){
-  try {
-    var t = localStorage.getItem('finanzas_theme');
-    if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
-  } catch(e) {}
-})();
-</script>
+<!-- Tema fijo en claro (toggle desactivado; ignoramos localStorage y OS),
+     igual que base.html -- si no, un 'finanzas_theme: dark' guardado de
+     antes dejaba esta pantalla oscura y el resto de la app clara. -->
+<script>document.documentElement.setAttribute('data-theme','light');</script>
 <title>Error interno · Cuadre</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
