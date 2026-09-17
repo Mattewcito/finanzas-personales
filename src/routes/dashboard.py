@@ -375,14 +375,14 @@ def api_cargar_extracto():
         if tipo == "excel":
             movimientos = _leer_excel_generico(destino)
         elif tipo == "pdf_ahorros":
-            crudos = rex.parse_savings_statement(destino)
+            crudos, _intereses, _desde, _hasta = rex.parse_savings_statement(destino)
             movimientos = [rex.normalizar_savings(m) for m in crudos]
         elif tipo == "pdf_tarjeta":
             marca = (request.form.get("marca") or "Credito").strip()
             ultimos4 = (request.form.get("ultimos4") or "").strip()
             if not ultimos4:
                 return jsonify(ok=False, error="Falta indicar los últimos 4 dígitos de la tarjeta."), 400
-            crudos = rex.parse_card_statement(destino, ultimos4)
+            crudos, _intereses, _desde, _hasta = rex.parse_card_statement(destino, ultimos4)
             movimientos = [rex.normalizar_card(m, marca) for m in crudos]
         else:
             return jsonify(ok=False, error=f"Tipo de archivo desconocido: {tipo!r}"), 400

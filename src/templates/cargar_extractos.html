@@ -45,6 +45,26 @@
     border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent); color: var(--text);
   }
   .aviso-cuenta b{ color: var(--warning); }
+
+  /* Resultado de carga — más grande y legible que el toast */
+  #resultado.ok{
+    border-left-width: 4px; padding: 16px 18px;
+    font-size: 14px; line-height: 1.65;
+    background: color-mix(in srgb, var(--positive) 9%, var(--surface));
+    border-color: var(--positive); color: var(--text);
+  }
+  #resultado.ok .res-titulo{
+    display:block; font-weight:700; font-size:15px; color: var(--positive); margin-bottom:6px;
+  }
+  #resultado.error{
+    border-left-width: 4px; padding: 16px 18px;
+    font-size: 14px; line-height: 1.65;
+    background: color-mix(in srgb, var(--negative) 9%, var(--surface));
+    border-color: var(--negative); color: var(--text);
+  }
+  #resultado.error .res-titulo{
+    display:block; font-weight:700; font-size:15px; color: var(--negative); margin-bottom:6px;
+  }
 </style>
 {% endblock %}
 
@@ -199,19 +219,29 @@ document.getElementById('formCarga').addEventListener('submit', async (e) => {
   try {
     const res = await fetch('/api/cargar-extracto', { method: 'POST', body: datos });
     const json = await res.json();
-    resultado.style.display = 'none';
     if (!res.ok || !json.ok) {
-      await mostrarAlertaApp('error', json.error || 'Error desconocido');
+      resultado.className = 'result-box error';
+      resultado.innerHTML =
+        '<span class="res-titulo">No se pudo procesar el archivo</span>' +
+        (json.error || 'Error desconocido');
       return;
     }
-    const lineas = [`${json.nuevos} ${json.nuevos === 1 ? 'movimiento nuevo insertado' : 'movimientos nuevos insertados'}.`];
-    if (json.duplicados_bd > 0) lineas.push(`${json.duplicados_bd} ya estaban guardados de antes (mismo día y monto).`);
-    if (json.duplicados_lote > 0) lineas.push(`${json.duplicados_lote} estaban repetidos dentro del mismo archivo.`);
-    lineas.push('El dashboard ya se actualizó con estos datos.');
-    await mostrarAlertaApp('ok', lineas.join('\n'));
+    const n = json.nuevos;
+    const partes = [];
+    if (json.duplicados_bd > 0)
+      partes.push(`${json.duplicados_bd} ${json.duplicados_bd === 1 ? 'ya estaba guardado' : 'ya estaban guardados'} de antes (mismo día y monto).`);
+    if (json.duplicados_lote > 0)
+      partes.push(`${json.duplicados_lote} ${json.duplicados_lote === 1 ? 'estaba repetido' : 'estaban repetidos'} dentro del mismo archivo.`);
+    partes.push('El dashboard ya refleja estos datos.');
+    resultado.className = 'result-box ok';
+    resultado.innerHTML =
+      `<span class="res-titulo">${n} ${n === 1 ? 'movimiento nuevo insertado' : 'movimientos nuevos insertados'}</span>` +
+      partes.join('<br>');
   } catch (err) {
-    resultado.style.display = 'none';
-    await mostrarAlertaApp('error', 'No se pudo conectar con el servidor.');
+    resultado.className = 'result-box error';
+    resultado.innerHTML =
+      '<span class="res-titulo">Error de conexión</span>' +
+      'No se pudo conectar con el servidor.';
   } finally {
     btn.disabled = false;
   }
