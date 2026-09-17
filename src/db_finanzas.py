@@ -538,6 +538,9 @@ class _PGConn:
     def __init__(self, raw):
         self._raw = raw
 
+    def cursor(self):
+        return self
+
     def execute(self, sql: str, params=()):
         import psycopg2.extras
         adapted = _adapt_sql_pg(sql)

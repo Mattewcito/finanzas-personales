@@ -261,7 +261,7 @@
     font-size: 13px; border-left: 3px solid var(--text-subtle);
     background: var(--surface-2); white-space:pre-line;
     animation: resultBoxIn .22s var(--ease);
-    transition: filter .18s ease;
+    transition: box-shadow .18s ease;
   }
   @keyframes resultBoxIn{ from{ opacity:0; transform:translateX(24px); } to{ opacity:1; transform:translateX(0); } }
   @keyframes resultBoxOut{ from{ opacity:1; transform:translateX(0); } to{ opacity:0; transform:translateX(48px); } }
@@ -269,7 +269,14 @@
   .result-box.ok{ border-left-color: var(--positive); color: var(--positive); }
   .result-box.error{ border-left-color: var(--negative); color: var(--negative); }
   .result-box.loading{ border-left-color: var(--brand); color: var(--text-muted); }
-  .result-box.ok:hover, .result-box.error:hover{ filter: brightness(1.06); cursor: default; }
+  .result-box.ok:hover{
+    box-shadow: 0 4px 20px -4px color-mix(in srgb, var(--positive) 35%, transparent);
+    cursor: default;
+  }
+  .result-box.error:hover{
+    box-shadow: 0 4px 20px -4px color-mix(in srgb, var(--negative) 35%, transparent);
+    cursor: default;
+  }
   /* Spinner del estado "cargando" -- reemplaza el texto suelto por un
      indicador visual, más moderno y más claro de leer de un vistazo. */
   .result-box.loading{ display:flex; align-items:center; gap:10px; }
@@ -445,7 +452,7 @@
     font-size:13.5px; color:var(--text); line-height:1.45;
     cursor: default; transition: filter .18s ease;
   }
-  .toast:hover{ filter: brightness(1.08); }
+  .toast:hover{ box-shadow: 0 8px 28px -6px rgba(14,19,33,.28); }
   .toast.saliendo{ animation: toastOut .5s var(--ease) forwards; }
   @keyframes toastIn{ from{ opacity:0; transform:translateX(20px); } to{ opacity:1; transform:translateX(0); } }
   @keyframes toastOut{ from{ opacity:1; transform:translateX(0); } to{ opacity:0; transform:translateX(40px); } }
