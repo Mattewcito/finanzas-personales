@@ -471,15 +471,21 @@ _RE_INSERT_OR_IGNORE = re.compile(r'INSERT\s+OR\s+IGNORE\s+INTO', re.IGNORECASE)
 _RE_NAMED_PARAM = re.compile(r':(\w+)')
 
 
+_RE_VIEW_IF_NOT_EXISTS = re.compile(
+    r'CREATE\s+VIEW\s+IF\s+NOT\s+EXISTS\s+', re.IGNORECASE)
+
+
 def _adapt_sql_pg(sql: str) -> str:
     """Convierte SQL SQLite-compatible a PostgreSQL-compatible en el momento
     de ejecutar, sin modificar las constantes de texto del módulo.
     Conversiones: datetime('now',...) → TO_CHAR(NOW()...), INSERT OR IGNORE
-    → INSERT ... ON CONFLICT DO NOTHING, ? → %s, :name → %(name)s."""
+    → INSERT ... ON CONFLICT DO NOTHING, ? → %s, :name → %(name)s,
+    CREATE VIEW IF NOT EXISTS → CREATE OR REPLACE VIEW."""
     sql = _RE_DATETIME_NOW.sub(_NOW_PG, sql)
     if _RE_INSERT_OR_IGNORE.search(sql):
         sql = _RE_INSERT_OR_IGNORE.sub('INSERT INTO', sql)
         sql = sql.rstrip().rstrip(';') + '\nON CONFLICT DO NOTHING'
+    sql = _RE_VIEW_IF_NOT_EXISTS.sub('CREATE OR REPLACE VIEW ', sql)
     sql = sql.replace('?', '%s')
     sql = _RE_NAMED_PARAM.sub(r'%(\1)s', sql)
     return sql
@@ -558,13 +564,27 @@ class _PGConn:
 
     def executescript(self, sql: str):
         """Ejecuta SQL multi-sentencia dividiendo por ';' (psycopg2 no acepta
-        múltiples statements en un execute)."""
+        múltiples statements en un execute).
+
+        Usa SAVEPOINTs para tolerar la race condition de CREATE TABLE IF NOT
+        EXISTS bajo workers concurrentes de gunicorn: PostgreSQL puede lanzar
+        UniqueViolation en pg_class cuando dos workers intentan crear la misma
+        tabla/secuencia al mismo tiempo -- el savepoint permite ignorar ese
+        error sin abortar la transacción completa."""
+        import psycopg2.errors as _pge
         sql_clean = re.sub(r'--[^\n]*', '', sql)
         cur = self._raw.cursor()
         for stmt in sql_clean.split(';'):
             s = stmt.strip()
             if s:
-                cur.execute(_adapt_sql_pg(s))
+                try:
+                    cur.execute("SAVEPOINT _sp")
+                    cur.execute(_adapt_sql_pg(s))
+                    cur.execute("RELEASE SAVEPOINT _sp")
+                except (_pge.UniqueViolation, _pge.DuplicateTable,
+                        _pge.DuplicateObject):
+                    cur.execute("ROLLBACK TO SAVEPOINT _sp")
+                    cur.execute("RELEASE SAVEPOINT _sp")
         self._raw.commit()
 
     def rollback(self):
