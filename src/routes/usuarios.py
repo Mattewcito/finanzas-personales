@@ -97,6 +97,25 @@ def editar_usuario_page(usuario_id):
     return render_template("editar_usuario.html", activo="crear_usuario", cuenta=cuenta)
 
 
+@usuarios_bp.route("/api/eliminar-usuario/<int:usuario_id>", methods=["POST"])
+@login_required
+def api_eliminar_usuario(usuario_id):
+    if session.get("rol") != "admin":
+        return jsonify(ok=False, error="Solo un administrador puede eliminar usuarios."), 403
+    if usuario_id == session.get("usuario_id"):
+        return jsonify(ok=False, error="No podés eliminarte a vos mismo."), 400
+    with db.conexion() as conn:
+        cuenta = db.obtener_usuario(conn, usuario_id)
+        if not cuenta:
+            return jsonify(ok=False, error="Usuario no encontrado."), 404
+        if cuenta["rol"] == "admin":
+            admins = [u for u in db.listar_usuarios(conn) if u["rol"] == "admin"]
+            if len(admins) <= 1:
+                return jsonify(ok=False, error="No podés eliminar el único administrador."), 400
+        db.eliminar_usuario(conn, usuario_id)
+    return jsonify(ok=True)
+
+
 @usuarios_bp.route("/api/editar-usuario/<int:usuario_id>", methods=["POST"])
 @login_required
 def api_editar_usuario(usuario_id):

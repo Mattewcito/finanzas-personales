@@ -1019,6 +1019,17 @@ def listar_usuarios(conn: sqlite3.Connection) -> list[dict]:
     return [dict(r) for r in conn.execute("SELECT id, username, rol, nombre_mostrado FROM usuarios ORDER BY id")]
 
 
+def eliminar_usuario(conn: sqlite3.Connection, usuario_id: int) -> None:
+    """Elimina el usuario y todos sus datos asociados (cascada manual).
+    Orden: primero las tablas que referencian usuarios(id) por FK, luego la
+    fila de usuarios misma."""
+    for tabla in ("correo_config", "vistas_ocultas", "tarjetas_credito",
+                  "presupuesto", "presupuesto_categorias", "metas_ahorro"):
+        conn.execute(f"DELETE FROM {tabla} WHERE usuario_id = ?", (usuario_id,))
+    conn.execute("DELETE FROM usuarios WHERE id = ?", (usuario_id,))
+    conn.commit()
+
+
 # ----------------------------- Configuración de lectura de correo -----------------------------
 # email/app_password/cedula se guardan CIFRADOS en la columna (ver
 # cifrado.py) -- esta es la ÚNICA capa que cifra/descifra; el resto del
