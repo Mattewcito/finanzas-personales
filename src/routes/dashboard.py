@@ -4,6 +4,7 @@ routes/dashboard.py
 Blueprint del dashboard: verlo, registrar un movimiento a mano, y cargar
 extractos (Excel/PDF). Ver auth.py para el patrón de Blueprints elegido.
 """
+import concurrent.futures
 import datetime
 import io
 import sys
@@ -94,14 +95,28 @@ def api_dashboard_data():
     50/30/20, mapeo vacío, lista vacía) -- nunca None/NaN, cumple el
     caso borde "cuenta nueva sin presupuesto configurado todavía" del
     documento de requisitos."""
-    with db.conexion() as conn:
-        movimientos = db.obtener_movimientos(conn, usuario_id=viendo_id())
-        ledger_deuda = db.obtener_ledger_deuda(conn, usuario_id=viendo_id())
-        vistas_ocultas_viendo = db.vistas_ocultas_de(conn, viendo_id())
-        tarjetas = db.obtener_tarjetas_con_deuda(conn, usuario_id=viendo_id())
-        presupuesto = db.obtener_presupuesto(conn, usuario_id=viendo_id())
-        categoria_balde = db.obtener_mapeo_categorias(conn, usuario_id=viendo_id())
-        metas_ahorro = db.obtener_metas_ahorro(conn, usuario_id=viendo_id())
+    uid = viendo_id()
+
+    def _q(fn, *args, **kwargs):
+        with db.conexion() as conn:
+            return fn(conn, *args, **kwargs)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=7) as ex:
+        f_mov = ex.submit(_q, db.obtener_movimientos,        usuario_id=uid)
+        f_led = ex.submit(_q, db.obtener_ledger_deuda,       usuario_id=uid)
+        f_vis = ex.submit(_q, db.vistas_ocultas_de,          uid)
+        f_tar = ex.submit(_q, db.obtener_tarjetas_con_deuda, uid)
+        f_pre = ex.submit(_q, db.obtener_presupuesto,        uid)
+        f_cat = ex.submit(_q, db.obtener_mapeo_categorias,   uid)
+        f_met = ex.submit(_q, db.obtener_metas_ahorro,       uid)
+
+    movimientos           = f_mov.result()
+    ledger_deuda          = f_led.result()
+    vistas_ocultas_viendo = f_vis.result()
+    tarjetas              = f_tar.result()
+    presupuesto           = f_pre.result()
+    categoria_balde       = f_cat.result()
+    metas_ahorro          = f_met.result()
 
     perfil = None
     if "perfil_financiero" not in vistas_ocultas_viendo:
