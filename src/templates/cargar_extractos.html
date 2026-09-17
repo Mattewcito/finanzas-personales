@@ -198,6 +198,8 @@ archivoInput.addEventListener('change', () => {
   });
 });
 
+let _cancelarDismiss = null;
+
 document.getElementById('formCarga').addEventListener('submit', async (e) => {
   e.preventDefault();
 
@@ -211,6 +213,9 @@ document.getElementById('formCarga').addEventListener('submit', async (e) => {
   const resultado = document.getElementById('resultado');
   const btn = document.getElementById('btnSubmit');
 
+  // Cancela cualquier dismiss pendiente del resultado anterior
+  if (_cancelarDismiss) { _cancelarDismiss(); _cancelarDismiss = null; }
+  resultado.classList.remove('saliendo');
   resultado.style.display = 'block';
   resultado.className = 'result-box loading';
   resultado.textContent = 'Procesando...';
@@ -224,6 +229,7 @@ document.getElementById('formCarga').addEventListener('submit', async (e) => {
       resultado.innerHTML =
         '<span class="res-titulo">No se pudo procesar el archivo</span>' +
         (json.error || 'Error desconocido');
+      _cancelarDismiss = window.autoDismissAlert(resultado, 5000);
       return;
     }
     const n = json.nuevos;
@@ -237,11 +243,13 @@ document.getElementById('formCarga').addEventListener('submit', async (e) => {
     resultado.innerHTML =
       `<span class="res-titulo">${n} ${n === 1 ? 'movimiento nuevo insertado' : 'movimientos nuevos insertados'}</span>` +
       partes.join('<br>');
+    _cancelarDismiss = window.autoDismissAlert(resultado, 5000);
   } catch (err) {
     resultado.className = 'result-box error';
     resultado.innerHTML =
       '<span class="res-titulo">Error de conexión</span>' +
       'No se pudo conectar con el servidor.';
+    _cancelarDismiss = window.autoDismissAlert(resultado, 5000);
   } finally {
     btn.disabled = false;
   }
