@@ -366,10 +366,13 @@ class _LibSQLDictCursor:
         self._raw = raw
 
     def execute(self, sql, params=()):
+        if isinstance(params, list):
+            params = tuple(params)
         self._raw.execute(sql, params)
         return self
 
     def executemany(self, sql, params_seq):
+        params_seq = [tuple(p) if isinstance(p, list) else p for p in params_seq]
         self._raw.executemany(sql, params_seq)
         return self
 
