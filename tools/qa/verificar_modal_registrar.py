@@ -78,6 +78,20 @@ def main():
         check("el foco entra al primer campo",
               pag.evaluate("document.activeElement && document.activeElement.id") == "regFecha")
 
+        # La fecha se precarga en hora LOCAL, no UTC. Antes se usaba
+        # `valueAsDate = new Date()`, que por spec interpreta el Date en
+        # UTC: en UTC-5, de 19:00 en adelante el campo traía el día de
+        # MAÑANA y se mal-fechaba todo gasto cargado de noche (QA,
+        # 2026-09-18). El chequeo de verdad está en revisar_zona_horaria().
+        esperada = pag.evaluate("""(function(){
+          var d = new Date();
+          return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0')
+                                 + '-' + String(d.getDate()).padStart(2,'0');
+        })()""")
+        check("la fecha se precarga con HOY en hora local",
+              pag.evaluate("document.getElementById('regFecha').value") == esperada,
+              "esperaba " + esperada + ", vino " + str(pag.evaluate("document.getElementById('regFecha').value")))
+
         pag.keyboard.press("Escape")
         pag.wait_for_timeout(700)
         check("Escape cierra el modal", not pag.evaluate(abierto))
@@ -162,5 +176,47 @@ def main():
     return 1 if fallas else 0
 
 
+def revisar_zona_horaria():
+    """El caso que motivo el fix: una zona donde AHORA MISMO el dia UTC y
+    el dia local son distintos. Se elige la que este desfasada respecto de
+    UTC en este momento, asi el chequeo vale a cualquier hora del dia."""
+    import datetime
+    ahora_utc = datetime.datetime.now(datetime.timezone.utc)
+    # UTC-10 y UTC+13: alguna de las dos siempre cae en otro dia que UTC.
+    candidatas = [("Pacific/Honolulu", -10), ("Pacific/Auckland", 13)]
+    zona, offset = next(
+        ((z, o) for z, o in candidatas
+         if (ahora_utc + datetime.timedelta(hours=o)).date() != ahora_utc.date()),
+        (None, None))
+    if not zona:
+        print("  (se omite: ninguna zona de prueba cae en otro dia que UTC ahora)")
+        return True
+    esperado = (ahora_utc + datetime.timedelta(hours=offset)).strftime("%Y-%m-%d")
+
+    with sync_playwright() as pw:
+        nav = pw.chromium.launch()
+        ctx = nav.new_context(viewport={"width": 1280, "height": 900}, timezone_id=zona)
+        pag = ctx.new_page()
+        pag.goto(BASE + "/login")
+        pag.fill('input[name="username"]', USUARIO)
+        pag.fill('input[name="password"]', CLAVE)
+        pag.click('button[type="submit"]')
+        pag.wait_for_load_state("networkidle")
+        pag.click("#ctaRegistrar")
+        pag.wait_for_timeout(600)
+        vino = pag.evaluate("document.getElementById('regFecha').value")
+        nav.close()
+
+    ok = vino == esperado
+    print(("  OK    " if ok else "  FALLA ") +
+          "la fecha respeta la zona del usuario (%s: hoy es %s, UTC es %s)"
+          % (zona, esperado, ahora_utc.strftime("%Y-%m-%d")) +
+          ("" if ok else "  -- vino " + str(vino)))
+    return ok
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    codigo = main()
+    if not revisar_zona_horaria():
+        codigo = 1
+    sys.exit(codigo)

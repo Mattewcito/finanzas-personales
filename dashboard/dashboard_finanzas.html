@@ -988,11 +988,25 @@
 
   .form-row{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
   .form-row label{ font-size:12px; font-weight:600; color: var(--text-muted); }
+  /* Mismo estilo de campo que base.html (2026-09-18): fondo de
+     superficie y borde de 1.5px, no relleno gris. Los modales de este
+     dashboard ("Configurar presupuesto", "Reasignar categorías") viven
+     en un <iframe> y no heredan la hoja del shell, así que si esto no se
+     toca quedan dos estilos de campo conviviendo en la misma pantalla
+     -- QA lo marcó el 2026-09-18. Si se cambia .field-input allá, hay
+     que cambiarlo acá. */
   .form-row input, .form-row select{
-    background: var(--surface-2); border:1px solid var(--border); border-radius:8px; color: var(--text);
-    padding:9px 12px; font-family:inherit; font-size:13px; width:100%;
+    background: var(--surface); border:1.5px solid var(--border); border-radius:10px; color: var(--text);
+    padding:10px 12px; font-family:inherit; font-size:13.5px; width:100%;
   }
-  .form-row input:focus, .form-row select:focus{ outline:none; border-color: var(--brand); }
+  .form-row input::placeholder{ color: var(--text-subtle); }
+  .form-row input:hover:not(:focus), .form-row select:hover:not(:focus){
+    border-color: color-mix(in srgb, var(--brand) 38%, var(--border));
+  }
+  .form-row input:focus, .form-row select:focus{
+    outline:none; border-color: var(--brand);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent);
+  }
   .form-error{ font-size:12px; color: var(--negative); margin: -6px 0 12px; }
   .form-error[hidden]{ display:none; }
   .form-suma-pct{ font-size:12px; color: var(--text-muted); margin: -6px 0 14px; }
@@ -1008,8 +1022,15 @@
     display:flex; align-items:center; gap:6px; min-width:0;
   }
   .categoria-balde-row select{
-    background: var(--surface-2); border:1px solid var(--border); border-radius:8px; color: var(--text);
+    background: var(--surface); border:1.5px solid var(--border); border-radius:8px; color: var(--text);
     padding:6px 10px; font-family:inherit; font-size:12px; flex-shrink:0;
+  }
+  .categoria-balde-row select:hover:not(:focus){
+    border-color: color-mix(in srgb, var(--brand) 38%, var(--border));
+  }
+  .categoria-balde-row select:focus{
+    outline:none; border-color: var(--brand);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent);
   }
 
   /* ===========================================================

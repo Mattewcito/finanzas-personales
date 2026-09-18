@@ -383,8 +383,35 @@
       padding: 6px 10px; font-size: 10.5px; margin-bottom: 0;
     }
     .sidebar-nav a span, .sidebar-nav-account-toggle span{ display: block !important; white-space: nowrap; }
+    /* Subir un PDF de extracto o configurar una casilla de correo son
+       flujos de escritorio: no entran en una barra de 375px. Estas dos
+       reglas existían desde el responsive de 2026-09-xx, pero el
+       rediseño posterior del menú dejó los <a> SIN estas clases, así que
+       no ocultaban nada y los dos ítems seguían apareciendo (bug real
+       encontrado por QA el 2026-09-18). */
     .sidebar-nav a.nav-cargar{ display: none !important; }
     .sidebar-nav a.nav-correo{ display: none !important; }
+    /* "GENERAL" / "IMPORTAR DATOS" son encabezados de una lista vertical:
+       en una barra horizontal no agrupan nada y costaban ~94px de alto. */
+    .nav-group-label{ display: none !important; }
+
+    /* El CTA entra como un ítem más de la barra, no como el pill de ancho
+       completo que es en escritorio: así empujaba al resto a una columna
+       angosta y la barra terminaba midiendo 291px, el 36% de la pantalla. */
+    /* OJO con la especificidad: el bloque base de .btn-sidebar-cta vive
+       MAS ABAJO en esta misma hoja, asi que con un solo selector de clase
+       (misma especificidad) ganaba el de abajo y el boton seguia siendo el
+       pill azul de ancho completo. Por eso todo va prefijado .app-sidebar. */
+    .app-sidebar, .app-sidebar.collapsed{ justify-content: center; align-items: center; }
+    .app-sidebar .sidebar-cta{ padding: 0; display: flex; align-items: center; flex: 0 0 auto; }
+    .app-sidebar .btn-sidebar-cta{
+      flex-direction: column; justify-content: center; gap: 3px;
+      width: auto; padding: 6px 10px; font-size: 10.5px; border-radius: 9px;
+      background: transparent; color: var(--brand); font-weight: 600;
+    }
+    .app-sidebar .btn-sidebar-cta:hover{ background: var(--brand-soft); }
+    .app-sidebar .btn-sidebar-cta span{ display: block !important; white-space: nowrap; }
+    .app-sidebar .sidebar-nav{ flex: 0 1 auto; }
 
     .sidebar-nav-account-toggle{
       display: flex; background: none; border: none; cursor: pointer;
@@ -751,7 +778,7 @@
       <span class="nav-group-label">Importar datos</span>
 
       {% if 'cargar_extractos' not in vistas_ocultas %}
-      <a href="/cargar-extractos" class="{{ 'active' if activo == 'cargar' else '' }}" aria-label="Extractos bancarios">
+      <a href="/cargar-extractos" class="nav-cargar {{ 'active' if activo == 'cargar' else '' }}" aria-label="Extractos bancarios">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
@@ -760,7 +787,7 @@
       {% endif %}
 
       {% if 'correo_automatico' not in vistas_ocultas %}
-      <a href="/configurar-correo" class="{{ 'active' if activo == 'correo' else '' }}" aria-label="Correo automático">
+      <a href="/configurar-correo" class="nav-correo {{ 'active' if activo == 'correo' else '' }}" aria-label="Correo automático">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">
           <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6 0 19.79 19.79 0 0 1-8.63 3.07A2 2 0 0 1 2 19.92v-3"/><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
         </svg>
@@ -1634,11 +1661,27 @@ window.autoDismissAlert = function(el, delay) {
       .catch(function(){ opcionesPedidas = false; });  // se reintenta al próximo abrir
   }
 
+  // Fecha de HOY en hora local, como 'YYYY-MM-DD'.
+  // No se usa `campoFecha.valueAsDate = new Date()` a propósito: por
+  // especificación ese setter interpreta el Date en UTC, no en la zona
+  // del usuario. En Colombia (UTC-5) eso significa que desde las 19:00
+  // en adelante el campo se precargaba con el día de MAÑANA, y quien no
+  // mirara el campo terminaba mal-fechando todo gasto cargado de noche
+  // -- con reportes por mes/período rotos como consecuencia. Bug real
+  // encontrado por QA el 2026-09-18 (había 5 movimientos de prueba ya
+  // guardados con la fecha corrida).
+  function fechaLocalHoy(){
+    const d = new Date();
+    const mes = String(d.getMonth() + 1).padStart(2, '0');
+    const dia = String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '-' + mes + '-' + dia;
+  }
+
   // ---- Abrir / cerrar ----
   function abrir(){
     if (dlg.open) return;
     limpiarResultado();
-    if (!campoFecha.value) campoFecha.valueAsDate = new Date();
+    if (!campoFecha.value) campoFecha.value = fechaLocalHoy();
     cargarOpciones();
     dlg.classList.remove('cerrando');
     dlg.showModal();
@@ -1745,7 +1788,7 @@ window.autoDismissAlert = function(el, delay) {
           return;
         }
         form.reset();
-        campoFecha.valueAsDate = new Date();
+        campoFecha.value = fechaLocalHoy();
         // La próxima apertura vuelve a pedir las opciones: la categoría
         // o entidad recién usada tiene que salir en el autocompletado.
         opcionesPedidas = false;
