@@ -909,6 +909,11 @@
   .balde-barra > span{ display:block; height:100%; border-radius:999px; background: var(--positive); }
   .balde-card.estado-amber .balde-barra > span{ background: var(--warning); }
   .balde-card.estado-rojo .balde-barra > span{ background: var(--negative); }
+  /* Sin ingresos en el período (2026-09-18): no hay contra qué medir, así
+     que ni verde ni rojo -- gris, y la barra no se dibuja. Ver el porqué
+     en renderPresupuesto(). */
+  .balde-card.estado-sin-ingresos .balde-card-estado{ background: var(--surface-2); color: var(--text-muted); }
+  .balde-card.estado-sin-ingresos .balde-barra > span{ width:0 !important; }
 
   .balde-cifras{ display:flex; flex-direction:column; gap:6px; }
   .balde-cifras .fila{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:12px; color:var(--text-muted); }
@@ -1402,6 +1407,10 @@
   <!-- ============================================================
        KPIs — métricas principales
        ============================================================ -->
+  <!-- Aviso de movimientos en dólares que no entran en los totales (ver
+       renderDashboard, "PLATA EN DÓLARES"). Vacío si el período es todo en
+       pesos. -->
+  <div id="avisoMoneda"></div>
   <div class="kpi-grid" id="kpiGrid"></div>
 
   <!-- ============================================================
@@ -1953,7 +1962,12 @@ async function iniciarDashboard() {
    HELPERS de formato
 ================================================================= */
 const fmtCOP = (n) => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(n);
-const fmtUSD = (n) => new Intl.NumberFormat('en-US', { style:'currency', currency:'USD' }).format(n);
+// es-CO y no en-US (2026-09-18): en-US escribía "$23,000.50" -- con el
+// MISMO símbolo "$" que los pesos y los separadores al revés que en el
+// resto de la app, así que al lado de "$ 0" se leía como veintitrés mil
+// pesos. es-CO da "US$ 23.000,50": mismos separadores que todo lo demás
+// y el "US$" deja claro que son dólares.
+const fmtUSD = (n) => new Intl.NumberFormat('es-CO', { style:'currency', currency:'USD' }).format(n);
 const fmtNum = (n) => new Intl.NumberFormat('es-CO').format(Math.round(n));
 const fmtPct = (n) => `${n.toFixed(1)}%`;
 const fmtDate = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('es-CO', { day:'2-digit', month:'short', year:'numeric' });
@@ -3129,15 +3143,35 @@ function renderPresupuesto(gastoPorCategoria, totalIngresosReales) {
       : '';
   }
 
+  // Sin ingresos en el período, "lo presupuestado" de cada balde es 0 --
+  // y cualquier gasto salía como "Te pasaste" en rojo con una diferencia
+  // del tamaño de todo lo gastado. Matemáticamente correcto, pero asusta
+  // sin decir por qué: no te pasaste de nada, simplemente no hay ingreso
+  // contra el cual medir (QA 2026-09-18). "Tu perfil financiero" ya lo
+  // explicaba bien; ahora esta sección también.
+  const sinIngresos = !(totalIngresosReales > 0);
+  if (avisoEl && sinIngresos) {
+    // Se antepone, no se reemplaza: si además los porcentajes no suman
+    // 100, ese aviso sigue siendo cierto y no hay por qué esconderlo.
+    // Si hubo ingresos, pero en dólares, "no hay ingresos" sería falso: el
+    // presupuesto es en pesos y los dólares no se convierten (ver "PLATA
+    // EN DÓLARES" en renderDashboard).
+    const hayIngresoUSD = (DATA_ACTUAL || []).some(r => r.moneda === 'USD' && r.tipo === 'ingreso');
+    const causa = hayIngresoUSD
+      ? '<b>No hay ingresos en pesos en este período</b> (los que hay son en dólares, y el presupuesto se calcula en pesos)'
+      : '<b>No hay ingresos registrados en este período</b>';
+    avisoEl.innerHTML = `<div class="aviso-amber">${ICONS_KPI.warning}<span>${causa}, así que no hay contra qué medir el presupuesto. Abajo va lo que gastaste en cada balde; cuando cargues un ingreso vas a ver cuánto te queda.</span></div>` + avisoEl.innerHTML;
+  }
+
   grid.innerHTML = BALDES.map(b => {
     const pct = PRESUPUESTO[`pct_${b.id}`] ?? 0;
     const presupuestado = (pct / 100) * totalIngresosReales;
     const real = realPorBalde[b.id] || 0;
     const diferencia = presupuestado - real;
-    const estado = estadoBalde(real, presupuestado);
+    const estado = sinIngresos ? 'sin-ingresos' : estadoBalde(real, presupuestado);
     const pctBarra = presupuestado > 0 ? Math.min((real / presupuestado) * 100, 100) : (real > 0 ? 100 : 0);
-    const ESTADO_TEXTO = { verde: 'Vas bien', amber: 'Atención', rojo: 'Te pasaste' };
-    const ESTADO_ICON = { verde: ICONS_KPI.check, amber: ICONS_KPI.warning, rojo: ICONS_KPI.warning };
+    const ESTADO_TEXTO = { verde: 'Vas bien', amber: 'Atención', rojo: 'Te pasaste', 'sin-ingresos': 'Sin ingresos' };
+    const ESTADO_ICON = { verde: ICONS_KPI.check, amber: ICONS_KPI.warning, rojo: ICONS_KPI.warning, 'sin-ingresos': ICONS_KPI.warning };
     return `
     <div class="balde-card identidad-${b.id} estado-${estado}">
       <div class="balde-card-head">
@@ -3146,13 +3180,15 @@ function renderPresupuesto(gastoPorCategoria, totalIngresosReales) {
           <div class="balde-card-nombre">${b.label}</div>
           <div class="balde-card-pct">${fmtPct(pct)} de tu ingreso</div>
         </div>
-        <span class="balde-card-estado" title="${real > presupuestado ? 'Gastaste más de lo presupuestado en este balde' : (estado === 'amber' ? 'Ya usaste ' + UMBRAL_ATENCION_BALDE * 100 + '% o más de lo presupuestado' : 'Estás dentro de lo presupuestado')}">${ESTADO_ICON[estado]} ${ESTADO_TEXTO[estado]}</span>
+        <span class="balde-card-estado" title="${sinIngresos ? 'No hay ingresos en este período para calcular el presupuesto' : (real > presupuestado ? 'Gastaste más de lo presupuestado en este balde' : (estado === 'amber' ? 'Ya usaste ' + UMBRAL_ATENCION_BALDE * 100 + '% o más de lo presupuestado' : 'Estás dentro de lo presupuestado'))}">${ESTADO_ICON[estado]} ${ESTADO_TEXTO[estado]}</span>
       </div>
       <div class="balde-barra"><span style="width:${pctBarra}%"></span></div>
       <div class="balde-cifras">
-        <div class="fila"><span>Presupuestado</span><b>${fmtCOP(presupuestado)}</b></div>
+        <div class="fila"><span>Presupuestado</span><b>${sinIngresos ? '--' : fmtCOP(presupuestado)}</b></div>
         <div class="fila"><span>Real gastado</span><b>${fmtCOP(real)}</b></div>
-        <div class="fila ${diferencia < 0 ? 'negativo' : 'positivo'}"><span>Diferencia</span><b>${diferencia < 0 ? '-' : '+'} ${fmtCOP(Math.abs(diferencia))}</b></div>
+        ${sinIngresos
+          ? `<div class="fila"><span>Diferencia</span><b>--</b></div>`
+          : `<div class="fila ${diferencia < 0 ? 'negativo' : 'positivo'}"><span>Diferencia</span><b>${diferencia < 0 ? '-' : '+'} ${fmtCOP(Math.abs(diferencia))}</b></div>`}
       </div>
     </div>`;
   }).join('');
@@ -3554,6 +3590,8 @@ if (todosMovActivo) renderTodosMovimientos(DATA);
 // de dejar que las cuentas de más abajo produzcan NaN/"undefined" por todos
 // lados, mostramos un estado vacío prolijo en cada sección y cortamos acá.
 if (!DATA.length) {
+  const _avisoMonedaVacio = document.getElementById('avisoMoneda');
+  if (_avisoMonedaVacio) _avisoMonedaVacio.innerHTML = '';
   document.getElementById('kpiGrid').innerHTML =
     '<div class="empty-state">No hay movimientos registrados en el período seleccionado.</div>';
   const _headerResumenVacio = document.getElementById('headerResumen'); // requisito 2026-09-08 punto 1
@@ -3614,6 +3652,39 @@ if (!DATA.length) {
 // La única transacción en USD se contabiliza aparte para no distorsionar los totales.
 const dataCOP = DATA.filter(r => r.moneda === 'COP');
 const dataUSD = DATA.filter(r => r.moneda === 'USD');
+
+// -----------------------------------------------------------------
+// PLATA EN DÓLARES (2026-09-18)
+// -----------------------------------------------------------------
+// Todos los totales de este dashboard se calculan en pesos. Eso nació
+// cuando había UNA sola transacción en USD en todo el historial, y
+// dejarla afuera evitaba sumar peras con manzanas. Pero desde que
+// "Registrar movimiento" ofrece USD como opción normal, esa plata
+// DESAPARECÍA: un ingreso en dólares dejaba "Entró" en $0 y "Ver detalle"
+// decía "0 movimientos" (QA, 2026-09-18).
+//
+// Sin una tasa de cambio no se puede sumar honestamente, así que acá NO
+// se convierte nada: se muestra aparte y se avisa que no está incluido.
+// Si algún día hay tasa configurable, esto es lo que se reemplaza.
+const ingresosUSD = dataUSD.filter(r => r.tipo === 'ingreso');
+const gastosUSD   = dataUSD.filter(r => r.tipo === 'gasto');
+const totalIngresosUSD = ingresosUSD.reduce((s, r) => s + r.monto, 0);
+const totalGastosUSD   = gastosUSD.reduce((s, r) => s + r.monto, 0);
+{
+  const avisoMoneda = document.getElementById('avisoMoneda');
+  if (avisoMoneda) {
+    if (!dataUSD.length) {
+      avisoMoneda.innerHTML = '';
+    } else {
+      const partes = [];
+      if (ingresosUSD.length) partes.push(`entraron <b>${fmtUSD(totalIngresosUSD)}</b>`);
+      if (gastosUSD.length) partes.push(`salieron <b>${fmtUSD(totalGastosUSD)}</b>`);
+      avisoMoneda.innerHTML = `<div class="aviso-amber" style="margin-bottom:16px;">${ICONS_KPI.warning}<span>`
+        + `Tenés <b>${dataUSD.length} movimiento${dataUSD.length === 1 ? '' : 's'} en dólares</b> en este período: ${partes.join(' y ')}. `
+        + `<b>No están sumados</b> en los totales de abajo, que son en pesos: la app todavía no convierte monedas.</span></div>`;
+    }
+  }
+}
 
 const gastosCOP   = dataCOP.filter(r => r.tipo === 'gasto');
 const ingresosCOP = dataCOP.filter(r => r.tipo === 'ingreso');
@@ -3778,7 +3849,8 @@ kpiGrid.innerHTML = `
     </div>
     <div class="label">Entró</div>
     <div class="value">${fmtCOP(totalIngresosReales)}</div>
-    ${kpiDetalle('detalleIngresos', `<p>${ingresosReales.length} movimiento${ingresosReales.length===1?'':'s'}. No incluye adelantos de tarjeta de crédito.</p>`)}
+    ${ingresosUSD.length ? `<div class="sub">+ ${fmtUSD(totalIngresosUSD)} en dólares, aparte</div>` : ''}
+    ${kpiDetalle('detalleIngresos', `<p>${ingresosReales.length} movimiento${ingresosReales.length===1?'':'s'} en pesos. No incluye adelantos de tarjeta de crédito.</p>${ingresosUSD.length ? `<p>Además, ${ingresosUSD.length} en dólares por <b>${fmtUSD(totalIngresosUSD)}</b>, que no se suman acá.</p>` : ''}`)}
   </div>
 
   <div class="kpi accent-red">
@@ -3787,7 +3859,8 @@ kpiGrid.innerHTML = `
     </div>
     <div class="label">Salió</div>
     <div class="value">${fmtCOP(totalGastoReal)}</div>
-    ${kpiDetalle('detalleGasto', `<p>${gastosReales.length} movimiento${gastosReales.length===1?'':'s'}. No incluye compras a crédito aún no pagadas.</p>`)}
+    ${gastosUSD.length ? `<div class="sub">+ ${fmtUSD(totalGastosUSD)} en dólares, aparte</div>` : ''}
+    ${kpiDetalle('detalleGasto', `<p>${gastosReales.length} movimiento${gastosReales.length===1?'':'s'} en pesos. No incluye compras a crédito aún no pagadas.</p>${gastosUSD.length ? `<p>Además, ${gastosUSD.length} en dólares por <b>${fmtUSD(totalGastosUSD)}</b>, que no se suman acá.</p>` : ''}`)}
   </div>
 
   ${deudaVisibleArriba ? `

@@ -638,6 +638,14 @@
   }
   .modal-reg-aviso svg{ width:15px; height:15px; flex-shrink:0; margin-top:1px; color: var(--warning); }
   .modal-reg .result-box{ margin-top:18px; }
+  /* Ayuda debajo de un campo: aparece solo cuando el campo corrigió algo
+     que el usuario escribió (ver el listener de Monto). */
+  .campo-ayuda{
+    display:flex; align-items:flex-start; gap:6px; margin-top:6px;
+    font-size:12px; line-height:1.4; color: var(--warning);
+  }
+  .campo-ayuda[hidden]{ display:none; }
+  .campo-ayuda svg{ width:13px; height:13px; flex-shrink:0; margin-top:1px; }
 
   /* ============ Combo con sugerencias (2026-09-18) ====================
      Reemplaza a <datalist>, que NO se puede estilizar: el navegador lo
@@ -973,7 +981,12 @@
                El valor que se manda al backend se normaliza en el submit
                (ver el listener de "input" del script del final), nunca el
                texto con puntos tal cual. -->
-          <input type="text" inputmode="decimal" name="monto" id="regMonto" class="field-input" placeholder="23.000" required>
+          <input type="text" inputmode="decimal" name="monto" id="regMonto" class="field-input" placeholder="23.000" required
+                 aria-describedby="regMontoAyuda">
+          <div class="campo-ayuda" id="regMontoAyuda" role="status" hidden>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span></span>
+          </div>
         </div>
         <div>
           <label class="field-label" for="regMoneda">Moneda</label>
@@ -1606,11 +1619,34 @@ window.autoDismissAlert = function(el, delay) {
   // ---- Monto con separador de miles en vivo ----
   // El punto es SIEMPRE separador de miles y la coma el decimal, igual
   // que en el resto de la app (ver el comentario largo junto al input).
+  // El campo descarta todo lo que no sea número, punto o coma. Antes lo
+  // hacía EN SILENCIO: tipear "-500" dejaba "500" sin ninguna pista, y
+  // quien quería cargar algo negativo no sabía que el signo lo pone el
+  // selector Gasto/Ingreso (QA, 2026-09-18). Ahora avisa qué pasó.
+  const ayudaMonto = document.getElementById('regMontoAyuda');
+  let relojAyudaMonto = null;
+  function avisarMonto(texto){
+    ayudaMonto.querySelector('span').textContent = texto;
+    ayudaMonto.hidden = false;
+    clearTimeout(relojAyudaMonto);
+    relojAyudaMonto = setTimeout(function(){ ayudaMonto.hidden = true; }, 5000);
+  }
+
   campoMonto.addEventListener('input', function(){
-    const partes = campoMonto.value.split(',');
+    const crudo = campoMonto.value;
+    // Lo que se va a descartar: cualquier cosa que no sea dígito, punto
+    // (separador de miles) o coma (decimal).
+    const descartado = crudo.replace(/[0-9.,]/g, '');
+    if (descartado.indexOf('-') !== -1) {
+      avisarMonto('Los montos van siempre en positivo: si es un gasto, elegí "Gasto" arriba.');
+    } else if (descartado.length) {
+      avisarMonto('Solo números: el punto separa los miles y la coma, los centavos.');
+    }
+
+    const partes = crudo.split(',');
     const entero = (partes[0] || '').replace(/[^0-9]/g, '').replace(/^0+(?=[0-9])/, '');
     const conMiles = entero.replace(/\B(?=([0-9]{3})+(?![0-9]))/g, '.');
-    campoMonto.value = campoMonto.value.indexOf(',') !== -1
+    campoMonto.value = crudo.indexOf(',') !== -1
       ? conMiles + ',' + (partes[1] || '').replace(/[^0-9]/g, '').slice(0, 2)
       : conMiles;
   });
@@ -1681,6 +1717,7 @@ window.autoDismissAlert = function(el, delay) {
   function abrir(){
     if (dlg.open) return;
     limpiarResultado();
+    ayudaMonto.hidden = true;
     if (!campoFecha.value) campoFecha.value = fechaLocalHoy();
     cargarOpciones();
     dlg.classList.remove('cerrando');
