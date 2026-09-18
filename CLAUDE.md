@@ -58,6 +58,17 @@ Dos checkouts/entornos separados que comparten solo `data/finanzas.db`:
 
   Al agente de QA se le pasa QUÉ cambió y qué comportamiento se espera,
   no solo "probá la app" -- si no, revisa lo de siempre y no lo nuevo.
+
+  **Ojo con el panel de navegador de Claude Code para probar teclado:**
+  manda las teclas por CDP, lo que genera el `keydown` en el DOM pero NO
+  el "close request" del navegador. Ahí Escape sobre un `<dialog>` parece
+  no andar aunque el código esté bien, e invita a conclusiones falsas en
+  las dos direcciones. Para eso está Playwright:
+  `python tools/qa/verificar_modal_registrar.py` (14 chequeos del modal
+  de "Registrar movimiento": Escape, trampa de foco, reapertura, el
+  desplegable de los combos). Así apareció un bug que ni `pytest` ni el
+  panel veían -- el modal se cerraba solo 200 ms después de abrirse la
+  segunda vez.
   Los 🔴 se arreglan antes de cerrar el cambio; los 🟡/🟢 van al backlog
   y se le reportan al usuario. Ningún agente de QA arregla código: solo
   detecta y documenta.
