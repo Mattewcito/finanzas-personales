@@ -11,7 +11,7 @@ import sys
 import uuid
 from pathlib import Path
 
-from flask import Blueprint, render_template, request, jsonify, send_from_directory, send_file
+from flask import Blueprint, render_template, request, jsonify, send_from_directory, send_file, session
 from werkzeug.utils import secure_filename
 
 import db_finanzas as db
@@ -94,7 +94,23 @@ def api_dashboard_data():
     todavía, estas 3 claves igual vienen con una forma válida (defaults
     50/30/20, mapeo vacío, lista vacía) -- nunca None/NaN, cumple el
     caso borde "cuenta nueva sin presupuesto configurado todavía" del
-    documento de requisitos."""
+    documento de requisitos.
+
+    "cuenta_vista"/"textos_riesgo_movimiento" (2026-09-18) son para el
+    modal de editar/borrar de "Todos los movimientos"
+    (requisitos/2026-09-07_editar-borrar-movimiento.md):
+      - "cuenta_vista" = {"es_propia", "nombre"}: si un admin está viendo
+        OTRA cuenta, el modal avisa en nombre de quién va a editar/borrar
+        (mismo aviso que ya da "Registrar movimiento" en base.html). El
+        dashboard es un archivo estático dentro de un <iframe>, no una
+        plantilla -- no tiene otra forma de enterarse.
+      - "textos_riesgo_movimiento": el copy de
+        db.advertencia_riesgo_movimiento() para un movimiento del Excel
+        legado y para uno conciliado/automático. El frontend lo necesita
+        ANTES de pedir confirmación (no después de un 400), y así no
+        mantiene una segunda copia del texto que se desincronice. Qué
+        texto le toca a cada fila lo decide con origen/referencia_bancaria,
+        que ya viajan en "movimientos"."""
     uid = viendo_id()
 
     def _q(fn, *args, **kwargs):
@@ -122,6 +138,13 @@ def api_dashboard_data():
     if "perfil_financiero" not in vistas_ocultas_viendo:
         perfil = perfil_financiero.generar_perfil(movimientos, ledger_deuda)
 
+    es_propia = uid == session.get("usuario_id")
+    nombre_vista = session.get("nombre")
+    if not es_propia:
+        with db.conexion() as conn:
+            cuenta = db.obtener_usuario(conn, uid)
+        nombre_vista = cuenta["nombre_mostrado"] if cuenta else None
+
     return jsonify(
         movimientos=movimientos,
         ledger_deuda=ledger_deuda,
@@ -132,6 +155,11 @@ def api_dashboard_data():
         metas_ahorro=metas_ahorro,
         generated_at=datetime.datetime.now().isoformat(timespec="seconds"),
         vistas_ocultas=sorted(vistas_ocultas_viendo),
+        cuenta_vista={"es_propia": es_propia, "nombre": nombre_vista},
+        textos_riesgo_movimiento={
+            "gmail_bot_excel": db.advertencia_riesgo_movimiento({"origen": "gmail_bot_excel"}),
+            "automatico": db.advertencia_riesgo_movimiento({"origen": "correo_imap"}),
+        },
     )
 
 

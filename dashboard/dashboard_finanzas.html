@@ -985,6 +985,10 @@
   }
   .btn-primario:hover{ filter: brightness(1.12); box-shadow: var(--shadow-2); }
   .btn-primario:disabled{ opacity:.55; cursor:not-allowed; filter:none; box-shadow:none; }
+  /* Confirmación de una acción destructiva (borrar un movimiento, ver
+     confirmarApp(..., {peligro:true})). --on-brand y no #fff: sobre el
+     --negative claro del tema oscuro, el blanco no llega a 3:1. */
+  .btn-primario.btn-peligro{ background: var(--negative); border-color: var(--negative); color: var(--on-brand); }
 
   .form-row{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
   .form-row label{ font-size:12px; font-weight:600; color: var(--text-muted); }
@@ -1010,6 +1014,58 @@
   .form-error{ font-size:12px; color: var(--negative); margin: -6px 0 12px; }
   .form-error[hidden]{ display:none; }
   .form-suma-pct{ font-size:12px; color: var(--text-muted); margin: -6px 0 14px; }
+
+  /* ---- Modal "Editar movimiento" (2026-09-18) ----
+     Mismo esqueleto .modal-grafico-* que "Configurar presupuesto"/"Nueva
+     meta", mismos campos que "Registrar movimiento" (base.html). */
+  .modal-mov-card{ position: relative; } /* ancla de .combo-lista, ver abajo */
+  /* El display:flex de .aviso-amber/.form-row le gana al display:none que
+     el navegador le da a [hidden] -- sin esto el aviso de "cuenta de otra
+     persona" y el campo Tarjeta se veían siempre, con hidden puesto. */
+  .aviso-amber[hidden], .form-row[hidden]{ display:none; }
+  .form-grid-2{ display:grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+  @media (max-width: 480px){ .form-grid-2{ grid-template-columns: 1fr; } }
+  .modal-mov-nota{ font-size:12.5px; color: var(--text-muted); line-height:1.5; margin: 0 0 14px; }
+  .modal-mov-nota b{ color: var(--text); }
+  .modal-mov-pie{ display:flex; justify-content:flex-end; gap:10px; margin-top: 4px; }
+  .form-row .opcional{ font-weight:400; color: var(--text-subtle); }
+
+  /* Combo con sugerencias -- copia del de src/templates/base.html (este
+     documento vive en un <iframe> y no hereda esa hoja). Si se cambia
+     allá, hay que cambiarlo acá. */
+  .combo{ position: relative; }
+  .form-row .combo input{ padding-right: 36px; }
+  .combo-flecha{
+    position:absolute; right:6px; top:50%; transform:translateY(-50%);
+    width:28px; height:28px; padding:0; border:none; border-radius:7px;
+    background:transparent; color: var(--text-subtle); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition: color .15s ease, background-color .15s ease;
+  }
+  .combo-flecha svg{ width:14px; height:14px; transition: transform .15s ease; }
+  .combo-flecha:hover{ background: var(--surface-2); color: var(--text); }
+  .combo.abierto .combo-flecha{ color: var(--brand); }
+  .combo.abierto .combo-flecha svg{ transform: rotate(180deg); }
+  .combo-lista{
+    /* Absolute anclado a la tarjeta del modal (.modal-mov-card), no al
+       campo: .modal-grafico-body scrollea y recortaría un desplegable
+       anclado al .combo. Lo posiciona el script (posicionar()). */
+    position: absolute; z-index: 20; margin:0; padding:5px; list-style:none;
+    background: var(--surface); color: var(--text);
+    border:1px solid var(--border); border-radius:12px;
+    box-shadow: var(--shadow-dropdown);
+    max-height: 216px; overflow-y:auto; overscroll-behavior: contain;
+  }
+  .combo-lista[hidden]{ display:none; }
+  .combo-opcion{
+    display:block; padding:8px 10px; border-radius:8px; cursor:pointer;
+    font-size:13.5px; line-height:1.35; color: var(--text);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .combo-opcion:hover{ background: var(--surface-2); }
+  .combo-opcion.activa{ background: var(--brand-soft); color: var(--brand); font-weight:600; }
+  .combo-opcion mark{ background:transparent; color: var(--brand); font-weight:700; }
+  .combo-vacio{ padding:10px; font-size:12.5px; color: var(--text-subtle); line-height:1.4; }
 
   .categoria-balde-lista{ display:flex; flex-direction:column; }
   .categoria-balde-row{
@@ -1125,6 +1181,48 @@
   .paginacion button:hover:not(:disabled){ color: var(--text); background: var(--surface); }
   .paginacion button:disabled{ opacity:.4; cursor:default; }
   .paginacion .pagina-actual{ font-size:12.5px; color: var(--text-muted); padding: 0 6px; white-space:nowrap; }
+
+  /* Acciones Editar/Borrar por fila (2026-09-18) -- SOLO en "Todos los
+     movimientos", no en las "5 vistas" (ver requisitos/2026-09-07_editar-
+     borrar-movimiento.md). La regla sticky de arriba clava la ÚLTIMA
+     columna al borde derecho; ahora la última es Acciones, y Monto (el
+     dato que el fix de mobile quería siempre a la vista) queda pegada a
+     su izquierda con right = el ancho exacto de Acciones. Por eso ese
+     ancho es fijo y sale de una sola variable: si la celda midiera
+     distinto de --ancho-acciones, Monto se montaría sobre los botones. */
+  #todosMovimientosCard{ --ancho-acciones: 84px; }
+  #todosMovimientosCard .table-scroll table th.col-acciones,
+  #todosMovimientosCard .table-scroll table td.col-acciones{
+    width: 1%; padding: 0 10px; box-shadow: none; white-space: nowrap;
+  }
+  #todosMovimientosCard .table-scroll table th.col-monto,
+  #todosMovimientosCard .table-scroll table td.col-monto{
+    position: sticky; right: var(--ancho-acciones);
+    box-shadow: var(--shadow-sticky-col);
+  }
+  #todosMovimientosCard .table-scroll table th.col-monto{ background: var(--surface-2); }
+  #todosMovimientosCard .table-scroll table td.col-monto{ background: var(--surface); }
+  #todosMovimientosCard .table-scroll table tbody tr:hover td.col-monto{ background: var(--surface-hover); }
+  /* Con la columna de acciones, en celular la tabla auto-ajustada partía
+     la fecha en 4 renglones y dejaba el signo del monto solo en su línea.
+     Sin corte, la tabla crece y scrollea adentro de .table-scroll. */
+  #todosMovimientosCard .table-scroll table td:first-child,
+  #todosMovimientosCard .table-scroll table td.col-monto{ white-space: nowrap; }
+  .mov-acciones{ display:flex; gap:4px; width: calc(var(--ancho-acciones) - 20px); justify-content:flex-end; }
+  .mov-accion{
+    width:30px; height:30px; padding:0; border-radius:8px; border:1px solid transparent;
+    background: transparent; color: var(--text-muted); cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center;
+    transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .mov-accion svg{ width:15px; height:15px; }
+  .mov-accion:hover{ background: var(--surface-2); border-color: var(--border); color: var(--text); }
+  .mov-accion.peligro:hover{ background: var(--negative-soft); border-color: color-mix(in srgb, var(--negative) 35%, transparent); color: var(--negative); }
+  .mov-accion:disabled{ opacity:.45; cursor:default; }
+  .sr-only{
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+    overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+  }
 
   /* ===========================================================
      8) FOOTER
@@ -1463,7 +1561,7 @@
     </div>
     <div class="table-scroll">
       <table>
-        <thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Descripción</th><th>Entidad</th><th style="text-align:right">Monto</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Descripción</th><th>Entidad</th><th class="col-monto" style="text-align:right">Monto</th><th class="col-acciones"><span class="sr-only">Acciones</span></th></tr></thead>
         <tbody id="tbodyTodosMovimientos"></tbody>
       </table>
     </div>
@@ -1701,7 +1799,8 @@ window.__aplicarTemaFinanzas__ = function (tema) {
    accesibilidad) -- abarca los 5: gráfico expandido/leaderboard
    (#modalGrafico), detalle de insight (#modalInsight), configurar
    presupuesto (#modalPresupuesto), reasignar categorías
-   (#modalCategorias) y nueva/editar meta (#modalMeta). Un usuario de
+   (#modalCategorias) y nueva/editar meta (#modalMeta) -- más editar
+   movimiento (#modalMovimiento, 2026-09-18). Un usuario de
    teclado que abre uno de estos tiene que encontrar el foco DENTRO (el
    botón "Cerrar"), y al cerrarlo tiene que volver exactamente a donde
    estaba antes -- nunca perdido en el <body>. Mismo criterio que ya
@@ -1775,10 +1874,13 @@ async function iniciarDashboard() {
   }
   if (contenedorCarga) contenedorCarga.remove();
 
+  // `let` (2026-09-18): editar/borrar un movimiento vuelve a pedir
+  // /api/dashboard-data y reasigna todo lo que viene de ahí -- ver
+  // recargarDatosDashboard(), más abajo junto a "Todos los movimientos".
   const DATA = datosApi.movimientos;
   const DEUDA_TARJETAS = datosApi.ledger_deuda;
-  const GENERATED_AT = datosApi.generated_at;
-  const PERFIL_FINANCIERO = datosApi.perfil;
+  let GENERATED_AT = datosApi.generated_at;
+  let PERFIL_FINANCIERO = datosApi.perfil;
   // Desglose por tarjeta (2026-09-07, ver
   // requisitos/2026-09-07_tarjetas-credito-cupo.md): {activas:[...], sin_asignar}.
   // NO depende del filtro de período -- obtener_tarjetas_con_deuda() en el
@@ -1787,7 +1889,12 @@ async function iniciarDashboard() {
   // DEUDA_COMPLETA sin importar qué período esté filtrado. Con respaldo
   // por si algún día esta clave faltara en la respuesta (cuenta vieja,
   // caché de red, etc.) -- nunca un TypeError leyendo .activas de undefined.
-  const TARJETAS = datosApi.tarjetas || { activas: [], sin_asignar: 0 };
+  let TARJETAS = datosApi.tarjetas || { activas: [], sin_asignar: 0 };
+  // Para el modal de editar/borrar (2026-09-18, ver el docstring de
+  // /api/dashboard-data): a nombre de quién se edita, y el copy de riesgo
+  // que centraliza db_finanzas.advertencia_riesgo_movimiento().
+  let CUENTA_VISTA = datosApi.cuenta_vista || { es_propia: true, nombre: null };
+  let TEXTOS_RIESGO_MOV = datosApi.textos_riesgo_movimiento || {};
 
   // Presupuesto por baldes / metas de ahorro (2026-09-08, ver
   // requisitos/2026-09-08_presupuesto-ahorro-deudas.md). `let`, no
@@ -1839,8 +1946,8 @@ async function iniciarDashboard() {
   // DATA/DEUDA_TARJETAS de arriba son el histórico COMPLETO. El filtro de
   // período (más abajo) llama a renderDashboard() con subconjuntos de
   // estos dos arrays -- nunca se tocan los originales.
-  const DATA_COMPLETA = DATA;
-  const DEUDA_COMPLETA = DEUDA_TARJETAS;
+  let DATA_COMPLETA = DATA;
+  let DEUDA_COMPLETA = DEUDA_TARJETAS;
 
 /* =================================================================
    HELPERS de formato
@@ -1877,15 +1984,19 @@ function escapeHtml(str) {
    generación del archivo. El rango de fechas SÍ es dinámico y se
    calcula dentro de renderDashboard() (ver más abajo).
 ================================================================= */
-document.getElementById('lastUpdated').textContent = `Última actualización del dashboard: ${fmtDateTime(GENERATED_AT)}`;
+function pintarUltimaActualizacion() {
+  document.getElementById('lastUpdated').textContent = `Última actualización del dashboard: ${fmtDateTime(GENERATED_AT)}`;
+}
+pintarUltimaActualizacion();
 
 /* =================================================================
    PERFIL FINANCIERO — tampoco depende del filtro de período (un hábito
    es un patrón de largo plazo, se calcula sobre TODO el historial en
-   src/perfil_financiero.py). Se renderiza una sola vez acá, no dentro
-   de renderDashboard().
+   src/perfil_financiero.py). Se renderiza acá, no dentro de
+   renderDashboard() -- y otra vez solo si cambian los datos (editar/
+   borrar un movimiento, ver recargarDatosDashboard()).
 ================================================================= */
-(function renderPerfilFinanciero() {
+function renderPerfilFinanciero() {
   const el = document.getElementById('perfilFinancieroCard');
   if (!el) return; // sección oculta para esta cuenta -- ver ocultarSubvistas() más arriba
   const perfil = PERFIL_FINANCIERO || {};
@@ -1910,16 +2021,18 @@ document.getElementById('lastUpdated').textContent = `Última actualización del
       btnVerMas.remove();
     });
   }
-})();
+}
+renderPerfilFinanciero();
 
 /* =================================================================
    TARJETAS DE CRÉDITO CON CUPO (2026-09-07) — igual que el perfil
    financiero de arriba, es una foto del presente (no depende del
-   filtro de período), así que se renderiza una sola vez acá, no
-   dentro de renderDashboard(). Ver requisitos/2026-09-07_tarjetas-
-   credito-cupo.md para el diseño completo aprobado.
+   filtro de período), así que se renderiza acá, no dentro de
+   renderDashboard() (y de nuevo tras editar/borrar un movimiento, que
+   puede mover la deuda de una tarjeta). Ver requisitos/2026-09-07_
+   tarjetas-credito-cupo.md para el diseño completo aprobado.
 ================================================================= */
-(function renderTarjetas() {
+function renderTarjetas() {
   const el = document.getElementById('tarjetasGrid'); // null si "deuda" está oculta para esta cuenta -- ver ocultarSubvistas() más arriba
   if (!el) return;
 
@@ -2072,7 +2185,8 @@ document.getElementById('lastUpdated').textContent = `Última actualización del
     </div>` : '';
 
   el.innerHTML = cardsHTML + sinAsignarHTML;
-})();
+}
+renderTarjetas();
 
 // Requisito 2026-09-08 punto 6: los íconos de las tarjetas KPI (antes
 // emoji sueltos -- ✅📥📤💳 etc.) se ven "genéricos" y su tamaño real
@@ -2284,8 +2398,21 @@ function crearGrafico(canvasId, config) {
 // Antes vivía adentro de renderDashboard() -- se movió acá (mismo
 // comportamiento, ni una línea distinta) porque "Todos los
 // movimientos" también la necesita desde afuera de esa función.
-function rowHTML(r, withTipo){
+// conAcciones (2026-09-18): botones Editar/Borrar al final de la fila --
+// solo "Todos los movimientos" lo pide; las "5 vistas" siguen de solo
+// lectura (ver requisitos/2026-09-07_editar-borrar-movimiento.md). Los
+// clicks se atienden por delegación en el <tbody> (ver
+// accionesTablaMovimientos más abajo): este HTML se regenera entero en
+// cada página/filtro y un listener por botón moriría con él.
+const ICONO_EDITAR = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>';
+const ICONO_BORRAR = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>';
+
+function rowHTML(r, withTipo, conAcciones){
   const monto = r.moneda === 'USD' ? fmtUSD(r.monto) : fmtCOP(r.monto);
+  // aria-label con fecha + descripción: un lector de pantalla que recorre
+  // los botones de a uno tiene que saber CUÁL fila edita/borra, no oír
+  // 25 veces "Editar" seguido.
+  const queFila = escapeHtml(`${r.descripcion} del ${fmtDate(r.fecha)}`);
   return `
     <tr>
       <td>${fmtDate(r.fecha)}</td>
@@ -2293,7 +2420,11 @@ function rowHTML(r, withTipo){
       <td><span class="cat-chip">${catIcon(r.categoria)} ${escapeHtml(r.categoria)}</span></td>
       <td>${escapeHtml(r.descripcion)}</td>
       <td>${escapeHtml(r.entidad)}</td>
-      <td class="num" style="color:${r.tipo==='ingreso'?'var(--positive)':'var(--negative)'}">${r.tipo==='ingreso'?'+':'-'} ${monto}</td>
+      <td class="num${conAcciones ? ' col-monto' : ''}" style="color:${r.tipo==='ingreso'?'var(--positive)':'var(--negative)'}">${r.tipo==='ingreso'?'+':'-'} ${monto}</td>
+      ${conAcciones ? `<td class="col-acciones"><div class="mov-acciones">
+        <button type="button" class="mov-accion" data-accion="editar" data-id="${r.id}" title="Editar" aria-label="Editar ${queFila}">${ICONO_EDITAR}</button>
+        <button type="button" class="mov-accion peligro" data-accion="borrar" data-id="${r.id}" title="Borrar" aria-label="Borrar ${queFila}">${ICONO_BORRAR}</button>
+      </div></td>` : ''}
     </tr>`;
 }
 
@@ -2329,8 +2460,8 @@ function renderTodosMovimientos(DATA) {
   elCount.textContent = `${total} movimiento${total === 1 ? '' : 's'}`;
 
   elTbody.innerHTML = total
-    ? pagina.map(r => rowHTML(r, true)).join('')
-    : '<tr><td colspan="6" style="padding:14px;"><div class="empty-state" style="justify-content:center;">Sin movimientos en este período.</div></td></tr>';
+    ? pagina.map(r => rowHTML(r, true, true)).join('')
+    : '<tr><td colspan="7" style="padding:14px;"><div class="empty-state" style="justify-content:center;">Sin movimientos en este período.</div></td></tr>';
 
   elPaginacion.innerHTML = `
     <button type="button" onclick="cambiarPaginaTodosMovimientos(-1)" ${todosMovPagina <= 1 ? 'disabled' : ''}>‹ Anterior</button>
@@ -2343,6 +2474,579 @@ window.cambiarPaginaTodosMovimientos = function (delta) {
   todosMovPagina += delta;
   renderTodosMovimientos(DATA_ACTUAL);
 };
+
+/* =================================================================
+   EDITAR / BORRAR UN MOVIMIENTO (2026-09-18)
+   -----------------------------------------------------------------
+   El backend existía desde 2026-09-07 (POST /api/movimiento/<id>/editar
+   y /borrar, ver routes/dashboard.py) pero ninguna pantalla lo llamaba:
+   un monto o una fecha mal cargados no tenían arreglo sin tocar la base
+   a mano -- QA lo marcó crítico el 2026-09-18. Reglas de negocio en
+   requisitos/2026-09-07_editar-borrar-movimiento.md:
+     - Borrar es definitivo (no hay papelera): siempre se confirma, y el
+       copy lo dice.
+     - Fecha/monto/tipo/moneda de un movimiento conciliado o que llegó
+       solo (correo/PDF/Excel) exigen confirmar el riesgo ANTES de
+       guardar; el backend además lo exige (confirmar_riesgo=true).
+     - Después de cualquier cambio se vuelve a pedir /api/dashboard-data
+       y se repinta todo (KPIs, deuda, tarjetas, metas, tabla) sin
+       recargar la página.
+================================================================= */
+
+// Vuelve a pedir los datos y repinta todo lo que depende de ellos,
+// conservando lo que el usuario estaba mirando: filtro de período,
+// switch de "Todos los movimientos" y la página de la tabla.
+async function recargarDatosDashboard() {
+  const resp = await fetch('/api/dashboard-data');
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const d = await resp.json();
+  DATA_COMPLETA = d.movimientos;
+  DEUDA_COMPLETA = d.ledger_deuda;
+  GENERATED_AT = d.generated_at;
+  PERFIL_FINANCIERO = d.perfil;
+  TARJETAS = d.tarjetas || { activas: [], sin_asignar: 0 };
+  if (d.presupuesto) PRESUPUESTO = d.presupuesto;
+  CATEGORIA_BALDE = d.categoria_balde || {};
+  METAS_AHORRO = Array.isArray(d.metas_ahorro) ? d.metas_ahorro : [];
+  CUENTA_VISTA = d.cuenta_vista || CUENTA_VISTA;
+  TEXTOS_RIESGO_MOV = d.textos_riesgo_movimiento || TEXTOS_RIESGO_MOV;
+  TARJETAS_TODAS = null; // el nombre de una tarjeta archivada se vuelve a pedir si hace falta
+
+  pintarUltimaActualizacion();
+  renderPerfilFinanciero();
+  renderTarjetas();
+  renderMetas(); // un movimiento puede ser un aporte a una meta
+  poblarSelectAnios();
+  // renderDashboard() vuelve la tabla a la página 1 -- lo correcto cuando
+  // cambia el filtro, pero acá el filtro es el mismo: quien borró algo en
+  // la página 3 tiene que seguir en la página 3.
+  const pagina = todosMovPagina;
+  if (filtroPeriodoActivo === 'personalizado') aplicarFiltroPeriodo();
+  else aplicarPreset(filtroPeriodoActivo);
+  todosMovPagina = pagina;
+  if (todosMovActivo) renderTodosMovimientos(DATA_ACTUAL);
+}
+
+// Aviso de éxito NO bloqueante: si el dashboard está dentro del shell (lo
+// normal, ver templates/dashboard.html) usa el toast del shell -- el
+// mismo que muestra "Movimiento registrado". Solo texto FIJO: ese toast
+// arma su HTML con innerHTML, nunca pasarle datos del usuario.
+function avisarExito(mensaje) {
+  try {
+    if (window.parent !== window && typeof window.parent.mostrarAlertaApp === 'function') {
+      window.parent.mostrarAlertaApp('ok', mensaje);
+      return;
+    }
+  } catch (err) { /* sin acceso al padre: cae al modal propio */ }
+  mostrarAlertaApp('ok', mensaje);
+}
+
+function movimientoPorId(id) {
+  return DATA_COMPLETA.find(m => m.id === id) || null;
+}
+
+// Va en los diálogos de confirmación (textContent + white-space:pre-line,
+// nunca innerHTML): descripción arriba, fecha y monto abajo.
+function resumenMovimiento(m) {
+  const monto = m.moneda === 'USD' ? fmtUSD(m.monto) : fmtCOP(m.monto);
+  return `${m.descripcion}\n${fmtDate(m.fecha)} · ${m.tipo} de ${monto}`;
+}
+
+// Mismo criterio que db_finanzas.advertencia_riesgo_movimiento(); el
+// texto viene de ahí (ver "textos_riesgo_movimiento" en /api/dashboard-data).
+// El respaldo solo existe para no mostrar un aviso vacío si esa clave
+// faltara en la respuesta.
+const TEXTO_RIESGO_RESPALDO = 'Este movimiento no lo cargaste a mano, o ya fue confirmado por el banco. Si esa transacción se vuelve a detectar, puede aparecer de nuevo y contarse dos veces en tus totales.';
+function textoRiesgoMovimiento(m) {
+  if (m.origen === 'gmail_bot_excel') return TEXTOS_RIESGO_MOV.gmail_bot_excel || TEXTO_RIESGO_RESPALDO;
+  if (m.referencia_bancaria != null || m.origen !== 'app_manual') return TEXTOS_RIESGO_MOV.automatico || TEXTO_RIESGO_RESPALDO;
+  return null;
+}
+
+const ORIGEN_LEGIBLE = {
+  app_manual: 'Lo cargaste a mano.',
+  manual: 'Lo cargaste a mano.',
+  correo_imap: 'Llegó solo, leído de un correo del banco.',
+  upload_excel: 'Vino de un Excel subido en "Cargar extractos".',
+  upload_pdf_tarjeta: 'Vino del extracto PDF de una tarjeta de crédito.',
+  upload_pdf_ahorros: 'Vino del extracto PDF de una cuenta de ahorros.',
+  gmail_bot_excel: 'Vino del Excel que sincroniza el bot de Gmail.',
+};
+
+// Después de repintar, la fila sobre la que se actuó es HTML nuevo: el
+// foco no puede quedar perdido en el <body> (quien usa teclado tendría
+// que volver a recorrer toda la página). Va al mismo botón si la fila
+// sigue en la página, o a la fila que quedó en su lugar si se borró.
+function enfocarAccionTabla(id, accion, indicePrevio) {
+  const tbody = document.getElementById('tbodyTodosMovimientos');
+  if (!tbody) return;
+  let btn = tbody.querySelector(`.mov-accion[data-accion="${accion}"][data-id="${id}"]`);
+  if (!btn) {
+    const botones = tbody.querySelectorAll(`.mov-accion[data-accion="${accion}"]`);
+    btn = botones[Math.min(indicePrevio, botones.length - 1)] || null;
+  }
+  if (btn) btn.focus();
+}
+
+function indiceFilaEnTabla(id) {
+  const tbody = document.getElementById('tbodyTodosMovimientos');
+  if (!tbody) return 0;
+  const botones = [...tbody.querySelectorAll('.mov-accion[data-accion="editar"]')];
+  return Math.max(0, botones.findIndex(b => Number(b.dataset.id) === id));
+}
+
+async function refrescarTrasCambio(id, accion, indicePrevio) {
+  try {
+    await recargarDatosDashboard();
+  } catch (err) {
+    console.error('Error recargando /api/dashboard-data tras editar/borrar:', err);
+    mostrarAlertaApp('error', 'El cambio se guardó, pero no se pudo actualizar el resumen. Recargá la página para ver los números al día.');
+    return;
+  }
+  enfocarAccionTabla(id, accion, indicePrevio);
+}
+
+// --- Borrar ---------------------------------------------------------
+async function borrarMovimiento(id) {
+  const m = movimientoPorId(id);
+  if (!m) return;
+  const indicePrevio = indiceFilaEnTabla(id);
+  const partes = ['¿Borrar este movimiento?', resumenMovimiento(m)];
+  if (!CUENTA_VISTA.es_propia) {
+    partes.push(`Es de la cuenta de ${CUENTA_VISTA.nombre || 'otra persona'}, no de la tuya.`);
+  }
+  const riesgo = textoRiesgoMovimiento(m);
+  if (riesgo) partes.push(riesgo);
+  partes.push('Se borra para siempre: no hay papelera ni forma de deshacerlo.');
+
+  const ok = await confirmarApp(partes.join('\n\n'), { textoBoton: 'Borrar', peligro: true });
+  if (!ok) return;
+  const r = await postForm(`/api/movimiento/${id}/borrar`, { confirmar: 'true' });
+  if (!r.ok) {
+    mostrarAlertaApp('error', r.error || 'No se pudo borrar el movimiento.');
+    return;
+  }
+  await refrescarTrasCambio(id, 'borrar', indicePrevio);
+  avisarExito('Movimiento borrado.');
+}
+
+// --- Editar ---------------------------------------------------------
+let movEditando = null;   // el movimiento (de DATA_COMPLETA) abierto en el modal
+let TARJETAS_TODAS = null; // caché de GET /api/tarjetas (incluye archivadas)
+
+const formMov = document.getElementById('formMovimiento');
+const campoMov = {
+  fecha: document.getElementById('movFecha'),
+  tipo: document.getElementById('movTipo'),
+  monto: document.getElementById('movMonto'),
+  moneda: document.getElementById('movMoneda'),
+  descripcion: document.getElementById('movDescripcion'),
+  categoria: document.getElementById('movCategoria'),
+  entidad: document.getElementById('movEntidad'),
+  tarjeta: document.getElementById('movTarjeta'),
+};
+
+// Monto: el punto es SIEMPRE separador de miles y la coma el decimal
+// (hace falta para USD con centavos) -- misma máscara que el campo Monto
+// de "Registrar movimiento" en base.html.
+campoMov.monto.addEventListener('input', () => {
+  const v = campoMov.monto.value;
+  const partes = v.split(',');
+  const entero = (partes[0] || '').replace(/[^0-9]/g, '').replace(/^0+(?=[0-9])/, '');
+  const conMiles = entero.replace(/\B(?=([0-9]{3})+(?![0-9]))/g, '.');
+  campoMov.monto.value = v.indexOf(',') !== -1
+    ? conMiles + ',' + (partes[1] || '').replace(/[^0-9]/g, '').slice(0, 2)
+    : conMiles;
+});
+function montoATexto(n) {
+  const [entero, dec] = Number(n).toFixed(2).split('.');
+  const conMiles = entero.replace(/\B(?=([0-9]{3})+(?![0-9]))/g, '.');
+  return dec === '00' ? conMiles : `${conMiles},${dec}`;
+}
+function textoAMonto(t) {
+  return parseFloat(String(t).replace(/\./g, '').replace(',', '.'));
+}
+
+// Un tipo/moneda que el <select> no ofrece (dato viejo o importado) se
+// agrega como opción en vez de cambiarlo en silencio al primer valor.
+function elegirOpcion(select, valor) {
+  select.querySelectorAll('option[data-extra]').forEach(o => o.remove());
+  if (valor && ![...select.options].some(o => o.value === valor)) {
+    const op = new Option(valor, valor);
+    op.dataset.extra = '1';
+    select.appendChild(op);
+  }
+  select.value = valor || select.options[0].value;
+}
+
+// Categorías/entidades ya usadas, por uso -- mismo orden que
+// db.obtener_categorias()/obtener_entidades() (lo que usa "Registrar
+// movimiento"), calculado sobre los movimientos que ya están acá.
+function valoresPorUso(campo) {
+  const cuenta = new Map();
+  for (const m of DATA_COMPLETA) {
+    const v = m[campo];
+    if (v) cuenta.set(v, (cuenta.get(v) || 0) + 1);
+  }
+  return [...cuenta.entries()]
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([v]) => v);
+}
+
+function etiquetaTarjeta(t) {
+  return t.nombre + (t.ultimos4 ? ` · Terminada en ${t.ultimos4}` : '');
+}
+
+// Selector de tarjeta (requisito: "tarjetas ACTIVAS, más la que ya tenía
+// asignada aunque esté archivada, marcada así"). Las activas ya vienen en
+// /api/dashboard-data; el nombre de una archivada no, se pide aparte
+// solo si hace falta.
+function poblarSelectTarjeta(m) {
+  const sel = campoMov.tarjeta;
+  const activas = Array.isArray(TARJETAS.activas) ? TARJETAS.activas : [];
+  const actual = m.tarjeta_id != null ? String(m.tarjeta_id) : '';
+  sel.innerHTML = '';
+  sel.appendChild(new Option('Sin asignar', ''));
+  activas.forEach(t => sel.appendChild(new Option(etiquetaTarjeta(t), String(t.id))));
+  if (actual && !activas.some(t => String(t.id) === actual)) {
+    const op = new Option('Tarjeta archivada', actual);
+    sel.appendChild(op);
+    nombreTarjetaArchivada(actual).then(nombre => { if (nombre) op.textContent = `${nombre} (archivada)`; });
+  }
+  sel.value = actual;
+  document.getElementById('movTarjetaCampo').hidden = !activas.length && !actual;
+}
+async function nombreTarjetaArchivada(id) {
+  if (!TARJETAS_TODAS) {
+    try {
+      const json = await (await fetch('/api/tarjetas')).json();
+      TARJETAS_TODAS = json.ok ? json.tarjetas : [];
+    } catch (err) {
+      return null;
+    }
+  }
+  const t = TARJETAS_TODAS.find(t => String(t.id) === String(id));
+  return t ? etiquetaTarjeta(t) : null;
+}
+
+// Combo con sugerencias para Categoría/Entidad -- copia de crearCombo()
+// de src/templates/base.html (este documento vive en un <iframe> y no
+// hereda ese script). La lista cuelga de `ancla` (la tarjeta del modal)
+// y no del campo: `cuerpo` scrollea y la recortaría. El campo sigue
+// siendo texto libre: la lista sugiere, no obliga.
+function crearComboMov(caja, input, flecha, lista, ancla, cuerpo) {
+  let opciones = [];
+  let indice = -1;
+  // Sin tildes ni mayúsculas: "educacion" encuentra "educación".
+  const plano = (t) => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const abierta = () => !lista.hidden;
+
+  function posicionar() {
+    const rd = ancla.getBoundingClientRect();
+    const r = input.getBoundingClientRect();
+    const MARGEN = 10, HUECO = 6, ALTO_MAX = 216;
+    const abajo = rd.bottom - r.bottom - MARGEN - HUECO;
+    const arriba = r.top - rd.top - MARGEN - HUECO;
+    const haciaArriba = abajo < 120 && arriba > abajo;
+    lista.style.left = (r.left - rd.left - ancla.clientLeft) + 'px';
+    lista.style.width = r.width + 'px';
+    lista.style.maxHeight = Math.max(72, Math.min(ALTO_MAX, haciaArriba ? arriba : abajo)) + 'px';
+    if (haciaArriba) {
+      lista.style.top = 'auto';
+      lista.style.bottom = (rd.bottom - r.top - ancla.clientTop + HUECO) + 'px';
+    } else {
+      lista.style.bottom = 'auto';
+      lista.style.top = (r.bottom - rd.top - ancla.clientTop + HUECO) + 'px';
+    }
+  }
+
+  function marcarActiva() {
+    [...lista.children].forEach((li, i) => {
+      li.classList.toggle('activa', i === indice);
+      li.setAttribute('aria-selected', i === indice ? 'true' : 'false');
+    });
+    if (indice >= 0 && lista.children[indice]) {
+      lista.children[indice].scrollIntoView({ block: 'nearest' });
+      input.setAttribute('aria-activedescendant', lista.children[indice].id);
+    } else {
+      input.removeAttribute('aria-activedescendant');
+    }
+  }
+
+  function pintar() {
+    const q = plano(input.value.trim());
+    const visibles = q ? opciones.filter(o => plano(o).indexOf(q) !== -1) : opciones.slice();
+    lista.innerHTML = '';
+    indice = -1;
+    if (!visibles.length) {
+      const vacio = document.createElement('li');
+      vacio.className = 'combo-vacio';
+      vacio.textContent = opciones.length
+        ? 'Sin coincidencias -- se guarda tal cual lo escribas'
+        : 'Todavía no usaste ninguna';
+      lista.appendChild(vacio);
+      return;
+    }
+    visibles.slice(0, 60).forEach((op, i) => {
+      const li = document.createElement('li');
+      li.className = 'combo-opcion';
+      li.id = `${lista.id}-op-${i}`;
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', 'false');
+      const pos = q ? plano(op).indexOf(q) : -1;
+      if (pos >= 0) {
+        // Con nodos, nunca innerHTML: son datos del usuario.
+        li.appendChild(document.createTextNode(op.slice(0, pos)));
+        const mk = document.createElement('mark');
+        mk.textContent = op.slice(pos, pos + q.length);
+        li.appendChild(mk);
+        li.appendChild(document.createTextNode(op.slice(pos + q.length)));
+      } else {
+        li.textContent = op;
+      }
+      // mousedown y no click: el click llega después del blur del input,
+      // que ya habría cerrado la lista.
+      li.addEventListener('mousedown', (e) => { e.preventDefault(); elegir(op); });
+      lista.appendChild(li);
+    });
+  }
+
+  function abrir() {
+    if (abierta()) return;
+    pintar();
+    lista.hidden = false;
+    caja.classList.add('abierto');
+    input.setAttribute('aria-expanded', 'true');
+    posicionar();
+  }
+  function cerrar() {
+    if (!abierta()) return;
+    lista.hidden = true;
+    caja.classList.remove('abierto');
+    input.setAttribute('aria-expanded', 'false');
+    input.removeAttribute('aria-activedescendant');
+    indice = -1;
+  }
+  function elegir(valor) {
+    input.value = valor;
+    cerrar();
+    input.focus();
+  }
+  function mover(paso) {
+    const total = lista.querySelectorAll('.combo-opcion').length;
+    if (!total) return;
+    indice = (indice + paso + total) % total;
+    marcarActiva();
+  }
+
+  input.addEventListener('focus', abrir);
+  input.addEventListener('input', () => { abrir(); pintar(); posicionar(); });
+  input.addEventListener('blur', cerrar);
+  flecha.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    if (abierta()) cerrar(); else { input.focus(); abrir(); }
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!abierta()) { abrir(); return; }
+      mover(e.key === 'ArrowDown' ? 1 : -1);
+    } else if (e.key === 'Enter' && abierta() && indice >= 0) {
+      // Solo roba el Enter si hay una opción marcada: si no, que envíe
+      // el formulario como cualquier otro campo.
+      e.preventDefault();
+      elegir(lista.children[indice].textContent);
+    } else if (e.key === 'Escape' && abierta()) {
+      // La primera pulsación cierra solo la lista, no el modal entero
+      // (el Escape global de más abajo escucha en document).
+      e.preventDefault();
+      e.stopPropagation();
+      cerrar();
+    } else if (e.key === 'Tab') {
+      cerrar();
+    }
+  });
+  cuerpo.addEventListener('scroll', () => { if (abierta()) posicionar(); });
+  window.addEventListener('resize', cerrar);
+
+  return {
+    setOpciones: (arr) => { opciones = arr || []; if (abierta()) pintar(); },
+    cerrar,
+  };
+}
+
+const _cardMov = document.querySelector('#modalMovimiento .modal-mov-card');
+const _cuerpoMov = document.getElementById('modalMovimientoCuerpo');
+const comboCategoriaMov = crearComboMov(
+  document.getElementById('movCategoriaCombo'), campoMov.categoria,
+  document.getElementById('movCategoriaFlecha'), document.getElementById('movCategoriaLista'), _cardMov, _cuerpoMov);
+const comboEntidadMov = crearComboMov(
+  document.getElementById('movEntidadCombo'), campoMov.entidad,
+  document.getElementById('movEntidadFlecha'), document.getElementById('movEntidadLista'), _cardMov, _cuerpoMov);
+
+function abrirModalMovimiento(id) {
+  const m = movimientoPorId(id);
+  if (!m) return;
+  movEditando = m;
+
+  campoMov.fecha.value = m.fecha;
+  elegirOpcion(campoMov.tipo, m.tipo);
+  campoMov.monto.value = montoATexto(m.monto);
+  elegirOpcion(campoMov.moneda, m.moneda);
+  campoMov.descripcion.value = m.descripcion || '';
+  campoMov.categoria.value = m.categoria || '';
+  campoMov.entidad.value = m.entidad || '';
+  comboCategoriaMov.setOpciones(valoresPorUso('categoria'));
+  comboEntidadMov.setOpciones(valoresPorUso('entidad'));
+  poblarSelectTarjeta(m);
+
+  document.getElementById('movAvisoCuenta').hidden = CUENTA_VISTA.es_propia;
+  document.getElementById('movAvisoCuentaNombre').textContent = CUENTA_VISTA.nombre || 'otra persona';
+
+  // De dónde salió este movimiento, y si tocar fecha/monto/tipo/moneda
+  // va a pedir confirmación -- que no sea una sorpresa al guardar.
+  const nota = [ORIGEN_LEGIBLE[m.origen] || 'Llegó de forma automática.'];
+  if (m.referencia_bancaria != null) nota.push('Ya está confirmado por el banco (conciliado).');
+  if (textoRiesgoMovimiento(m)) nota.push('Si cambiás fecha, monto, tipo o moneda, te vamos a pedir que confirmes antes de guardar.');
+  document.getElementById('movNotaOrigen').textContent = nota.join(' ');
+
+  document.getElementById('btnGuardarMovimiento').disabled = false;
+  document.getElementById('modalMovimiento').classList.add('open');
+  enfocarModal('modalMovimiento');
+  // Al primer campo y no a la "X" (lo que hace enfocarModal): el modal
+  // existe para escribir en él -- mismo criterio que "Registrar movimiento".
+  requestAnimationFrame(() => campoMov.fecha.focus());
+}
+
+function cerrarModalMovimiento() {
+  const modal = document.getElementById('modalMovimiento');
+  if (!modal || !modal.classList.contains('open')) return;
+  comboCategoriaMov.cerrar();
+  comboEntidadMov.cerrar();
+  modal.classList.remove('open');
+  devolverFocoModal('modalMovimiento');
+  movEditando = null;
+}
+
+function mensajeRiesgoEdicion(m, riesgo) {
+  const partes = ['Estás cambiando la fecha, el monto, el tipo o la moneda de este movimiento.', riesgo];
+  if (m.referencia_bancaria != null) {
+    partes.push('Como ya estaba confirmado por el banco, al guardar deja de figurar como conciliado: queda como un movimiento más, que se puede volver a emparejar si el banco lo reporta otra vez. No se rompe nada.');
+  }
+  return partes.join('\n\n');
+}
+
+// Texto legible de medio_pago -- valores de db_finanzas.clasificar_medio_pago().
+const MEDIO_PAGO_LEGIBLE = {
+  credito: 'compra con tarjeta de crédito',
+  avance_credito: 'avance de tarjeta de crédito',
+  pago_tarjeta_credito: 'pago de tarjeta de crédito',
+  debito: 'débito, efectivo o transferencia',
+};
+// medio_pago depende de la descripción y es_deuda también del tipo (ver
+// db_finanzas.enriquecer_movimiento()), así que puede cambiar uno sin el
+// otro. No se promete cuánto se movió la deuda: un movimiento en USD no
+// entra en v_deuda_ledger, que es solo COP.
+function mensajeReclasificado(r) {
+  const cambios = [];
+  if (r.medio_pago_anterior !== r.medio_pago_nuevo) {
+    const antes = MEDIO_PAGO_LEGIBLE[r.medio_pago_anterior] || r.medio_pago_anterior;
+    const ahora = MEDIO_PAGO_LEGIBLE[r.medio_pago_nuevo] || r.medio_pago_nuevo;
+    cambios.push(`Con este cambio el movimiento se reclasificó como "${ahora}" (antes era "${antes}").`);
+  }
+  if (r.es_deuda_anterior !== r.es_deuda_nuevo) {
+    cambios.push(r.es_deuda_nuevo
+      ? 'Ahora cuenta como deuda de tarjeta de crédito.'
+      : 'Ya no cuenta como deuda de tarjeta de crédito.');
+  }
+  cambios.push('"Tarjetas y deuda" ya está recalculado con esto.');
+  const detalle = cambios.join(' ');
+  return `Cambios guardados.\n\nOjo: ${detalle.charAt(0).toLowerCase()}${detalle.slice(1)}`;
+}
+
+formMov.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const m = movEditando;
+  if (!m) return;
+  // novalidate para decidir nosotros cuándo validar, pero los required
+  // siguen valiendo: esto muestra los mensajes nativos.
+  if (!formMov.checkValidity()) { formMov.reportValidity(); return; }
+  const monto = textoAMonto(campoMov.monto.value);
+  if (!(monto > 0)) {
+    mostrarAlertaApp('error', 'El monto tiene que ser mayor a 0.');
+    return;
+  }
+
+  // Solo viaja lo que cambió: el backend acepta edición parcial, y así un
+  // movimiento que el usuario solo re-categorizó no se reescribe con el
+  // monto redondeado a 2 decimales que muestra el campo.
+  const cambios = {};
+  const tarjetaOriginal = m.tarjeta_id != null ? String(m.tarjeta_id) : '';
+  if (campoMov.fecha.value !== m.fecha) cambios.fecha = campoMov.fecha.value;
+  if (campoMov.tipo.value !== m.tipo) cambios.tipo = campoMov.tipo.value;
+  if (Math.abs(monto - m.monto) >= 0.005) cambios.monto = String(monto);
+  if (campoMov.moneda.value !== m.moneda) cambios.moneda = campoMov.moneda.value;
+  if (campoMov.descripcion.value.trim() !== (m.descripcion || '').trim()) cambios.descripcion = campoMov.descripcion.value.trim();
+  if (campoMov.categoria.value.trim() !== (m.categoria || '')) cambios.categoria = campoMov.categoria.value.trim();
+  if (campoMov.entidad.value.trim() !== (m.entidad || '')) cambios.entidad = campoMov.entidad.value.trim();
+  if (campoMov.tarjeta.value !== tarjetaOriginal) cambios.tarjeta_id = campoMov.tarjeta.value;
+
+  if (!Object.keys(cambios).length) { cerrarModalMovimiento(); return; }
+
+  // Mismo gate que db.editar_movimiento(): fecha/monto/tipo/moneda
+  // distintos (el monto, comparado redondeado) en un movimiento con riesgo.
+  const tocaIdentidad = 'fecha' in cambios || 'tipo' in cambios || 'moneda' in cambios
+    || ('monto' in cambios && Math.round(monto) !== Math.round(m.monto));
+  const riesgo = textoRiesgoMovimiento(m);
+  let confirmarRiesgo = false;
+  if (tocaIdentidad && riesgo) {
+    confirmarRiesgo = await confirmarApp(mensajeRiesgoEdicion(m, riesgo), { textoBoton: 'Guardar igual' });
+    if (!confirmarRiesgo) return;
+  }
+
+  const btn = document.getElementById('btnGuardarMovimiento');
+  btn.disabled = true;
+  const url = `/api/movimiento/${m.id}/editar`;
+  let r = await postForm(url, { ...cambios, confirmar_riesgo: confirmarRiesgo ? 'true' : undefined });
+  // Red de seguridad: si el backend pide confirmación que acá no se
+  // anticipó (ej. un redondeo de monto que difiere), se pide y se reintenta.
+  if (!r.ok && r.requiere_confirmacion && !confirmarRiesgo) {
+    const ok = await confirmarApp(mensajeRiesgoEdicion(m, r.advertencia || riesgo || TEXTO_RIESGO_RESPALDO), { textoBoton: 'Guardar igual' });
+    if (!ok) { btn.disabled = false; return; }
+    r = await postForm(url, { ...cambios, confirmar_riesgo: 'true' });
+  }
+  btn.disabled = false;
+  if (!r.ok) {
+    // El modal queda abierto detrás, con lo que el usuario tipeó.
+    mostrarAlertaApp('error', r.error || 'No se pudo guardar el cambio.');
+    return;
+  }
+
+  const id = m.id;
+  const indicePrevio = indiceFilaEnTabla(id);
+  cerrarModalMovimiento();
+  await refrescarTrasCambio(id, 'editar', indicePrevio);
+  // Una reclasificación mueve plata en la deuda de tarjetas: se avisa con
+  // el modal (hay que leerlo), no con un toast que se va solo.
+  if (r.reclasificado) mostrarAlertaApp('ok', mensajeReclasificado(r));
+  else avisarExito('Cambios guardados.');
+});
+
+document.getElementById('btnCerrarModalMovimiento').addEventListener('click', cerrarModalMovimiento);
+document.getElementById('btnCancelarMovimiento').addEventListener('click', cerrarModalMovimiento);
+document.getElementById('modalMovimiento').addEventListener('click', (e) => {
+  if (e.target.id === 'modalMovimiento') cerrarModalMovimiento(); // click en el fondo, no en la tarjeta
+});
+
+// Acciones de cada fila, por delegación: el <tbody> se regenera entero en
+// cada página/filtro, pero él mismo no se reemplaza.
+document.getElementById('tbodyTodosMovimientos')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.mov-accion');
+  if (!btn) return;
+  const id = Number(btn.dataset.id);
+  if (btn.dataset.accion === 'editar') abrirModalMovimiento(id);
+  else if (btn.dataset.accion === 'borrar') borrarMovimiento(id);
+});
 
 /* =================================================================
    PRESUPUESTO POR BALDES (2026-09-08)
@@ -3694,9 +4398,22 @@ if (_tbodyDeuda) _tbodyDeuda.innerHTML = [...DEUDA_TARJETAS].reverse().map(d => 
 const selAnio = document.getElementById('filtroAnio');
 const selMes = document.getElementById('filtroMes');
 
-const aniosDisponibles = [...new Set(DATA_COMPLETA.map(r => r.fecha.slice(0,4)))].sort().reverse();
-selAnio.innerHTML = '<option value="todos">Todos los años</option>' +
-  aniosDisponibles.map(a => `<option value="${a}">${a}</option>`).join('');
+// Función (2026-09-18) y no código suelto: editar la fecha de un
+// movimiento puede traer un año nuevo, y recargarDatosDashboard() la
+// vuelve a llamar. El año elegido se conserva aunque ya no le quede
+// ningún movimiento (ej. se borró el último de 2024 mirando 2024): el
+// usuario sigue viendo el período que eligió, ahora vacío, en vez de que
+// el dashboard entero salte solo a "Todos los años".
+function poblarSelectAnios() {
+  const elegido = selAnio.value;
+  const anios = [...new Set(DATA_COMPLETA.map(r => r.fecha.slice(0,4)))];
+  if (elegido && elegido !== 'todos' && !anios.includes(elegido)) anios.push(elegido);
+  anios.sort().reverse();
+  selAnio.innerHTML = '<option value="todos">Todos los años</option>' +
+    anios.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('');
+  if (elegido) selAnio.value = elegido;
+}
+poblarSelectAnios();
 
 const NOMBRES_MES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 selMes.innerHTML = '<option value="todos">Todos los meses</option>' +
@@ -3939,6 +4656,7 @@ document.addEventListener('keydown', (e) => {
     if (document.getElementById('alertaAppOverlay')?.classList.contains('abierto')) return;
     cerrarModalGrafico(); cerrarModalInsight();
     cerrarModalPresupuesto(); cerrarModalCategorias(); cerrarModalMeta();
+    cerrarModalMovimiento();
   }
 });
 
@@ -4156,6 +4874,107 @@ document.addEventListener('DOMContentLoaded', () => {
 </div>
 
 <!-- ============================================================
+     MODAL "EDITAR MOVIMIENTO" (2026-09-18, ver JS: abrirModalMovimiento)
+     Mismas clases modal-grafico-* que los de arriba; mismos campos que
+     "Registrar movimiento" (src/templates/base.html). Se abre desde la
+     acción "Editar" de cada fila de "Todos los movimientos".
+     ============================================================ -->
+<div class="modal-grafico-overlay" id="modalMovimiento" role="dialog" aria-modal="true" aria-labelledby="modalMovimientoTitulo" inert>
+  <div class="modal-grafico-card modal-mov-card" style="width: min(540px, 100%);">
+    <div class="modal-grafico-header">
+      <h3 id="modalMovimientoTitulo">Editar movimiento</h3>
+      <button type="button" class="modal-grafico-cerrar" id="btnCerrarModalMovimiento" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-grafico-body" id="modalMovimientoCuerpo">
+      <form id="formMovimiento" novalidate>
+        <div class="aviso-amber" id="movAvisoCuenta" hidden>
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><path d="M12 9v4"></path><path d="M12 17h.01"></path></svg>
+          <span>Estás editando un movimiento de la cuenta de <b id="movAvisoCuentaNombre"></b>, no de la tuya.</span>
+        </div>
+        <p class="modal-mov-nota" id="movNotaOrigen"></p>
+
+        <div class="form-grid-2">
+          <div class="form-row">
+            <label for="movFecha">Fecha</label>
+            <input type="date" id="movFecha" required>
+          </div>
+          <div class="form-row">
+            <label for="movTipo">Tipo</label>
+            <select id="movTipo">
+              <option value="gasto">Gasto</option>
+              <option value="ingreso">Ingreso</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-grid-2">
+          <div class="form-row">
+            <label for="movMonto">Monto</label>
+            <!-- type="text" + máscara (punto = miles, coma = decimales), NO
+                 type="number": mismo bug y mismo fix que el campo Monto de
+                 "Registrar movimiento" en base.html ("16.600.000" se
+                 guardaba como 16.600). -->
+            <input type="text" inputmode="decimal" id="movMonto" required autocomplete="off">
+          </div>
+          <div class="form-row">
+            <label for="movMoneda">Moneda</label>
+            <select id="movMoneda">
+              <option value="COP">COP</option>
+              <option value="USD">USD</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label for="movDescripcion">Descripción</label>
+          <input type="text" id="movDescripcion" required autocomplete="off">
+        </div>
+
+        <div class="form-grid-2">
+          <div class="form-row">
+            <label for="movCategoria">Categoría</label>
+            <div class="combo" id="movCategoriaCombo">
+              <input type="text" id="movCategoria" role="combobox" aria-expanded="false" aria-controls="movCategoriaLista"
+                     aria-autocomplete="list" autocomplete="off" placeholder="transporte, comida...">
+              <button type="button" class="combo-flecha" id="movCategoriaFlecha" tabindex="-1" aria-label="Ver categorías ya usadas">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+            </div>
+          </div>
+          <div class="form-row">
+            <label for="movEntidad">Entidad</label>
+            <div class="combo" id="movEntidadCombo">
+              <input type="text" id="movEntidad" role="combobox" aria-expanded="false" aria-controls="movEntidadLista"
+                     aria-autocomplete="list" autocomplete="off" placeholder="Bancolombia, Nequi...">
+              <button type="button" class="combo-flecha" id="movEntidadFlecha" tabindex="-1" aria-label="Ver entidades ya usadas">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Solo se muestra si la cuenta tiene tarjetas activas o si este
+             movimiento ya tiene una asignada (aunque esté archivada). -->
+        <div class="form-row" id="movTarjetaCampo" hidden>
+          <label for="movTarjeta">Tarjeta de crédito <span class="opcional">(opcional)</span></label>
+          <select id="movTarjeta"></select>
+        </div>
+
+        <div class="modal-mov-pie">
+          <button type="button" class="btn-secundario" id="btnCancelarMovimiento">Cancelar</button>
+          <button type="submit" class="btn-primario" id="btnGuardarMovimiento">Guardar cambios</button>
+        </div>
+      </form>
+    </div>
+    <!-- Los desplegables de los combos cuelgan de la tarjeta y no del
+         campo: el cuerpo del modal scrollea y los recortaría. Ver
+         posicionar() en crearComboMov(). -->
+    <ul class="combo-lista" id="movCategoriaLista" role="listbox" aria-label="Categorías ya usadas" hidden></ul>
+    <ul class="combo-lista" id="movEntidadLista" role="listbox" aria-label="Entidades ya usadas" hidden></ul>
+  </div>
+</div>
+
+<!-- ============================================================
      MODAL GLOBAL DE ALERTAS/CONFIRMACIONES -- mismo componente que
      src/templates/base.html (mostrarAlertaApp()/confirmarApp()), con su
      propia copia acá porque este documento vive en un <iframe> aparte
@@ -4213,7 +5032,31 @@ document.addEventListener('DOMContentLoaded', () => {
   // Clic afuera de la caja (en el fondo) -- este listener vive en el
   // propio documento del iframe, alcanza sin ningún enganche especial.
   overlay.addEventListener('click', (e) => { if (e.target === overlay) cerrar(false); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay.classList.contains('abierto')) cerrar(false); });
+  // Teclado mientras está abierto (2026-09-18). En fase de CAPTURA y
+  // cortando la propagación, porque este modal suele abrirse ENCIMA de
+  // otro (el modal de editar movimiento, el de nueva meta): el Escape
+  // global de iniciarDashboard() cierra todos los modales, y antes lo
+  // hacía también acá -- este listener cerraba la alerta primero, y
+  // cuando el global miraba "¿está abierta la alerta?" ya no lo estaba,
+  // así que un Escape pensado para cancelar la confirmación se llevaba
+  // también el formulario de atrás con todo lo tipeado. Tab queda
+  // atrapado en la caja (mismo onKeydownTrap que base.html) y no llega
+  // al focus trap del modal de atrás.
+  document.addEventListener('keydown', (e) => {
+    if (!overlay.classList.contains('abierto')) return;
+    if (e.key === 'Escape') {
+      e.stopImmediatePropagation();
+      cerrar(false);
+    } else if (e.key === 'Tab') {
+      e.stopImmediatePropagation();
+      const foco = [btnCerrar, btnCancelar, btnOk].filter(el => !el.hidden);
+      const primero = foco[0];
+      const ultimo = foco[foco.length - 1];
+      if (!overlay.contains(document.activeElement)) { e.preventDefault(); btnOk.focus(); }
+      else if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
+      else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
+    }
+  }, true);
 
   // Iconos SVG en vez de glifos de texto sueltos (reskin 2026-09-11) --
   // mismo lenguaje visual (trazo, sin relleno) que src/templates/base.html.
@@ -4221,19 +5064,25 @@ document.addEventListener('DOMContentLoaded', () => {
     ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>',
     error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>',
     confirmar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 1.7-2.2 1.8-2.5 3.5"></path><circle cx="12" cy="17" r="0.4" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="9"></circle></svg>',
+    peligro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>',
   };
 
-  function abrir({ tipo, mensaje, textoBoton, conCancelar }) {
+  // peligro (2026-09-18): acción destructiva e irreversible (borrar un
+  // movimiento). El botón se pinta de rojo y el foco arranca en
+  // "Cancelar", no en el que borra: dos Enter seguidos no pueden
+  // borrar nada por accidente.
+  function abrir({ tipo, mensaje, textoBoton, conCancelar, peligro }) {
     return new Promise((resolve) => {
       elementoQueAbrio = document.activeElement;
       resolverActual = resolve;
-      icono.className = 'alerta-app-icono ' + tipo;
-      icono.innerHTML = ICONOS[tipo] || '';
+      icono.className = 'alerta-app-icono ' + (peligro ? 'error' : tipo);
+      icono.innerHTML = ICONOS[peligro ? 'peligro' : tipo] || '';
       mensajeEl.textContent = mensaje;
       btnOk.textContent = textoBoton || (conCancelar ? 'Confirmar' : 'Ok');
+      btnOk.classList.toggle('btn-peligro', !!peligro);
       btnCancelar.hidden = !conCancelar;
       overlay.classList.add('abierto');
-      btnOk.focus();
+      (peligro && conCancelar ? btnCancelar : btnOk).focus();
     });
   }
 
@@ -4241,7 +5090,7 @@ document.addEventListener('DOMContentLoaded', () => {
     abrir({ tipo, mensaje, textoBoton: opts && opts.textoBoton, conCancelar: false });
 
   window.confirmarApp = (mensaje, opts) =>
-    abrir({ tipo: 'confirmar', mensaje, conCancelar: true, textoBoton: opts && opts.textoBoton });
+    abrir({ tipo: 'confirmar', mensaje, conCancelar: true, textoBoton: opts && opts.textoBoton, peligro: opts && opts.peligro });
 })();
 </script>
 
