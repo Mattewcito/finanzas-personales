@@ -467,22 +467,52 @@ def test_main_con_usuario_id_forzado_usa_el_valor_de_cli_directo_sin_calcular(co
 
 # ----------------------------- calcular_dias_a_revisar() -----------------------------
 
-def test_calcular_dias_a_revisar_sin_ultima_corrida_usa_dias_primera_corrida_si_es_mayor(correo_ctx):
-    ahora = datetime.datetime(2026, 9, 5, 12, 0, 0)
+def test_calcular_dias_a_revisar_sin_ultima_corrida_busca_desde_el_1_de_enero(correo_ctx):
+    """2026-09-10: la primera corrida de una cuenta (sin `ultima_corrida`
+    todavía) ya NO usa un tope fijo de días -- busca desde el 1 de enero
+    del año en curso hasta `ahora`, para no perderse meses de historial
+    real (ver el pedido del usuario: con el tope fijo anterior de 30
+    días, su primera corrida real solo trajo 26 movimientos)."""
+    ahora = datetime.datetime(2026, 9, 5, 12, 0, 0)  # día 248 del año 2026 (no bisiesto)
     config = {"ultima_corrida": None}
 
-    resultado = lc.calcular_dias_a_revisar(config, ahora, dias_minimo=7)
+    resultado = lc.calcular_dias_a_revisar(config, ahora, dias_minimo=2)
 
-    assert resultado == lc.DIAS_PRIMERA_CORRIDA
+    assert resultado == 248
 
 
-def test_calcular_dias_a_revisar_sin_ultima_corrida_usa_dias_minimo_si_supera_primera_corrida(correo_ctx):
-    ahora = datetime.datetime(2026, 9, 5, 12, 0, 0)
+def test_calcular_dias_a_revisar_sin_ultima_corrida_el_1_de_enero_devuelve_un_dia(correo_ctx):
+    """Corriendo por primera vez el propio 1 de enero: cubre ese día
+    completo (no cero)."""
+    ahora = datetime.datetime(2026, 1, 1, 9, 0, 0)
+    config = {"ultima_corrida": None}
+
+    resultado = lc.calcular_dias_a_revisar(config, ahora, dias_minimo=2)
+
+    assert resultado == 2  # dias_minimo (2) supera lo que da el cálculo de enero (1)
+
+
+def test_calcular_dias_a_revisar_sin_ultima_corrida_respeta_dias_minimo_si_es_mayor(correo_ctx):
+    """Si --dias (dias_minimo) pedido por CLI es mayor que lo que va del
+    año, sigue ganando dias_minimo -- mismo criterio de "piso" que ya
+    regía antes para este caso."""
+    ahora = datetime.datetime(2026, 1, 10, 12, 0, 0)  # apenas 10 días de año corrido
     config = {"ultima_corrida": None}
 
     resultado = lc.calcular_dias_a_revisar(config, ahora, dias_minimo=45)
 
     assert resultado == 45
+
+
+def test_calcular_dias_a_revisar_sin_ultima_corrida_funciona_en_anio_bisiesto(correo_ctx):
+    """2028 es bisiesto -- el cálculo debe seguir siendo 'días
+    transcurridos desde el 1 de enero', sin asumir 365 días fijos."""
+    ahora = datetime.datetime(2028, 3, 1, 12, 0, 0)  # 31 (enero) + 29 (febrero bisiesto) + 1 = día 61
+    config = {"ultima_corrida": None}
+
+    resultado = lc.calcular_dias_a_revisar(config, ahora, dias_minimo=2)
+
+    assert resultado == 61
 
 
 def test_calcular_dias_a_revisar_hueco_chico_devuelve_el_minimo(correo_ctx):
@@ -846,3 +876,75 @@ def test_procesar_cuenta_sin_aplicar_no_toca_la_bd(correo_ctx, monkeypatch):
         conn.close()
     fila = config_de(id_maria)
     assert fila["ultima_corrida_ok"] is None
+
+
+def test_procesar_cuenta_con_aplicar_guarda_el_detalle_tecnico_de_la_corrida(correo_ctx, monkeypatch):
+    """2026-09-10 -- 'Última corrida' ahora guarda, además de ok/error, el
+    detalle de qué encontró/insertó esta corrida puntual (ver
+    db_finanzas.py::actualizar_estado_correo). Se verifica acá, no solo en
+    test_db_correo_config.py, porque es procesar_cuenta() quien arma el
+    contenido real del diccionario (categorías, duplicados, muestra de
+    movimientos) -- la capa de datos solo lo serializa tal cual."""
+    import json
+
+    id_maria = crear_usuario("maria")
+    crear_config(id_maria)
+    config = config_de(id_maria)
+
+    monkeypatch.setattr(lc, "buscar_movimientos_correo", lambda dias, config: list(MOVIMIENTOS_PRUEBA))
+
+    lc.procesar_cuenta(config, dias=7, aplicar=True)
+
+    fila = config_de(id_maria)
+    assert fila["ultima_corrida_ok"] == 1
+    detalle = json.loads(fila["ultima_corrida_detalle"])
+    assert detalle["dias_revisados"] == 7
+    assert detalle["correos_encontrados"] == 2
+    assert detalle["nuevos"] == 2
+    assert detalle["duplicados_bd"] == 0
+    assert detalle["duplicados_lote"] == 0
+    assert detalle["categorias"] == {"supermercado": 1, "salario": 1}
+    assert detalle["duracion_seg"] >= 0
+    assert len(detalle["movimientos"]) == 2
+    assert detalle["movimientos"][0]["descripcion"] == "Compra en EXITO con T.Deb *5360"
+
+
+def test_procesar_cuenta_corrida_repetida_cuenta_los_duplicados_en_el_detalle(correo_ctx, monkeypatch):
+    """Insertar los mismos movimientos dos veces seguidas -- la segunda
+    corrida debe reflejar 0 nuevos y 2 duplicados_bd en su propio
+    detalle (no arrastra los números de la corrida anterior)."""
+    import json
+
+    id_maria = crear_usuario("maria")
+    crear_config(id_maria)
+    config = config_de(id_maria)
+    monkeypatch.setattr(lc, "buscar_movimientos_correo", lambda dias, config: list(MOVIMIENTOS_PRUEBA))
+
+    lc.procesar_cuenta(config, dias=7, aplicar=True)
+    lc.procesar_cuenta(config, dias=7, aplicar=True)
+
+    detalle = json.loads(config_de(id_maria)["ultima_corrida_detalle"])
+    assert detalle["nuevos"] == 0
+    assert detalle["duplicados_bd"] == 2
+
+
+def test_procesar_cuenta_sin_movimientos_guarda_detalle_en_ceros(correo_ctx, monkeypatch):
+    """Sin movimientos encontrados, el detalle no debe reventar (no hay
+    'stats' de insertar_movimientos porque nunca se llama) -- todo en 0,
+    sin categorías ni movimientos."""
+    import json
+
+    id_maria = crear_usuario("maria")
+    crear_config(id_maria)
+    config = config_de(id_maria)
+    monkeypatch.setattr(lc, "buscar_movimientos_correo", lambda dias, config: [])
+
+    lc.procesar_cuenta(config, dias=7, aplicar=True)
+
+    detalle = json.loads(config_de(id_maria)["ultima_corrida_detalle"])
+    assert detalle["correos_encontrados"] == 0
+    assert detalle["nuevos"] == 0
+    assert detalle["duplicados_bd"] == 0
+    assert detalle["duplicados_lote"] == 0
+    assert detalle["categorias"] == {}
+    assert detalle["movimientos"] == []

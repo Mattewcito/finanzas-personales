@@ -262,6 +262,51 @@ def parse_card_statement(path, ultimos4, password=None):
     return movimientos, intereses_total_por_moneda, periodo_desde, periodo_hasta
 
 
+def normalizar_intereses_card(intereses_por_moneda, ultimos4, asociar=True):
+    """Los intereses corrientes de tarjeta vienen consolidados por (fecha,
+    moneda) en vez de una fila por día (ver el encabezado del módulo);
+    parse_card_statement los devuelve aparte de los movimientos, así que
+    hay que convertirlos explícitamente o se pierden. Eso pasaba al subir
+    un extracto a mano: el camino de correo sí los cargaba y el de la
+    pantalla de Extractos no, dejando la deuda corta (bug 2026-09-17).
+
+    `asociar=False` cuando el último-4 se detectó por mejor esfuerzo y
+    puede ser "????": un valor inventado nunca debe intentar matchear una
+    tarjeta real."""
+    movimientos = []
+    for (fecha, moneda), valor in intereses_por_moneda.items():
+        if abs(valor) < 0.001:
+            continue
+        movimientos.append({
+            "fecha": fecha,
+            "tipo": "gasto",
+            "categoria": "intereses",
+            "moneda": moneda,
+            "monto": round(valor, 2),
+            "descripcion": f"Interes corriente T.Cred *{ultimos4}",
+            "entidad": "Bancolombia",
+            "ultimos4": ultimos4 if asociar else None,
+        })
+    return movimientos
+
+
+_RE_CUPO_TOTAL = re.compile(r"Cupo\s+total:\s*\$?\s*([\d\.]+,\d{2})", re.IGNORECASE)
+
+
+def parse_card_cupo(path, password=None):
+    """Cupo total declarado en el extracto ("Cupo total: $ 15.500.000,00"),
+    o None si el PDF no lo trae. Se usa para dar de alta la tarjeta con su
+    cupo REAL cuando se sube el extracto de una que todavía no existe (ver
+    routes/dashboard.py::api_cargar_extracto) -- inventar un cupo falsearía
+    el "disponible" que el dashboard le muestra al usuario, así que sin
+    este dato la tarjeta no se crea sola."""
+    for page_text in pdf_text(path, password=password):
+        m = _RE_CUPO_TOTAL.search(page_text)
+        if m:
+            return to_float_latam(m.group(1))
+    return None
+
+
 # ---------------------------------------------------------------------------
 # NORMALIZACIÓN a esquema del Excel
 # ---------------------------------------------------------------------------

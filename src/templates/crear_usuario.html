@@ -1,27 +1,183 @@
 {% extends "base.html" %}
-{% block title %}Crear usuario{% endblock %}
+{% block title %}Usuarios · Cuadre{% endblock %}
+
+{% block head %}
+<style>
+  /* Lápiz */
+  .btn-editar-usuario {
+    background: none;
+    border: 1.5px solid var(--border);
+    color: var(--text-subtle);
+    border-radius: 8px;
+    padding: 6px 7px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    transition: color var(--dur-fast) var(--ease),
+                border-color var(--dur-fast) var(--ease),
+                background var(--dur-fast) var(--ease);
+  }
+  .btn-editar-usuario:hover, .btn-editar-usuario:focus-visible {
+    color: var(--brand);
+    border-color: var(--brand);
+    background: var(--brand-soft);
+    outline: none;
+  }
+
+  /* ── Dialog modal ─────────────────────────────────────────── */
+  #modalEditarUsuario {
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--surface);          /* igual que .card / .alerta-app-box */
+    color: var(--text);
+    box-shadow: var(--shadow-modal);
+    width: min(440px, 95vw);
+  }
+  #modalEditarUsuario::backdrop {
+    background: rgba(0,0,0,.45);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+  }
+
+  .modal-inner { padding: 24px; }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .modal-header h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .btn-cerrar-x {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-subtle);
+    padding: 5px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    transition: color var(--dur-fast), background var(--dur-fast);
+  }
+  .btn-cerrar-x:hover { color: var(--text); background: var(--surface-hover); }
+
+  /* field-label spacing dentro del modal */
+  .modal-inner .field-label { margin-top: 14px; margin-bottom: 4px; }
+  .modal-inner .field-label:first-of-type { margin-top: 0; }
+
+  /* ── Botones del modal ────────────────────────────────────── */
+  /* Base compartida */
+  .modal-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 9px 18px;
+    border-radius: 10px;
+    font-size: 13.5px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    border: 1.5px solid transparent;
+    transition: filter var(--dur-fast) var(--ease),
+                background var(--dur-fast) var(--ease),
+                opacity var(--dur-fast) var(--ease);
+    white-space: nowrap;
+  }
+  .modal-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* Primary — Guardar */
+  .modal-btn-primary {
+    background: var(--brand);
+    border-color: var(--brand);
+    color: var(--on-brand);
+  }
+  .modal-btn-primary:hover:not(:disabled) { filter: brightness(1.1); }
+
+  /* Ghost — Cancelar */
+  .modal-btn-ghost {
+    background: none;
+    border-color: var(--border);
+    color: var(--text-muted);
+  }
+  .modal-btn-ghost:hover:not(:disabled) { background: var(--surface-hover); }
+
+  /* Destructive outline — Eliminar */
+  .modal-btn-danger {
+    background: none;
+    border-color: var(--negative);
+    color: var(--negative);
+  }
+  .modal-btn-danger:hover:not(:disabled) { background: var(--negative-soft); }
+
+  /* Destructive filled — confirmar eliminación */
+  .modal-btn-danger-fill {
+    background: var(--negative);
+    border-color: var(--negative);
+    color: #fff;
+  }
+  .modal-btn-danger-fill:hover:not(:disabled) { filter: brightness(.92); }
+
+  /* Footer layout */
+  .modal-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .modal-footer-spacer { flex: 1; }
+
+  /* Zona de confirmación de eliminación */
+  .modal-confirm {
+    margin-top: 16px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    background: var(--negative-soft);
+    border: 1px solid color-mix(in srgb, var(--negative) 30%, transparent);
+  }
+  .modal-confirm-msg {
+    font-size: 13px;
+    color: var(--text);
+    margin: 0 0 12px;
+    line-height: 1.5;
+  }
+  .modal-confirm-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="page-wrap" style="max-width: 640px;">
 
   <div class="page-header">
-    <h1>👤 Crear usuario</h1>
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="22" height="22" aria-hidden="true" style="vertical-align:middle; margin-right:8px;"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>Crear usuario</h1>
     <p>Cada cuenta nueva arranca con sus propias finanzas, separadas por completo del resto.</p>
   </div>
 
   <div class="card" style="margin-top: 26px;">
     <form id="formCrearUsuario">
-      <label class="field-label">Nombre de usuario (para iniciar sesión)</label>
-      <input type="text" name="username" class="field-input" required>
+      <label class="field-label" for="nuevoUsername">Nombre de usuario (para iniciar sesión)</label>
+      <input type="text" id="nuevoUsername" name="username" class="field-input" required autocomplete="off">
 
-      <label class="field-label">Nombre a mostrar en la app</label>
-      <input type="text" name="nombre" class="field-input" required>
+      <label class="field-label" for="nuevoNombre">Nombre a mostrar en la app</label>
+      <input type="text" id="nuevoNombre" name="nombre" class="field-input" required>
 
-      <label class="field-label">Contraseña</label>
-      <input type="password" name="password" class="field-input" required minlength="4">
+      <label class="field-label" for="nuevoPassword">Contraseña</label>
+      <input type="password" id="nuevoPassword" name="password" class="field-input" required minlength="8">
 
-      <label class="field-label">Rol</label>
-      <select name="rol" class="field-select">
+      <label class="field-label" for="nuevoRol">Rol</label>
+      <select id="nuevoRol" name="rol" class="field-select">
         <option value="usuario">Usuario (ve solo sus propias finanzas)</option>
         <option value="admin">Administrador (ve todo, puede cambiar de perfil)</option>
       </select>
@@ -35,18 +191,74 @@
   <div class="card" style="margin-top: 22px;">
     <h3 style="margin:0 0 14px; font-size:14.5px;">Usuarios existentes</h3>
     {% for u in usuarios %}
-    <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 0; {{ 'border-top:1px solid var(--card-border);' if not loop.first else '' }}">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 0; {{ 'border-top:1px solid var(--border);' if not loop.first else '' }}">
       <div>
         <div style="font-size:13.5px; font-weight:600;">{{ u.nombre_mostrado }}</div>
-        <div style="font-size:11.5px; color:var(--text-faint);">usuario: {{ u.username }} · rol: {{ u.rol }}</div>
+        <div style="font-size:11.5px; color:var(--text-subtle);">usuario: {{ u.username }} · rol: {{ u.rol }}</div>
       </div>
-      <a href="/editar-usuario/{{ u.id }}" style="color:var(--accent-2); font-size:12.5px; font-weight:600;">Editar</a>
+      <button class="btn-editar-usuario"
+              data-id="{{ u.id }}"
+              data-username="{{ u.username }}"
+              data-nombre="{{ u.nombre_mostrado }}"
+              data-rol="{{ u.rol }}"
+              aria-label="Editar {{ u.nombre_mostrado }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </button>
     </div>
     {% endfor %}
   </div>
 </div>
 
+<!-- Modal editar usuario -->
+<dialog id="modalEditarUsuario" aria-modal="true" aria-labelledby="tituloModalEditar">
+  <div class="modal-inner">
+    <div class="modal-header">
+      <h3 id="tituloModalEditar">Editar usuario</h3>
+      <button type="button" class="btn-cerrar-x" id="btnCerrarX" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <form id="formEditarModal" novalidate>
+      <input type="hidden" id="editModalId">
+
+      <label class="field-label" for="editModalUsername">Nombre de usuario (para iniciar sesión)</label>
+      <input type="text" id="editModalUsername" name="username" class="field-input" required autocomplete="off">
+
+      <label class="field-label" for="editModalNombre">Nombre a mostrar en la app</label>
+      <input type="text" id="editModalNombre" name="nombre" class="field-input" required>
+
+      <label class="field-label" for="editModalPassword">Nueva contraseña (opcional)</label>
+      <input type="password" id="editModalPassword" name="password" class="field-input" minlength="8" placeholder="Dejar en blanco para no cambiarla">
+
+      <label class="field-label" for="editModalRol">Rol</label>
+      <select id="editModalRol" name="rol" class="field-select">
+        <option value="usuario">Usuario (ve solo sus propias finanzas)</option>
+        <option value="admin">Administrador (ve todo, puede cambiar de perfil)</option>
+      </select>
+    </form>
+
+    <!-- Footer: Eliminar a la izquierda, Cancelar + Guardar a la derecha -->
+    <div id="modalFooterNormal" class="modal-footer">
+      <button type="button" class="modal-btn modal-btn-danger" id="btnEliminarModal">Eliminar</button>
+      <div class="modal-footer-spacer"></div>
+      <button type="button" class="modal-btn modal-btn-ghost" id="btnCancelarModal">Cancelar</button>
+      <button type="submit" form="formEditarModal" class="modal-btn modal-btn-primary" id="btnGuardarModal">Guardar</button>
+    </div>
+
+    <!-- Confirmación de eliminación inline -->
+    <div id="modalFooterConfirm" class="modal-confirm" style="display:none;">
+      <p class="modal-confirm-msg">¿Eliminar definitivamente a <strong id="confirmNombreUsuario"></strong>? Esta acción no se puede deshacer.</p>
+      <div class="modal-confirm-actions">
+        <button type="button" class="modal-btn modal-btn-ghost" id="btnCancelarEliminar">No, volver</button>
+        <button type="button" class="modal-btn modal-btn-danger-fill" id="btnConfirmarEliminar">Sí, eliminar</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
 <script>
+// ── Crear usuario ──────────────────────────────────────────────────────────
 document.getElementById('formCrearUsuario').addEventListener('submit', async (e) => {
   e.preventDefault();
   const datos = new FormData(e.target);
@@ -61,20 +273,126 @@ document.getElementById('formCrearUsuario').addEventListener('submit', async (e)
   try {
     const res = await fetch('/api/crear-usuario', { method: 'POST', body: datos });
     const json = await res.json();
+    resultado.style.display = 'none';
     if (!res.ok || !json.ok) {
-      resultado.className = 'result-box error';
-      resultado.textContent = '❌ ' + (json.error || 'Error desconocido');
+      await mostrarAlertaApp('error', json.error || 'Error desconocido');
       return;
     }
-    resultado.className = 'result-box ok';
-    resultado.textContent = '✅ Usuario creado. Ya puede iniciar sesión con esas credenciales.';
     e.target.reset();
-    setTimeout(() => location.reload(), 900); // para que aparezca en la lista de abajo
+    await mostrarAlertaApp('ok', 'Usuario creado. Ya puede iniciar sesión con esas credenciales.');
+    location.reload();
   } catch (err) {
-    resultado.className = 'result-box error';
-    resultado.textContent = '❌ No se pudo conectar con el servidor.';
+    resultado.style.display = 'none';
+    await mostrarAlertaApp('error', 'No se pudo conectar con el servidor.');
   } finally {
     btn.disabled = false;
+  }
+});
+
+// ── Modal editar usuario ───────────────────────────────────────────────────
+const dialog = document.getElementById('modalEditarUsuario');
+
+function abrirModalEditar(btn) {
+  document.getElementById('editModalId').value = btn.dataset.id;
+  document.getElementById('editModalUsername').value = btn.dataset.username;
+  document.getElementById('editModalNombre').value = btn.dataset.nombre;
+  document.getElementById('editModalPassword').value = '';
+  document.getElementById('editModalRol').value = btn.dataset.rol;
+  mostrarFooterNormal();
+  dialog.showModal();
+  document.getElementById('editModalUsername').focus();
+}
+
+function mostrarFooterNormal() {
+  document.getElementById('modalFooterNormal').style.display = 'flex';
+  document.getElementById('modalFooterConfirm').style.display = 'none';
+  const btnElim = document.getElementById('btnEliminarModal');
+  btnElim.disabled = false;
+  btnElim.textContent = 'Eliminar';
+}
+
+document.querySelectorAll('.btn-editar-usuario').forEach(btn => {
+  btn.addEventListener('click', () => abrirModalEditar(btn));
+});
+
+// Prevenir cierre con Escape
+dialog.addEventListener('cancel', e => e.preventDefault());
+
+// Prevenir cierre al hacer click en el backdrop (event.target === dialog cuando
+// el click cae fuera del contenido)
+dialog.addEventListener('click', e => {
+  if (e.target === dialog) e.preventDefault();
+});
+
+// X → cerrar
+document.getElementById('btnCerrarX').addEventListener('click', () => dialog.close());
+
+// Cancelar → cerrar
+document.getElementById('btnCancelarModal').addEventListener('click', () => dialog.close());
+
+// Eliminar → mostrar confirmación dentro del modal (no cierra)
+document.getElementById('btnEliminarModal').addEventListener('click', () => {
+  document.getElementById('confirmNombreUsuario').textContent =
+    document.getElementById('editModalNombre').value;
+  document.getElementById('modalFooterNormal').style.display = 'none';
+  document.getElementById('modalFooterConfirm').style.display = 'flex';
+  document.getElementById('btnConfirmarEliminar').focus();
+});
+
+// "No, volver" → restaurar footer normal
+document.getElementById('btnCancelarEliminar').addEventListener('click', mostrarFooterNormal);
+
+// Confirmar eliminación
+document.getElementById('btnConfirmarEliminar').addEventListener('click', async () => {
+  const id = document.getElementById('editModalId').value;
+  const btn = document.getElementById('btnConfirmarEliminar');
+  btn.disabled = true;
+  btn.textContent = 'Eliminando…';
+
+  try {
+    const res = await fetch('/api/eliminar-usuario/' + id, { method: 'POST' });
+    const json = await res.json();
+    if (!res.ok || !json.ok) {
+      mostrarFooterNormal();
+      await mostrarAlertaApp('error', json.error || 'Error desconocido');
+      return;
+    }
+    dialog.close();
+    await mostrarAlertaApp('ok', 'Usuario eliminado.');
+    location.reload();
+  } catch (err) {
+    mostrarFooterNormal();
+    await mostrarAlertaApp('error', 'No se pudo conectar con el servidor.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sí, eliminar';
+  }
+});
+
+// Guardar cambios
+document.getElementById('formEditarModal').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = document.getElementById('editModalId').value;
+  const datos = new FormData(e.target);
+  const btn = document.getElementById('btnGuardarModal');
+  btn.disabled = true;
+  btn.textContent = 'Guardando…';
+
+  try {
+    const res = await fetch('/api/editar-usuario/' + id, { method: 'POST', body: datos });
+    const json = await res.json();
+    if (!res.ok || !json.ok) {
+      await mostrarAlertaApp('error', json.error || 'Error desconocido');
+      return;
+    }
+    dialog.close();
+    await mostrarAlertaApp('ok', 'Usuario actualizado.');
+    location.reload();
+  } catch (err) {
+    await mostrarAlertaApp('error', 'No se pudo conectar con el servidor.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Guardar';
   }
 });
 </script>

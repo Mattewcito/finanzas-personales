@@ -511,7 +511,9 @@ def test_vista_tarjetas_admin_viendo_otro_perfil_ve_entidades_de_esa_cuenta(clie
 
 
 # ============================================================================
-# GET /registrar: no debe reventar con o sin tarjetas activas del usuario
+# GET /registrar: desde 2026-09-17 ya no renderiza el formulario (vive en un
+# modal de base.html) -- es el enlace profundo que entra con el diálogo
+# abierto. Sigue teniendo que responder 200 con o sin tarjetas.
 # ============================================================================
 
 def test_get_registrar_con_sesion_da_200_sin_tarjetas(client):
@@ -521,6 +523,11 @@ def test_get_registrar_con_sesion_da_200_sin_tarjetas(client):
 
 
 def test_get_registrar_con_sesion_da_200_con_tarjetas_activas_y_archivadas(client, app_ctx):
+    """Smoke test: la ruta no debe reventar con una mezcla de tarjetas
+    activas y archivadas. Quién se ofrece como destino de un movimiento
+    nuevo ya no lo decide esta ruta sino /api/registrar-opciones (ver la
+    sección de abajo), pero la regla de fondo -- la archivada no se
+    ofrece -- se comprueba igual contra la BD."""
     _, admin_id, _ = app_ctx
     conn = db.conectar()
     tid_activa = db.crear_tarjeta(conn, admin_id, "Activa", 100000)
@@ -531,11 +538,108 @@ def test_get_registrar_con_sesion_da_200_con_tarjetas_activas_y_archivadas(clien
     login(client, "admin_test", "clave-admin-123")
     resp = client.get("/registrar")
 
-    assert resp.status_code == 200  # smoke test: no debe reventar con una mezcla de activas/archivadas
+    assert resp.status_code == 200
     conn = db.conectar()
     activas = db.obtener_tarjetas(conn, admin_id, solo_activas=True)
     conn.close()
     assert [t["id"] for t in activas] == [tid_activa]  # la archivada no se ofrece como destino de movimientos nuevos
+
+
+# ============================================================================
+# GET /api/registrar-opciones (2026-09-17): lo que llena el modal de
+# "Registrar movimiento" -- categorías/entidades ya usadas y tarjetas
+# ACTIVAS de la cuenta que se está viendo. Reemplaza lo que antes viajaba
+# renderizado en templates/registrar.html.
+# ============================================================================
+
+def test_registrar_opciones_redirige_a_login_sin_sesion(client):
+    resp = client.get("/api/registrar-opciones")
+    assert resp.status_code == 302
+    assert "/login" in resp.headers["Location"]
+
+
+def test_registrar_opciones_cuenta_nueva_devuelve_listas_vacias_y_no_revienta(client):
+    """Caso borde "cuenta recién creada": tiene que devolver una forma
+    válida (listas vacías), nunca None ni un 500 -- el modal se abre
+    igual y el usuario puede escribir categoría/entidad a mano."""
+    login(client, "admin_test", "clave-admin-123")
+    resp = client.get("/api/registrar-opciones")
+
+    assert resp.status_code == 200
+    json = resp.get_json()
+    assert json["ok"] is True
+    assert json["categorias"] == []
+    assert json["entidades"] == []
+    assert json["tarjetas"] == []
+
+
+def test_registrar_opciones_devuelve_categorias_y_entidades_ya_usadas(client):
+    login(client, "admin_test", "clave-admin-123")
+    client.post("/api/registrar-movimiento",
+                data=datos_movimiento(categoria="mercado", entidad="Nequi"))
+
+    json = client.get("/api/registrar-opciones").get_json()
+
+    assert "mercado" in json["categorias"]
+    assert "Nequi" in json["entidades"]
+
+
+def test_registrar_opciones_solo_ofrece_tarjetas_activas(client, app_ctx):
+    """La archivada no se ofrece como destino de movimientos nuevos (ver
+    requisitos/2026-09-07_tarjetas-credito-cupo.md) -- misma regla que
+    aplicaba /registrar cuando todavía renderizaba el formulario."""
+    _, admin_id, _ = app_ctx
+    conn = db.conectar()
+    tid_activa = db.crear_tarjeta(conn, admin_id, "Activa", 100000, ultimos4="2011")
+    tid_archivada = db.crear_tarjeta(conn, admin_id, "Archivada", 100000)
+    db.archivar_tarjeta(conn, admin_id, tid_archivada)
+    conn.close()
+
+    login(client, "admin_test", "clave-admin-123")
+    json = client.get("/api/registrar-opciones").get_json()
+
+    assert [t["id"] for t in json["tarjetas"]] == [tid_activa]
+    assert json["tarjetas"][0]["nombre"] == "Activa"
+    assert json["tarjetas"][0]["ultimos4"] == "2011"
+
+
+def test_registrar_opciones_no_filtra_la_cedula_de_la_tarjeta(client, app_ctx):
+    """La cédula está cifrada en la columna y no sale de la capa de BD
+    (ver db_finanzas._fila_tarjeta_publica). Este endpoint alimenta un
+    <select> que solo muestra el nombre: no tiene por qué viajar NADA
+    más que id/nombre/ultimos4, ni siquiera el booleano tiene_cedula."""
+    _, admin_id, _ = app_ctx
+    conn = db.conectar()
+    db.crear_tarjeta(conn, admin_id, "Con cédula", 100000, ultimos4="2011", cedula="1000294910")
+    conn.close()
+
+    login(client, "admin_test", "clave-admin-123")
+    resp = client.get("/api/registrar-opciones")
+
+    assert set(resp.get_json()["tarjetas"][0]) == {"id", "nombre", "ultimos4"}
+    assert "1000294910" not in resp.get_data(as_text=True)
+
+
+def test_registrar_opciones_respeta_el_perfil_que_se_esta_viendo(client, app_ctx):
+    """Aislamiento por viendo_id(), igual que el resto de la app: un admin
+    mirando el perfil de otro tiene que ver las categorías/entidades de
+    ESA cuenta, no las propias -- si no, el autocompletado del modal
+    filtraría datos de una cuenta a otra."""
+    _, _admin_id, user_id = app_ctx
+    login(client, "admin_test", "clave-admin-123")
+    client.post("/api/registrar-movimiento",
+                data=datos_movimiento(categoria="solo-del-admin", entidad="EntidadDelAdmin"))
+
+    client.post("/cambiar-vista", data={"usuario_id": user_id})
+    client.post("/api/registrar-movimiento",
+                data=datos_movimiento(categoria="solo-del-usuario", entidad="EntidadDelUsuario"))
+
+    json = client.get("/api/registrar-opciones").get_json()
+
+    assert "solo-del-usuario" in json["categorias"]
+    assert "solo-del-admin" not in json["categorias"]
+    assert "EntidadDelUsuario" in json["entidades"]
+    assert "EntidadDelAdmin" not in json["entidades"]
 
 
 # ============================================================================

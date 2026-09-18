@@ -1,81 +1,113 @@
-{% extends "base.html" %}
-{% block title %}Correo automático{% endblock %}
+﻿{% extends "base.html" %}
+{% block title %}Correo automático · Cuadre{% endblock %}
 
 {% block head %}
 <style>
   .estado-card{
     display:flex; align-items:center; gap:14px; margin-bottom:22px;
     padding: 14px 18px; border-radius: 14px;
-    background: linear-gradient(180deg, var(--card-solid), #10141f);
-    border: 1px solid var(--card-border);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-1);
   }
   .estado-dot{ width:11px; height:11px; border-radius:50%; flex-shrink:0; }
-  .estado-dot.ok{ background:#34d399; box-shadow:0 0 8px #34d39980; }
-  .estado-dot.error{ background:#f87171; box-shadow:0 0 8px #f8717180; }
-  .estado-dot.pausado{ background:#5b6379; }
-  .estado-dot.sin-config{ background:#fbbf24; box-shadow:0 0 8px #fbbf2480; }
+  .estado-dot.ok{ background: var(--positive); box-shadow:0 0 8px color-mix(in srgb, var(--positive) 55%, transparent); }
+  .estado-dot.error{ background: var(--negative); box-shadow:0 0 8px color-mix(in srgb, var(--negative) 55%, transparent); }
+  .estado-dot.pausado{ background: var(--text-subtle); }
+  .estado-dot.sin-config{ background: var(--warning); box-shadow:0 0 8px color-mix(in srgb, var(--warning) 55%, transparent); }
   .estado-texto b{ color:var(--text); }
-  .estado-texto .detalle{ display:block; font-size:12px; color:var(--text-dim); margin-top:2px; }
+  .estado-texto .detalle{ display:block; font-size:12px; color:var(--text-muted); margin-top:2px; }
+
+  /* Detalle técnico de "Última corrida" -- solo admin (ver comentario en
+     el HTML). El botón vive pegado al texto de la fecha (mismo tamaño,
+     mismo tono apagado), y el panel que despliega reusa .preview-tabla
+     (ya definida arriba) para la lista de movimientos. */
+  .btn-ver-detalle-corrida{
+    display:inline; margin-left:6px; padding:0; border:none; background:none;
+    color: var(--brand); font-size:12px; font-weight:600; cursor:pointer;
+    font-family:inherit; text-decoration:underline;
+  }
+  .btn-ver-detalle-corrida:hover{ color: var(--brand); }
+  .panel-detalle-corrida{
+    margin: 10px 0 22px; padding: 16px 18px; border-radius: 12px;
+    background: var(--surface-2); border:1px solid var(--border); font-size:12.5px;
+  }
+  .panel-detalle-corrida h4{
+    margin: 16px 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color: var(--text-subtle);
+  }
+  .panel-detalle-corrida h4:first-child{ margin-top:0; }
+  .fila-detalle{ display:flex; justify-content:space-between; gap:14px; padding:5px 0; border-bottom:1px solid var(--border); }
+  .fila-detalle:last-child{ border-bottom:none; }
+  .fila-detalle span:first-child{ color: var(--text); }
+  .fila-detalle span:last-child{ color: var(--text-muted); text-align:right; }
 
   .ayuda-btn{
     display:inline-flex; align-items:center; gap:6px; margin: 0 0 18px;
-    padding: 9px 14px; border-radius: 10px; border: 1px solid var(--card-border);
-    background: var(--bg-soft); color: var(--accent-2); font-size:12.5px; font-weight:600;
+    padding: 9px 14px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface-2); color: var(--brand); font-size:12.5px; font-weight:600;
     cursor:pointer; font-family:inherit;
   }
-  .ayuda-btn:hover{ background: var(--card-hover); }
+  .ayuda-btn:hover{ background: var(--surface-hover); }
 
   .frecuencia-opcion{
-    display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-dim);
-    padding: 10px 12px; border-radius:10px; border:1px solid var(--card-border);
+    display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-muted);
+    padding: 10px 12px; border-radius:10px; border:1px solid var(--border);
     margin-bottom:8px; cursor:pointer;
   }
-  .frecuencia-opcion input[type="radio"]{ accent-color: var(--accent); flex-shrink:0; }
-  .frecuencia-opcion.activa{ border-color: var(--accent); color: var(--text); }
+  .frecuencia-opcion input[type="radio"]{ accent-color: var(--brand); flex-shrink:0; }
+  .frecuencia-opcion.activa{ border-color: var(--brand); color: var(--text); }
   .frecuencia-opcion .field-input{ width:84px; display:inline-block; padding:6px 8px; }
   .frecuencia-opcion input[type="time"].field-input{ width:120px; }
   .frecuencia-opcion input:disabled{ opacity:.4; }
 
-  .check-row{ display:flex; align-items:center; gap:10px; margin: 18px 0 4px; font-size:13px; color:var(--text-dim); }
-  .check-row input{ accent-color: var(--accent); width:16px; height:16px; }
+  .check-row{ display:flex; align-items:center; gap:10px; margin: 18px 0 4px; font-size:13px; color:var(--text-muted); }
+  .check-row input{ accent-color: var(--brand); width:16px; height:16px; }
 
   .btn-secundario{
     margin-top: 20px; margin-left: 10px; padding: 11px 20px; border-radius: 10px;
-    border:1px solid var(--card-border); background: var(--bg-soft); color: var(--text);
+    border:1px solid var(--border); background: var(--surface-2); color: var(--text);
     font-weight:600; font-size:13.5px; cursor:pointer; font-family: inherit;
   }
-  .btn-secundario:hover{ background: var(--card-hover); }
+  .btn-secundario:hover{ background: var(--surface-hover); }
   .btn-secundario:disabled{ opacity:.5; cursor:not-allowed; }
-  .btn-peligro{ color:#f87171; border-color: rgba(248,113,113,0.3); }
+  .btn-peligro{ color: var(--negative); border-color: color-mix(in srgb, var(--negative) 30%, transparent); }
 
   .preview-tabla{ width:100%; border-collapse:collapse; margin-top:12px; font-size:12.5px; }
-  .preview-tabla th, .preview-tabla td{ text-align:left; padding:6px 8px; border-bottom:1px solid var(--card-border); }
-  .preview-tabla th{ color:var(--text-faint); font-weight:600; font-size:11px; text-transform:uppercase; }
+  .preview-tabla th, .preview-tabla td{ text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); }
+  .preview-tabla th{ color:var(--text-subtle); font-weight:600; font-size:11px; text-transform:uppercase; }
 
   /* Modal de ayuda paso a paso */
   .modal-overlay{
-    display:none; position:fixed; inset:0; background:rgba(5,7,12,0.72);
+    display:none; position:fixed; inset:0; background:rgba(5,7,12,0.6);
+    backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
     z-index:500; align-items:center; justify-content:center; padding:24px;
   }
-  .modal-overlay.abierto{ display:flex; }
+  .modal-overlay.abierto{ display:flex; animation: modalFondoIn .16s ease; }
+  @keyframes modalFondoIn{ from{ opacity:0; } to{ opacity:1; } }
   .modal-box{
     max-width:560px; width:100%; max-height:85vh; overflow-y:auto;
-    background: linear-gradient(180deg, var(--card-solid), #10141f);
-    border:1px solid var(--card-border); border-radius:16px; padding:26px 28px;
+    /* Superficie elevada (2026-09-10, ver --surface-elevated en
+       base.html): el modal es la superficie más cerca del usuario, así
+       que arranca más clara, no más oscura. */
+    background: linear-gradient(180deg, var(--surface), var(--surface));
+    border:1px solid var(--border); border-radius:16px; padding:26px 28px;
+    box-shadow: var(--shadow-modal);
+    animation: modalBoxIn .18s cubic-bezier(.2,.9,.3,1.2);
   }
+  @keyframes modalBoxIn{ from{ transform:scale(.96); opacity:0; } to{ transform:scale(1); opacity:1; } }
   .modal-box h3{ margin:0 0 4px; font-size:17px; }
-  .modal-box > p.sub{ margin:0 0 18px; color:var(--text-dim); font-size:13px; }
+  .modal-box > p.sub{ margin:0 0 18px; color:var(--text-muted); font-size:13px; }
   .paso{ display:flex; gap:12px; margin-bottom:16px; }
   .paso .num{
-    flex-shrink:0; width:26px; height:26px; border-radius:50%; background:var(--accent);
+    flex-shrink:0; width:26px; height:26px; border-radius:50%; background:var(--brand);
     color:#fff; font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center;
   }
-  .paso .txt{ font-size:13px; color:var(--text-dim); line-height:1.55; padding-top:3px; }
+  .paso .txt{ font-size:13px; color:var(--text-muted); line-height:1.55; padding-top:3px; }
   .paso .txt b{ color:var(--text); }
-  .paso .txt a{ color:var(--accent-2); }
+  .paso .txt a{ color:var(--brand); }
   .modal-cerrar{
     margin-top: 6px; padding: 9px 18px; border-radius:10px; border:none;
-    background: var(--card-hover); color:var(--text); font-weight:600; font-size:13px;
+    background: var(--surface-hover); color:var(--text); font-weight:600; font-size:13px;
     cursor:pointer; font-family:inherit;
   }
 
@@ -86,9 +118,19 @@
   .aviso-cuenta{
     display:flex; align-items:center; gap:8px; margin: 0 0 18px;
     padding: 10px 14px; border-radius: 10px; font-size: 13px;
-    background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.28); color: var(--text);
+    background: color-mix(in srgb, var(--warning) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent); color: var(--text);
   }
-  .aviso-cuenta b{ color: #fbbf24; }
+  .aviso-cuenta b{ color: var(--warning); }
+
+  .danger-zone {
+    margin-top: 24px; padding: 16px 20px; border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--negative) 35%, transparent);
+    background: color-mix(in srgb, var(--negative) 6%, transparent);
+  }
+  .danger-zone p {
+    margin: 0 0 12px; font-size: 13px; color: var(--text-muted);
+  }
 </style>
 {% endblock %}
 
@@ -96,14 +138,15 @@
 <div class="page-wrap" style="max-width: 760px;">
 
   <div class="page-header">
-    <h1>📬 Correo automático</h1>
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="22" height="22" aria-hidden="true" style="vertical-align:middle; margin-right:8px;"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 12 21 19.79 19.79 0 0 1 3.55 17.93 2 2 0 0 1 2 15.92v-3"/><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Correo automático</h1>
     <p>Conectá tu correo dedicado a notificaciones bancarias para que Bancolombia se registre solo en tu cuenta, sin tener que anotar nada a mano.</p>
   </div>
 
   {% if usuario_rol == 'admin' %}
   <div class="aviso-cuenta">
-    ⚠️ Estás por configurar el correo automático de <b>{{ usuario_viendo_nombre }}</b>.
-    Si no es la que querés, cambiala primero en "Viendo perfil de" (menú de la izquierda).
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true" style="flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    Estás por configurar el correo automático de <b>{{ usuario_viendo_nombre }}</b>.
+    Si no es la que quieres, cámbiala primero en "Viendo perfil de" (menú de la izquierda).
   </div>
   {% endif %}
 
@@ -115,12 +158,16 @@
     {% elif config.ultima_corrida_ok is none %}
       <div class="estado-dot sin-config"></div>
       <div class="estado-texto"><b>Configurado, todavía sin ninguna corrida.</b>
-        <span class="detalle">La primera corrida ocurre según la frecuencia elegida abajo, o podés forzarla con "Sincronizar ahora".</span>
+        <span class="detalle">La primera corrida ocurre según la frecuencia elegida abajo, o puedes forzarla con "Sincronizar ahora".</span>
       </div>
     {% elif config.ultima_corrida_ok %}
       <div class="estado-dot ok"></div>
       <div class="estado-texto"><b>Funcionando bien</b>
-        <span class="detalle">Última corrida: <span class="fecha-local" data-iso="{{ config.ultima_corrida }}">{{ config.ultima_corrida }}</span></span>
+        <span class="detalle">Última corrida: <span class="fecha-local" data-iso="{{ config.ultima_corrida }}">{{ config.ultima_corrida }}</span>
+        {% if usuario_rol == 'admin' and config.ultima_corrida_detalle %}
+        <button type="button" class="btn-ver-detalle-corrida" id="btnVerDetalleCorrida">Ver detalle de la corrida ▾</button>
+        {% endif %}
+        </span>
       </div>
     {% else %}
       <div class="estado-dot error"></div>
@@ -129,9 +176,23 @@
       </div>
     {% endif %}
   </div>
+  {% if usuario_rol == 'admin' and config.ultima_corrida_detalle %}
+  <!-- Detalle técnico de la última corrida (2026-09-10) -- SOLO admin: no
+       tiene sentido para un usuario normal (no configura nada de esto) y
+       es información interna (tiempos, conteos, hasta la lista concreta
+       de movimientos leídos) que no aporta a su experiencia normal de la
+       app. Se arma en JS al hacer click, no de una -- ver el <script> más
+       abajo. El JSON en sí lo produce leer_correo.py::procesar_cuenta y
+       lo guarda tal cual db_finanzas.py::actualizar_estado_correo. -->
+  <script type="application/json" id="datosDetalleCorrida">{{ config.ultima_corrida_detalle | safe }}</script>
+  <div class="panel-detalle-corrida" id="panelDetalleCorrida" hidden></div>
+  {% endif %}
   {% endif %}
 
-  <button type="button" class="ayuda-btn" id="btnAyuda">❓ Cómo configurar esto, paso a paso</button>
+  <button type="button" class="ayuda-btn" id="btnAyuda">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    Cómo configurar esto, paso a paso
+  </button>
 
   <div class="card">
     <form id="formCorreo">
@@ -143,12 +204,12 @@
       <input type="password" name="app_password" class="field-input" minlength="8"
              placeholder="{{ 'Dejar en blanco para no cambiarla' if config else 'Requerida la primera vez — ver la ayuda de arriba' }}">
 
-      <label class="field-label">Cédula <span style="color:var(--text-faint); font-weight:400;">(opcional — solo si querés que también abra extractos PDF adjuntos)</span></label>
+      <label class="field-label">Cédula <span style="color:var(--text-subtle); font-weight:400;">(opcional — solo si quieres que también abra extractos PDF adjuntos)</span></label>
       <input type="text" name="cedula" class="field-input" inputmode="numeric" autocomplete="off"
              placeholder="{{ 'Dejar en blanco para no cambiarla' if (config and config.cedula) else 'Bancolombia cifra esos PDF con este número' }}">
 
       <details style="margin-top:16px;">
-        <summary style="cursor:pointer; font-size:12.5px; color:var(--text-dim);">Opciones avanzadas (servidor IMAP)</summary>
+        <summary style="cursor:pointer; font-size:12.5px; color:var(--text-muted);">Opciones avanzadas (servidor IMAP)</summary>
         <div class="field-row" style="margin-top:10px;">
           <div>
             <label class="field-label">Servidor IMAP</label>
@@ -188,54 +249,59 @@
         <button type="button" class="btn-secundario" id="btnProbar">Probar conexión</button>
         {% if config %}
         <button type="button" class="btn-secundario" id="btnSincronizar">Sincronizar ahora</button>
-        <button type="button" class="btn-secundario btn-peligro" id="btnEliminar">Eliminar configuración</button>
         {% endif %}
       </div>
     </form>
 
     <div id="resultado" class="result-box" style="display:none;"></div>
     <div id="preview" style="display:none;"></div>
+    {% if config %}
+    <div class="danger-zone">
+      <p>Eliminar la configuración de correo automático. Vas a tener que volver a cargar la contraseña de aplicación si quieres reactivarlo.</p>
+      <button type="button" class="btn-secundario btn-peligro" id="btnEliminar">Eliminar configuración</button>
+    </div>
+    {% endif %}
   </div>
 </div>
 
 <!-- Modal de ayuda -->
-<div class="modal-overlay" id="modalAyuda">
+<div class="modal-overlay" id="modalAyuda" role="dialog" aria-modal="true" aria-labelledby="modalAyudaTitulo">
   <div class="modal-box">
-    <h3>Cómo configurar tu correo automático</h3>
-    <p class="sub">6 pasos, una sola vez. Usá una cuenta de Gmail dedicada solo a esto — no tu correo personal.</p>
+    <h3 id="modalAyudaTitulo">Cómo configurar tu correo automático</h3>
+    <p class="sub">6 pasos, una sola vez. Usa una cuenta de Gmail dedicada solo a esto — no tu correo personal.</p>
 
     <div class="paso"><div class="num">1</div><div class="txt">
-      Si no tenés un correo Gmail dedicado a lo financiero, creá uno nuevo en
+      Si no tienes un correo Gmail dedicado a lo financiero, crea uno nuevo en
       <a href="https://accounts.google.com/signup" target="_blank" rel="noopener">accounts.google.com/signup</a>.
       Así las notificaciones bancarias quedan separadas de tu correo personal.
     </div></div>
 
     <div class="paso"><div class="num">2</div><div class="txt">
-      En Bancolombia (app o web), cambiá el <b>correo de notificaciones</b> a ese correo dedicado
+      En Bancolombia (app o web), cambia el <b>correo de notificaciones</b> a ese correo dedicado
       (Configuración → Notificaciones, o similar según la versión de la app).
     </div></div>
 
     <div class="paso"><div class="num">3</div><div class="txt">
-      En esa cuenta de Google, activá la <b>verificación en 2 pasos</b> si todavía no la tenés
+      En esa cuenta de Google, activa la <b>verificación en 2 pasos</b> si todavía no la tienes
       (<a href="https://myaccount.google.com/security" target="_blank" rel="noopener">myaccount.google.com/security</a>) —
       es requisito para el paso siguiente.
     </div></div>
 
     <div class="paso"><div class="num">4</div><div class="txt">
-      Andá a <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>,
-      elegí "Otra (nombre personalizado)", escribí algo como <i>"Finanzas IMAP"</i> y generá la contraseña.
-      Google te muestra 16 caracteres — <b>copialos tal cual</b> (con o sin espacios, da igual).
+      Ve a <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>,
+      elige "Otra (nombre personalizado)", escribe algo como <i>"Cuadre IMAP"</i> y genera la contraseña.
+      Google te muestra 16 caracteres — <b>cópialos tal cual</b> (con o sin espacios, da igual).
     </div></div>
 
     <div class="paso"><div class="num">5</div><div class="txt">
-      <b>Opcional:</b> si además querés que se abran solos los PDF de extracto que Bancolombia
-      adjunta por correo, completá el campo "Cédula" — Bancolombia los cifra con ese número.
-      Los que descargás vos a mano desde la web NO necesitan esto.
+      <b>Opcional:</b> si además quieres que se abran solos los PDF de extracto que Bancolombia
+      adjunta por correo, completa el campo "Cédula" — Bancolombia los cifra con ese número.
+      Los que descargas a mano desde la web NO necesitan esto.
     </div></div>
 
     <div class="paso"><div class="num">6</div><div class="txt">
-      Pegá ese correo y esa contraseña acá en el formulario, elegí cada cuánto querés que se sincronice,
-      y guardá. Usá <b>"Probar conexión"</b> primero para confirmar que todo quedó bien antes de dejarlo corriendo solo.
+      Pega ese correo y esa contraseña aquí en el formulario, elige cada cuánto quieres que se sincronice,
+      y guarda. Usa <b>"Probar conexión"</b> primero para confirmar que todo quedó bien antes de dejarlo corriendo solo.
     </div></div>
 
     <button type="button" class="modal-cerrar" id="btnCerrarAyuda">Entendido</button>
@@ -271,17 +337,63 @@ document.querySelectorAll('.fecha-local').forEach((el) => {
   if (iso) el.textContent = formatearFechaLocal(iso);
 });
 
+// clase 'loading': se queda igual que siempre (texto transitorio, inline).
+// clase 'ok'/'error': ahora entran al modal global (mostrarAlertaApp() en
+// base.html) -- ver el bug real que motivó esto: acá mismo, "Sincronizar
+// ahora" mostraba el resultado en este result-box y a los 1200ms
+// recargaba la página SIN esperar a que el usuario alcanzara a leerlo.
+// Devuelve la Promise del modal para que quien la llame pueda encadenar
+// una acción (ej. recargar) recién DESPUÉS de que el usuario lo cierre.
 function mostrarResultado(clase, texto) {
-  resultado.style.display = 'block';
-  resultado.className = 'result-box ' + clase;
-  resultado.textContent = texto;
+  if (clase === 'loading') {
+    resultado.style.display = 'block';
+    resultado.className = 'result-box loading';
+    resultado.textContent = texto;
+    return Promise.resolve();
+  }
+  resultado.style.display = 'none';
+  return mostrarAlertaApp(clase, texto);
 }
 
 // --- Modal de ayuda ---
+// a11y (fix alto 2026-09-11): antes no cerraba con Escape, no gestionaba
+// foco (quedaba en btnAyuda, detrás del overlay visualmente, y no volvía
+// a él al cerrar) y no tenía role="dialog"/aria-modal (ver el HTML de
+// arriba). Se replica acá el mismo patrón de foco atrapado + restitución
+// que ya usa el modal global de alertas en base.html.
 const modal = document.getElementById('modalAyuda');
-document.getElementById('btnAyuda').addEventListener('click', () => modal.classList.add('abierto'));
-document.getElementById('btnCerrarAyuda').addEventListener('click', () => modal.classList.remove('abierto'));
-modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('abierto'); });
+const modalAyudaBox = modal.querySelector('.modal-box');
+const btnCerrarAyuda = document.getElementById('btnCerrarAyuda');
+let focoPrevioAyuda = null;
+
+function onKeydownTrapAyuda(e) {
+  if (e.key === 'Escape') { cerrarModalAyuda(); return; }
+  if (e.key !== 'Tab') return;
+  const foco = modalAyudaBox.querySelectorAll(
+    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  );
+  if (!foco.length) return;
+  const primero = foco[0], ultimo = foco[foco.length - 1];
+  if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
+  else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
+}
+
+function abrirModalAyuda() {
+  focoPrevioAyuda = document.activeElement;
+  modal.classList.add('abierto');
+  modal.addEventListener('keydown', onKeydownTrapAyuda);
+  btnCerrarAyuda.focus();
+}
+function cerrarModalAyuda() {
+  modal.classList.remove('abierto');
+  modal.removeEventListener('keydown', onKeydownTrapAyuda);
+  if (focoPrevioAyuda && document.contains(focoPrevioAyuda)) focoPrevioAyuda.focus();
+  focoPrevioAyuda = null;
+}
+
+document.getElementById('btnAyuda').addEventListener('click', abrirModalAyuda);
+btnCerrarAyuda.addEventListener('click', cerrarModalAyuda);
+modal.addEventListener('click', (e) => { if (e.target === modal) cerrarModalAyuda(); });
 
 // --- Radios de frecuencia: habilitar/deshabilitar sus propios inputs ---
 const radioIntervalo = document.getElementById('radioIntervalo');
@@ -311,7 +423,7 @@ form.addEventListener('submit', async (e) => {
   // que la confirmación es todavía más importante: un admin puede tener
   // seleccionado el perfil de OTRA persona en "Viendo perfil de" sin
   // haberse dado cuenta.
-  const confirmado = confirm('¿Confirmás que vas a guardar esta configuración para la cuenta de "{{ usuario_viendo_nombre }}"?');
+  const confirmado = await confirmarApp('¿Confirmás que vas a guardar esta configuración para la cuenta de "{{ usuario_viendo_nombre }}"?');
   if (!confirmado) return;
   {% endif %}
 
@@ -322,14 +434,14 @@ form.addEventListener('submit', async (e) => {
     const res = await fetch('/api/correo/guardar', { method: 'POST', body: new FormData(form) });
     const json = await res.json();
     if (!res.ok || !json.ok) {
-      mostrarResultado('error', '❌ ' + (json.error || 'Error desconocido'));
+      await mostrarResultado('error', json.error || 'Error desconocido');
       return;
     }
-    mostrarResultado('ok', '✅ Configuración guardada.');
     form.querySelector('[name="app_password"]').value = '';
-    setTimeout(() => location.reload(), 900);
+    await mostrarResultado('ok', 'Configuración guardada.');
+    location.reload(); // recién ahora que el usuario ya leyó y cerró el aviso
   } catch (err) {
-    mostrarResultado('error', '❌ No se pudo conectar con el servidor.');
+    await mostrarResultado('error', 'No se pudo conectar con el servidor.');
   } finally {
     btn.disabled = false;
   }
@@ -347,10 +459,9 @@ document.getElementById('btnProbar').addEventListener('click', async () => {
     const res = await fetch('/api/correo/probar', { method: 'POST', body: datos });
     const json = await res.json();
     if (!res.ok || !json.ok) {
-      mostrarResultado('error', '❌ ' + (json.error || 'Error desconocido'));
+      await mostrarResultado('error', json.error || 'Error desconocido');
       return;
     }
-    mostrarResultado('ok', `✅ Conexión exitosa — ${json.total} movimiento(s) encontrados en los últimos 3 días.`);
     if (json.movimientos.length) {
       let filas = json.movimientos.map(m =>
         `<tr><td>${m.fecha}</td><td>${m.tipo}</td><td>${m.moneda} ${Number(m.monto).toLocaleString('es-CO')}</td><td>${m.descripcion}</td></tr>`
@@ -358,8 +469,9 @@ document.getElementById('btnProbar').addEventListener('click', async () => {
       preview.innerHTML = `<table class="preview-tabla"><thead><tr><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Descripción</th></tr></thead><tbody>${filas}</tbody></table>`;
       preview.style.display = 'block';
     }
+    await mostrarResultado('ok', `Conexión exitosa — ${json.total} movimiento(s) encontrados en los últimos 3 días.`);
   } catch (err) {
-    mostrarResultado('error', '❌ No se pudo conectar con el servidor.');
+    await mostrarResultado('error', 'No se pudo conectar con el servidor.');
   } finally {
     btn.disabled = false;
   }
@@ -376,35 +488,87 @@ if (btnSincronizar) {
       const res = await fetch('/api/correo/sincronizar-ahora', { method: 'POST' });
       const json = await res.json();
       if (!res.ok || !json.ok) {
-        mostrarResultado('error', '❌ ' + (json.error || 'Error desconocido'));
+        await mostrarResultado('error', '❌ ' + (json.error || 'Error desconocido'));
         return;
       }
-      mostrarResultado('ok', '✅ ' + json.mensaje);
-      setTimeout(() => location.reload(), 1200);
+      await mostrarResultado('ok', json.mensaje);
+      location.reload(); // recién ahora que el usuario ya leyó y cerró el aviso (antes recargaba solo a los 1200ms)
     } catch (err) {
-      mostrarResultado('error', '❌ No se pudo conectar con el servidor.');
+      await mostrarResultado('error', 'No se pudo conectar con el servidor.');
     } finally {
       btnSincronizar.disabled = false;
     }
   });
 }
 
+// --- Detalle técnico de "Última corrida" (solo admin, ver el <script
+// type="application/json"> y el botón en el HTML de arriba) ------------
+(function(){
+  const btn = document.getElementById('btnVerDetalleCorrida');
+  const panel = document.getElementById('panelDetalleCorrida');
+  if (!btn || !panel) return; // no admin, sin detalle guardado, o corrida con error (ver docstring de actualizar_estado_correo)
+
+  let detalle = null;
+  try { detalle = JSON.parse(document.getElementById('datosDetalleCorrida').textContent); } catch (e) { detalle = null; }
+
+  function renderDetalleCorrida(d) {
+    if (!d) return '<p style="margin:0; color:var(--text-subtle);">No hay detalle técnico guardado para esta corrida.</p>';
+    const categoriasEntries = Object.entries(d.categorias || {}).sort((a, b) => b[1] - a[1]);
+    const categoriasHTML = categoriasEntries.length
+      ? categoriasEntries.map(([cat, n]) => `<div class="fila-detalle"><span>${cat}</span><span>${n}</span></div>`).join('')
+      : '<p style="margin:0; color:var(--text-subtle);">Sin movimientos para categorizar.</p>';
+    const movimientosHTML = (d.movimientos && d.movimientos.length)
+      ? `<table class="preview-tabla"><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Monto</th><th>Descripción</th></tr></thead><tbody>${
+          d.movimientos.map(m => `<tr><td>${m.fecha}</td><td>${m.tipo}</td><td>${m.categoria}</td><td>${m.moneda} ${Number(m.monto).toLocaleString('es-CO')}</td><td>${m.descripcion}</td></tr>`).join('')
+        }</tbody></table>`
+      : '<p style="margin:0; color:var(--text-subtle);">Ningún correo coincidió con un movimiento reconocible en esta corrida.</p>';
+    const nota = (d.movimientos && d.movimientos.length < d.correos_encontrados)
+      ? ` (mostrando ${d.movimientos.length} de ${d.correos_encontrados} -- se acota la lista guardada para no duplicar lo que ya vive en la tabla de movimientos)`
+      : '';
+
+    return `
+      <h4>Resumen técnico</h4>
+      <div class="fila-detalle"><span>Duración</span><span>${d.duracion_seg}s</span></div>
+      <div class="fila-detalle"><span>Días revisados hacia atrás</span><span>${d.dias_revisados}</span></div>
+      <div class="fila-detalle"><span>Correos con movimiento reconocido</span><span>${d.correos_encontrados}</span></div>
+      <div class="fila-detalle"><span>Insertados como nuevos</span><span>${d.nuevos}</span></div>
+      <div class="fila-detalle"><span>Ya existían (duplicados)</span><span>${d.duplicados_bd} en la base, ${d.duplicados_lote} repetidos entre sí</span></div>
+      <h4>Categorías asignadas</h4>
+      ${categoriasHTML}
+      <h4>Movimientos de esta corrida${nota}</h4>
+      ${movimientosHTML}
+    `;
+  }
+
+  btn.addEventListener('click', () => {
+    if (!panel.hidden) {
+      panel.hidden = true;
+      btn.textContent = 'Ver detalle de la corrida ▾';
+      return;
+    }
+    panel.innerHTML = renderDetalleCorrida(detalle);
+    panel.hidden = false;
+    btn.textContent = 'Ocultar detalle de la corrida ▴';
+  });
+})();
+
 // --- Eliminar configuración ---
 const btnEliminar = document.getElementById('btnEliminar');
 if (btnEliminar) {
   btnEliminar.addEventListener('click', async () => {
-    if (!confirm('¿Eliminar la configuración de correo automático? Vas a tener que volver a cargar la contraseña de aplicación si querés reactivarlo.')) return;
+    const confirmado = await confirmarApp('¿Eliminar la configuración de correo automático? Vas a tener que volver a cargar la contraseña de aplicación si quieres reactivarlo.');
+    if (!confirmado) return;
     btnEliminar.disabled = true;
     try {
       const res = await fetch('/api/correo/eliminar', { method: 'POST' });
       const json = await res.json();
       if (!res.ok || !json.ok) {
-        mostrarResultado('error', '❌ ' + (json.error || 'Error desconocido'));
+        await mostrarResultado('error', json.error || 'Error desconocido');
         return;
       }
       location.reload();
     } catch (err) {
-      mostrarResultado('error', '❌ No se pudo conectar con el servidor.');
+      await mostrarResultado('error', 'No se pudo conectar con el servidor.');
       btnEliminar.disabled = false;
     }
   });

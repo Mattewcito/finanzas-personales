@@ -1,4 +1,20 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: finanzas-postgres
+    environment:
+      POSTGRES_DB: finanzas
+      POSTGRES_USER: finanzas
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finanzas_local}
+    volumes:
+      - finanzas_pgdata:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finanzas -d finanzas"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   finanzas:
     build: .
     container_name: finanzas-app
@@ -8,8 +24,12 @@ services:
     # contenedor terminaría escuchando en dos puertos a la vez. Cada
     # carpeta (dev, despliegue) define el suyo en su propio override
     # (ver docker-compose.override.yml, no versionado).
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       - MODO_LABEL=Local   # la carpeta de despliegue lo pisa a "Online" en su propio override
+      - DATABASE_URL=postgresql://finanzas:${POSTGRES_PASSWORD:-finanzas_local}@postgres:5432/finanzas
     volumes:
       - ./data:/app/data
       # dashboard_finanzas.html es un único archivo estático que el
@@ -19,7 +39,7 @@ services:
       - ./dashboard:/app/dashboard
     # "always" (no "unless-stopped"): a propósito -- el 2026-09-08 el
     # contenedor de prod quedó detenido a mano (verificación manual tras
-    # un deploy) y, al reiniciarse Docker/la PC más tarde, "unless-stopped"
+    # un deploy) y, al reiniciarse Docker/la PC, "unless-stopped"
     # respetó ese estado "detenido a mano" y NO lo volvió a levantar (dev sí
     # volvió solo, porque a ese nunca se lo había detenido a mano). Con
     # "always", un reinicio de Docker/la PC vuelve a levantar el contenedor
@@ -27,3 +47,6 @@ services:
     # repita. Solo un `docker stop` explícito mientras Docker sigue
     # corriendo lo deja apagado hasta que alguien lo levante a mano.
     restart: always
+
+volumes:
+  finanzas_pgdata:

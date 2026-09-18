@@ -26,7 +26,9 @@ Vista:
     saldo corriente, calculado con una función de ventana SQL.
 """
 
+import os
 import re
+import json
 import sqlite3
 import datetime
 from collections import defaultdict
@@ -88,12 +90,13 @@ CREATE INDEX IF NOT EXISTS idx_usuarios_username ON usuarios(username);
 
 -- Configuración de lectura de correo (Fase 1), UNA fila por usuario --
 -- cada quien configura su propio correo dedicado desde "Mi perfil" en la
--- interfaz (routes/correo.py). app_password se guarda en texto plano a
--- propósito (no se puede hashear: leer_correo.py necesita el valor real
--- para autenticarse por IMAP) -- mismo nivel de confianza que ya tenía
--- data/credenciales_correo.json (archivo local, fuera de git, en una app
--- que nunca se expone a internet público). La interfaz nunca la vuelve a
--- mostrar una vez guardada.
+-- interfaz (routes/correo.py). app_password no se puede hashear (leer_correo.py
+-- necesita el valor real para autenticarse por IMAP) -- desde la migración del
+-- 2026-09-06 se guarda CIFRADO con cifrado.cifrar() (misma columna
+-- app_password de abajo, pero con el valor cifrado) en vez de en texto plano;
+-- la clave de cifrado vive en
+-- data/cifrado.key, fuera de git, igual que finanzas.db. La interfaz nunca
+-- vuelve a mostrar el valor una vez guardado.
 CREATE TABLE IF NOT EXISTS correo_config (
     usuario_id INTEGER PRIMARY KEY REFERENCES usuarios(id),
     email TEXT NOT NULL,
@@ -108,6 +111,7 @@ CREATE TABLE IF NOT EXISTS correo_config (
     ultima_corrida TEXT,
     ultima_corrida_ok INTEGER,
     ultimo_error TEXT,
+    ultima_corrida_detalle TEXT,  -- JSON con el detalle técnico de la última corrida (ver actualizar_estado_correo) -- solo visible para admin en la interfaz
     actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
@@ -130,6 +134,12 @@ CREATE TABLE IF NOT EXISTS vistas_ocultas (
 -- (v_deuda_ledger). Sin cifrado a propósito: nombre/entidad/cupo_total/
 -- ultimos4 son datos financieros equivalentes a "monto"/"saldo", no
 -- credenciales -- ver la sección "Cifrado" del documento de requisitos.
+-- ÚNICA excepción: "cedula" SÍ va cifrada (mismo criterio que
+-- correo_config.cedula) porque no es un dato financiero sino la
+-- contraseña con la que Bancolombia cifra los PDF de extracto de esa
+-- tarjeta. Nunca sale de esta capa hacia las rutas/frontend: los dicts
+-- públicos exponen solo el booleano "tiene_cedula" (ver
+-- _fila_tarjeta_publica) y para usarla está obtener_cedula_tarjeta().
 -- cupo_total se valida > 0 en la capa de Python (crear_tarjeta/
 -- actualizar_tarjeta), no solo en la UI. "activa" es el soft-delete
 -- (archivar_tarjeta): una tarjeta archivada conserva su historial de
@@ -142,6 +152,7 @@ CREATE TABLE IF NOT EXISTS tarjetas_credito (
     entidad TEXT,
     cupo_total REAL NOT NULL,
     ultimos4 TEXT,
+    cedula TEXT,          -- CIFRADA: contraseña de los PDF de extracto de esta tarjeta
     activa INTEGER NOT NULL DEFAULT 1,
     creado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
     actualizado_en TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
@@ -344,22 +355,363 @@ WHERE medio_pago IN ('credito', 'avance_credito', 'pago_tarjeta_credito')
 ORDER BY fecha, id;
 """
 
+_NOW_PG = "TO_CHAR(NOW() AT TIME ZONE 'America/Bogota', 'YYYY-MM-DD HH24:MI:SS')"
 
-def conectar() -> sqlite3.Connection:
+ESQUEMA_SQL_PG = f"""
+CREATE TABLE IF NOT EXISTS movimientos (
+    id SERIAL PRIMARY KEY,
+    fecha TEXT NOT NULL,
+    tipo TEXT NOT NULL,
+    categoria TEXT,
+    moneda TEXT NOT NULL DEFAULT 'COP',
+    monto REAL NOT NULL,
+    descripcion TEXT,
+    entidad TEXT,
+    medio_pago TEXT NOT NULL DEFAULT 'debito',
+    es_deuda INTEGER NOT NULL DEFAULT 0,
+    origen TEXT NOT NULL DEFAULT 'gmail_bot_excel',
+    referencia_bancaria TEXT,
+    creado_en TEXT NOT NULL DEFAULT {_NOW_PG}
+);
+
+CREATE INDEX IF NOT EXISTS idx_movimientos_fecha ON movimientos(fecha);
+CREATE INDEX IF NOT EXISTS idx_movimientos_fecha_monto ON movimientos(fecha, monto);
+CREATE INDEX IF NOT EXISTS idx_movimientos_origen ON movimientos(origen);
+
+CREATE TABLE IF NOT EXISTS historial_actualizaciones (
+    id SERIAL PRIMARY KEY,
+    fecha_actualizacion TEXT NOT NULL,
+    fecha_inicio_importada TEXT,
+    fecha_fin_importada TEXT,
+    movimientos_agregados INTEGER,
+    origen TEXT DEFAULT 'gmail_bot_excel'
+);
+
+CREATE TABLE IF NOT EXISTS usuarios (
+    id SERIAL PRIMARY KEY,
+    username TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    rol TEXT NOT NULL DEFAULT 'usuario',
+    nombre_mostrado TEXT,
+    creado_en TEXT NOT NULL DEFAULT {_NOW_PG}
+);
+CREATE INDEX IF NOT EXISTS idx_usuarios_username ON usuarios(username);
+
+CREATE TABLE IF NOT EXISTS correo_config (
+    usuario_id INTEGER PRIMARY KEY REFERENCES usuarios(id),
+    email TEXT NOT NULL,
+    app_password TEXT NOT NULL,
+    imap_host TEXT NOT NULL DEFAULT 'imap.gmail.com',
+    imap_port INTEGER NOT NULL DEFAULT 993,
+    cedula TEXT,
+    activo INTEGER NOT NULL DEFAULT 1,
+    frecuencia_tipo TEXT NOT NULL DEFAULT 'intervalo',
+    frecuencia_minutos INTEGER NOT NULL DEFAULT 30,
+    frecuencia_hora TEXT,
+    ultima_corrida TEXT,
+    ultima_corrida_ok INTEGER,
+    ultimo_error TEXT,
+    ultima_corrida_detalle TEXT,
+    actualizado_en TEXT NOT NULL DEFAULT {_NOW_PG}
+);
+
+CREATE TABLE IF NOT EXISTS vistas_ocultas (
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+    vista TEXT NOT NULL,
+    PRIMARY KEY (usuario_id, vista)
+);
+
+CREATE TABLE IF NOT EXISTS tarjetas_credito (
+    id SERIAL PRIMARY KEY,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+    nombre TEXT NOT NULL,
+    entidad TEXT,
+    cupo_total REAL NOT NULL,
+    ultimos4 TEXT,
+    cedula TEXT,
+    activa INTEGER NOT NULL DEFAULT 1,
+    creado_en TEXT NOT NULL DEFAULT {_NOW_PG},
+    actualizado_en TEXT NOT NULL DEFAULT {_NOW_PG}
+);
+CREATE INDEX IF NOT EXISTS idx_tarjetas_credito_usuario ON tarjetas_credito(usuario_id);
+
+CREATE TABLE IF NOT EXISTS presupuesto (
+    usuario_id INTEGER PRIMARY KEY REFERENCES usuarios(id),
+    pct_necesidades REAL NOT NULL DEFAULT 50,
+    pct_gustos REAL NOT NULL DEFAULT 30,
+    pct_ahorro_deudas REAL NOT NULL DEFAULT 20,
+    actualizado_en TEXT NOT NULL DEFAULT {_NOW_PG}
+);
+
+CREATE TABLE IF NOT EXISTS presupuesto_categorias (
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+    categoria TEXT NOT NULL,
+    balde TEXT NOT NULL,
+    actualizado_en TEXT NOT NULL DEFAULT {_NOW_PG},
+    PRIMARY KEY (usuario_id, categoria)
+);
+
+CREATE TABLE IF NOT EXISTS metas_ahorro (
+    id SERIAL PRIMARY KEY,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+    nombre TEXT NOT NULL,
+    monto_objetivo REAL NOT NULL,
+    fecha_objetivo TEXT,
+    activa INTEGER NOT NULL DEFAULT 1,
+    creado_en TEXT NOT NULL DEFAULT {_NOW_PG},
+    actualizado_en TEXT NOT NULL DEFAULT {_NOW_PG}
+);
+CREATE INDEX IF NOT EXISTS idx_metas_ahorro_usuario ON metas_ahorro(usuario_id);
+"""
+
+
+def _dict_row_factory(cursor, row):
+    """Row factory que devuelve dicts (SQLite)."""
+    return {col[0]: row[i] for i, col in enumerate(cursor.description)}
+
+
+# ---------------------------------------------------------------------------
+# Capa de adaptación PostgreSQL
+# ---------------------------------------------------------------------------
+
+_RE_DATETIME_NOW = re.compile(r"datetime\s*\(\s*'now'[^)]*\)", re.IGNORECASE)
+_RE_INSERT_OR_IGNORE = re.compile(r'INSERT\s+OR\s+IGNORE\s+INTO', re.IGNORECASE)
+# El (?<!:) evita romper los casts de PostgreSQL ('x'::text no es el
+# parámetro ":text").
+_RE_NAMED_PARAM = re.compile(r'(?<!:):(\w+)')
+# Literal de texto SQL, con '' como comilla escapada adentro.
+_RE_STRING_LITERAL = re.compile(r"'(?:[^']|'')*'")
+
+
+_RE_VIEW_IF_NOT_EXISTS = re.compile(
+    r'CREATE\s+VIEW\s+IF\s+NOT\s+EXISTS\s+', re.IGNORECASE)
+
+# "id INTEGER PRIMARY KEY AUTOINCREMENT" es la forma de SQLite; el
+# equivalente en PostgreSQL es SERIAL. ESQUEMA_SQL_PG ya viene escrito en
+# dialecto PostgreSQL, así que esto no toca el esquema de producción --
+# cubre el DDL suelto en dialecto SQLite (las pruebas de migración arman
+# a mano una versión "vieja" de una tabla para después migrarla, y esas
+# pruebas tienen que poder correr contra los dos motores).
+_RE_AUTOINCREMENT = re.compile(
+    r'\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b', re.IGNORECASE)
+
+
+def _adapt_sql_pg(sql: str) -> str:
+    """Convierte SQL SQLite-compatible a PostgreSQL-compatible en el momento
+    de ejecutar, sin modificar las constantes de texto del módulo.
+    Conversiones: datetime('now',...) → TO_CHAR(NOW()...), INSERT OR IGNORE
+    → INSERT ... ON CONFLICT DO NOTHING, ? → %s, :name → %(name)s,
+    CREATE VIEW IF NOT EXISTS → CREATE OR REPLACE VIEW."""
+    sql = _RE_DATETIME_NOW.sub(_NOW_PG, sql)
+    if _RE_INSERT_OR_IGNORE.search(sql):
+        sql = _RE_INSERT_OR_IGNORE.sub('INSERT INTO', sql)
+        sql = sql.rstrip().rstrip(';') + '\nON CONFLICT DO NOTHING'
+    sql = _RE_VIEW_IF_NOT_EXISTS.sub('CREATE OR REPLACE VIEW ', sql)
+    sql = _RE_AUTOINCREMENT.sub('SERIAL PRIMARY KEY', sql)
+    return _sustituir_placeholders(sql)
+
+
+def _sustituir_placeholders(sql: str) -> str:
+    """Traduce los placeholders de SQLite (? y :name) a los de psycopg2
+    (%s y %(name)s), pero SOLO fuera de los literales de texto.
+
+    Sustituir a ciegas rompía cualquier literal con ':' adentro que no
+    fuera un parámetro. El caso real era el formato de TO_CHAR de _NOW_PG
+    ('YYYY-MM-DD HH24:MI:SS'), que quedaba como 'HH24%(MI)s%(SS)s': el
+    DEFAULT de creado_en/actualizado_en de 9 tablas quedó con ese formato
+    y guardó timestamps corruptos del tipo '2026-09-16 23%(50)s%(56)s'
+    (ver _reparar_timestamps_corruptos_pg, que repara lo ya escrito)."""
+    partes, pos = [], 0
+    for m in _RE_STRING_LITERAL.finditer(sql):
+        partes.append(_sub_placeholders_fragmento(sql[pos:m.start()]))
+        partes.append(m.group(0))  # el literal se copia intacto
+        pos = m.end()
+    partes.append(_sub_placeholders_fragmento(sql[pos:]))
+    return ''.join(partes)
+
+
+def _sub_placeholders_fragmento(fragmento: str) -> str:
+    return _RE_NAMED_PARAM.sub(r'%(\1)s', fragmento.replace('?', '%s'))
+
+
+class _PGCursor:
+    """Cursor wrapper de psycopg2 que emula la interfaz de sqlite3 con dict rows."""
+
+    def __init__(self, raw_cur):
+        self._raw = raw_cur
+        self._rows: list = []
+        self._lastrowid = None
+        self._rowcount = max(raw_cur.rowcount, 0)
+        if raw_cur.description is not None:
+            try:
+                rows = raw_cur.fetchall()
+                self._rows = [dict(r) for r in rows]
+                if self._rows and 'id' in self._rows[0]:
+                    self._lastrowid = self._rows[0]['id']
+            except Exception:
+                pass
+
+    @property
+    def lastrowid(self):
+        return self._lastrowid
+
+    @property
+    def rowcount(self):
+        return self._rowcount
+
+    @property
+    def description(self):
+        return self._raw.description
+
+    def fetchone(self):
+        return self._rows.pop(0) if self._rows else None
+
+    def fetchall(self):
+        rows, self._rows = self._rows, []
+        return rows
+
+    def __iter__(self):
+        rows, self._rows = self._rows, []
+        return iter(rows)
+
+
+def _coerce_bools(params):
+    """psycopg2 adapta un bool de Python a un boolean de SQL, pero el
+    esquema guarda esos campos como INTEGER (es_deuda, activa, activo...)
+    igual que en SQLite, donde bool -> 0/1 es automático y silencioso. Sin
+    esta coerción PostgreSQL rechaza el INSERT con DatatypeMismatch
+    ("column es_deuda is of type integer but expression is of type
+    boolean"). No hay ninguna columna BOOLEAN real en el esquema, así que
+    convertir siempre es seguro."""
+    if isinstance(params, dict):
+        return {k: int(v) if isinstance(v, bool) else v for k, v in params.items()}
+    if isinstance(params, (list, tuple)):
+        return [int(v) if isinstance(v, bool) else v for v in params]
+    return params
+
+
+class _PGConn:
+    """Connection wrapper de psycopg2 que emula la interfaz de sqlite3."""
+
+    def __init__(self, raw):
+        self._raw = raw
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql: str, params=()):
+        import psycopg2.extras
+        adapted = _adapt_sql_pg(sql)
+        params = _coerce_bools(params)
+        is_insert = re.match(r'\s*INSERT\s+INTO\s+', adapted, re.IGNORECASE)
+        has_returning = re.search(r'\bRETURNING\b', adapted, re.IGNORECASE)
+
+        if not is_insert or has_returning:
+            cur = self._raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(adapted, params or None)
+            return _PGCursor(cur)
+
+        # INSERT sin RETURNING: se intenta primero con "RETURNING id" para
+        # poder emular cursor.lastrowid de sqlite3. Pero no todas las tablas
+        # tienen columna id -- las que se identifican por una PK natural
+        # (vistas_ocultas, correo_config, presupuesto,
+        # presupuesto_categorias) no la tienen, y ahí ese INSERT falla.
+        #
+        # En PostgreSQL un statement que falla ABORTA la transacción entera,
+        # así que el reintento moría con InFailedSqlTransaction y se perdía
+        # toda la operación: el panel de "Visibilidad de vistas" no guardaba
+        # nada (bug reportado 2026-09-17). El SAVEPOINT acota el intento
+        # fallido para que el reintento sí pueda correr -- mismo mecanismo
+        # que ya usa executescript() para la carrera de CREATE TABLE.
+        #
+        # Los SAVEPOINT van en un cursor APARTE: ejecutar en el mismo
+        # cursor pisaría el result set del INSERT que hay que devolver.
+        ctl = self._raw.cursor()
+        cur = self._raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        ctl.execute("SAVEPOINT sp_returning_id")
+        try:
+            cur.execute(adapted.rstrip('; \n') + ' RETURNING id', params or None)
+        except Exception:
+            ctl.execute("ROLLBACK TO SAVEPOINT sp_returning_id")
+            cur = self._raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(adapted, params or None)
+        else:
+            ctl.execute("RELEASE SAVEPOINT sp_returning_id")
+        return _PGCursor(cur)
+
+    def executemany(self, sql: str, params_seq):
+        import psycopg2.extras
+        adapted = _adapt_sql_pg(sql)
+        cur = self._raw.cursor()
+        psycopg2.extras.execute_batch(cur, adapted, [_coerce_bools(p) for p in params_seq])
+        return _PGCursor(cur)
+
+    def executescript(self, sql: str):
+        """Ejecuta SQL multi-sentencia dividiendo por ';' (psycopg2 no acepta
+        múltiples statements en un execute).
+
+        Usa SAVEPOINTs para tolerar la race condition de CREATE TABLE IF NOT
+        EXISTS bajo workers concurrentes de gunicorn: PostgreSQL puede lanzar
+        UniqueViolation en pg_class cuando dos workers intentan crear la misma
+        tabla/secuencia al mismo tiempo -- el savepoint permite ignorar ese
+        error sin abortar la transacción completa."""
+        import psycopg2.errors as _pge
+        sql_clean = re.sub(r'--[^\n]*', '', sql)
+        cur = self._raw.cursor()
+        for stmt in sql_clean.split(';'):
+            s = stmt.strip()
+            if s:
+                try:
+                    cur.execute("SAVEPOINT _sp")
+                    cur.execute(_adapt_sql_pg(s))
+                    cur.execute("RELEASE SAVEPOINT _sp")
+                except (_pge.UniqueViolation, _pge.DuplicateTable,
+                        _pge.DuplicateObject):
+                    cur.execute("ROLLBACK TO SAVEPOINT _sp")
+                    cur.execute("RELEASE SAVEPOINT _sp")
+        self._raw.commit()
+
+    def rollback(self):
+        try:
+            self._raw.rollback()
+        except Exception:
+            pass
+
+    def commit(self):
+        self._raw.commit()
+
+    def close(self):
+        try:
+            self._raw.close()
+        except Exception:
+            pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+
+def conectar():
+    """Conecta a PostgreSQL si DATABASE_URL está seteada, o al archivo
+    SQLite local como fallback (dev/tests sin vars). El resto del código
+    no cambia: sigue usando conn.execute(), conn.commit() y db.conexion()."""
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+
+    if database_url:
+        import psycopg2
+        raw = psycopg2.connect(database_url)
+        raw.autocommit = False
+        return _PGConn(raw)
+
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    # journal_mode = DELETE (no WAL): `data/` está montado como bind mount
+    # de Docker Desktop en Windows y WAL requiere mmap entre procesos —
+    # causó "disk I/O error" real el 2026-09-10. Solo aplica a SQLite local.
     conn.execute("PRAGMA foreign_keys = ON")
-    # journal_mode = DELETE (no WAL) a propósito: `data/` está montado
-    # como bind mount de Docker Desktop en Windows, y WAL necesita memoria
-    # compartida (mmap) entre procesos que ese tipo de montaje no soporta
-    # bien -- cada vez que el contenedor se recreaba, la conexión fallaba
-    # con "disk I/O error" al no poder abrir/mapear el -shm (causó una
-    # caída real de `dev` el 2026-09-10). DELETE usa el journal clásico,
-    # sin mmap, 100% compatible con bind mounts. Es un no-op si el archivo
-    # ya está en DELETE (el caso normal); si algo lo vuelve a poner en WAL
-    # (ej. una herramienta externa como DB Browser), esta línea lo corrige
-    # solo en la siguiente conexión.
     conn.execute("PRAGMA journal_mode = DELETE")
+    conn.row_factory = _dict_row_factory
     return conn
 
 
@@ -377,26 +729,34 @@ def conexion():
         conn.close()
 
 
-def _agregar_columna_si_falta(conn: sqlite3.Connection, tabla: str, columna: str, tipo_sql: str) -> None:
-    """ALTER TABLE ... ADD COLUMN, tolerante a la carrera entre procesos:
-    gunicorn arranca esta app con varios workers (ver Dockerfile), cada
-    uno importa app.py por separado y cada uno corre crear_esquema() al
-    boot -- si dos lo hacen casi al mismo tiempo, el chequeo previo de
-    PRAGMA table_info() puede pasar en los dos ANTES de que cualquiera
-    haya hecho el ALTER, y el segundo revienta con "duplicate column
-    name" (esto pasó de verdad al desplegar referencia_bancaria).
-    SQLite no tiene 'ADD COLUMN IF NOT EXISTS', así que se ataja acá:
-    chequeo previo (evita el ALTER en el caso común) + tolerar el error
-    puntual de "ya existe" si igual se cuela la carrera."""
-    columnas = [r["name"] for r in conn.execute(f"PRAGMA table_info({tabla})")]
+def _agregar_columna_si_falta(conn, tabla: str, columna: str, tipo_sql: str) -> None:
+    """ALTER TABLE ... ADD COLUMN, tolerante a la carrera entre procesos.
+    Compatible con SQLite y PostgreSQL."""
+    if isinstance(conn, _PGConn):
+        # current_schema() en vez de 'public' hardcodeado: así la migración
+        # mira el MISMO esquema donde el search_path va a hacer el ALTER.
+        # Con un search_path distinto (los tests aíslan cada caso en su
+        # propio esquema) el literal 'public' no encontraba la tabla y la
+        # columna se intentaba agregar de nuevo sobre una que ya existía.
+        rows = conn.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = %s AND table_schema = current_schema()",
+            (tabla,),
+        ).fetchall()
+        columnas = [r["column_name"] for r in rows]
+    else:
+        columnas = [r["name"] for r in conn.execute(f"PRAGMA table_info({tabla})")]
     if columna in columnas:
         return
     try:
         conn.execute(f"ALTER TABLE {tabla} ADD COLUMN {columna} {tipo_sql}")
         conn.commit()
-    except sqlite3.OperationalError as e:
-        if "duplicate column name" not in str(e):
-            raise  # cualquier otro error sí debe reventar, no ocultarlo
+    except Exception as e:
+        err = str(e).lower()
+        if "duplicate column" in err or "already exists" in err:
+            pass
+        else:
+            raise
 
 
 def _migrar_columna_usuario_id(conn: sqlite3.Connection) -> None:
@@ -480,16 +840,62 @@ def _migrar_cifrado_correo_config(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
-def crear_esquema(conn: sqlite3.Connection) -> None:
-    conn.executescript(ESQUEMA_SQL)
+def _migrar_columna_detalle_correo_config(conn: sqlite3.Connection) -> None:
+    """correo_config ya existía sin esta columna en cualquier BD real donde
+    ya se hubiera guardado alguna configuración -- CREATE TABLE IF NOT
+    EXISTS no la agrega sola a una tabla que ya existe (mismo patrón que
+    _migrar_columna_cedula_correo_config)."""
+    _agregar_columna_si_falta(conn, "correo_config", "ultima_corrida_detalle", "TEXT")
+
+
+def _migrar_columna_cedula_tarjetas(conn: sqlite3.Connection) -> None:
+    """tarjetas_credito ya existía (2026-09-07) sin esta columna en
+    cualquier BD real -- mismo patrón que
+    _migrar_columna_cedula_correo_config. Va CIFRADA (ver el comentario
+    de la tabla en el esquema)."""
+    _agregar_columna_si_falta(conn, "tarjetas_credito", "cedula", "TEXT")
+
+
+def _reparar_timestamps_corruptos_pg(conn) -> None:
+    """Repara el daño del bug de _sustituir_placeholders (ver su docstring):
+    el DEFAULT de las columnas de timestamp quedó con el formato
+    'YYYY-MM-DD HH24%(MI)s%(SS)s' y toda fila insertada con ese DEFAULT
+    guardó la hora como '2026-09-16 23%(50)s%(56)s'.
+
+    Arreglar el código no alcanza: CREATE TABLE IF NOT EXISTS no vuelve a
+    tocar una tabla que ya existe, así que el DEFAULT corrupto sigue ahí.
+    La reparación del valor es exacta (no se pierde información: los
+    dígitos están todos, solo sobra el envoltorio '%(' / ')s') y solo
+    toca filas efectivamente corruptas, así que es idempotente."""
+    if not isinstance(conn, _PGConn):
+        return  # el bug es exclusivo de la capa de adaptación a PostgreSQL
+    columnas = conn.execute(
+        "SELECT table_name, column_name FROM information_schema.columns "
+        "WHERE table_schema = current_schema() AND column_default LIKE '%(MI)s%'"
+    ).fetchall()
+    for fila in columnas:
+        tabla, col = fila["table_name"], fila["column_name"]
+        conn.execute(f"ALTER TABLE {tabla} ALTER COLUMN {col} SET DEFAULT {_NOW_PG}")
+        conn.execute(
+            f"UPDATE {tabla} SET {col} = REPLACE(REPLACE({col}, '%(', ':'), ')s', '') "
+            f"WHERE POSITION('%(' IN {col}) > 0"
+        )
+    if columnas:
+        conn.commit()
+
+
+def crear_esquema(conn) -> None:
+    esquema = ESQUEMA_SQL_PG if isinstance(conn, _PGConn) else ESQUEMA_SQL
+    conn.executescript(esquema)
     _migrar_columna_usuario_id(conn)
     _migrar_columna_referencia_bancaria(conn)
-    _migrar_columna_tarjeta_id(conn)  # después de ESQUEMA_SQL: necesita que tarjetas_credito ya exista (FK)
-    _migrar_columna_meta_ahorro_id(conn)  # después de ESQUEMA_SQL: necesita que metas_ahorro ya exista (FK)
+    _migrar_columna_tarjeta_id(conn)
+    _migrar_columna_meta_ahorro_id(conn)
     _migrar_columna_cedula_correo_config(conn)
+    _migrar_columna_detalle_correo_config(conn)
+    _migrar_columna_cedula_tarjetas(conn)
     _migrar_cifrado_correo_config(conn)
-    # DROP + recrear la vista: si ya existía de antes de agregar usuario_id
-    # a su SELECT, "CREATE VIEW IF NOT EXISTS" no la actualiza sola.
+    _reparar_timestamps_corruptos_pg(conn)
     conn.execute("DROP VIEW IF EXISTS v_deuda_ledger")
     conn.executescript(VISTA_DEUDA_SQL)
     conn.commit()
@@ -740,6 +1146,17 @@ def listar_usuarios(conn: sqlite3.Connection) -> list[dict]:
     return [dict(r) for r in conn.execute("SELECT id, username, rol, nombre_mostrado FROM usuarios ORDER BY id")]
 
 
+def eliminar_usuario(conn: sqlite3.Connection, usuario_id: int) -> None:
+    """Elimina el usuario y todos sus datos asociados (cascada manual).
+    Orden: primero las tablas que referencian usuarios(id) por FK, luego la
+    fila de usuarios misma."""
+    for tabla in ("correo_config", "vistas_ocultas", "tarjetas_credito",
+                  "presupuesto", "presupuesto_categorias", "metas_ahorro"):
+        conn.execute(f"DELETE FROM {tabla} WHERE usuario_id = ?", (usuario_id,))
+    conn.execute("DELETE FROM usuarios WHERE id = ?", (usuario_id,))
+    conn.commit()
+
+
 # ----------------------------- Configuración de lectura de correo -----------------------------
 # email/app_password/cedula se guardan CIFRADOS en la columna (ver
 # cifrado.py) -- esta es la ÚNICA capa que cifra/descifra; el resto del
@@ -826,13 +1243,27 @@ def guardar_correo_config(
     conn.commit()
 
 
-def actualizar_estado_correo(conn: sqlite3.Connection, usuario_id: int, ok: bool, error: str | None = None) -> None:
+def actualizar_estado_correo(conn: sqlite3.Connection, usuario_id: int, ok: bool, error: str | None = None,
+                              detalle: dict | None = None) -> None:
     """Deja constancia del resultado de la última corrida -- lo que se
-    muestra en la interfaz ("última sincronización: hace 12 min, OK")."""
+    muestra en la interfaz ("última sincronización: hace 12 min, OK").
+
+    `detalle` (2026-09-10, opcional): diccionario JSON-serializable con el
+    detalle técnico de ESTA corrida puntual -- cuánto tardó, cuántos
+    correos encontró, nuevos/duplicados, categorías, y una lista acotada
+    de los movimientos concretos (ver leer_correo.py::procesar_cuenta,
+    que lo arma). Acá solo se serializa y guarda tal cual, sin
+    interpretarlo -- lo interpreta el frontend (routes/correo.py expone
+    esta columna al template, que solo la muestra si `usuario_rol ==
+    'admin'`: un usuario normal ve el resumen de siempre, no el detalle
+    técnico). None (default) borra cualquier detalle anterior -- una
+    corrida que no lo calculó (ej. un error temprano, antes de llegar a
+    armarlo) no debe dejar viendo el detalle de la corrida ANTERIOR como
+    si fuera de esta."""
     conn.execute(
         "UPDATE correo_config SET ultima_corrida = datetime('now', 'localtime'), "
-        "ultima_corrida_ok = ?, ultimo_error = ? WHERE usuario_id = ?",
-        (int(bool(ok)), error, usuario_id),
+        "ultima_corrida_ok = ?, ultimo_error = ?, ultima_corrida_detalle = ? WHERE usuario_id = ?",
+        (int(bool(ok)), error, json.dumps(detalle, ensure_ascii=False) if detalle is not None else None, usuario_id),
     )
     conn.commit()
 
@@ -931,10 +1362,49 @@ def obtener_ledger_deuda(conn: sqlite3.Connection, usuario_id: int | None = None
 # datos/contenido de la cuenta que se esté viendo, mismo criterio que el
 # resto del dashboard (ver auth.py::viendo_id()).
 
+def _fila_tarjeta_publica(fila) -> dict:
+    """Dict "público" de una tarjeta: el que las rutas serializan tal cual
+    a JSON (ver routes/tarjetas.py). La cédula está cifrada en la columna y
+    NO sale de esta capa -- se reemplaza por el booleano `tiene_cedula`
+    para que la UI pueda decir si hace falta pedirla. Para usarla de
+    verdad está obtener_cedula_tarjeta()."""
+    d = dict(fila)
+    d["activa"] = bool(d["activa"])
+    d["tiene_cedula"] = bool(d.pop("cedula", None))
+    return d
+
+
+def obtener_cedula_tarjeta(conn: sqlite3.Connection, usuario_id: int, ultimos4: str | None) -> str | None:
+    """Cédula DESCIFRADA guardada para la tarjeta activa de usuario_id con
+    esos últimos4 -- la contraseña de sus PDF de extracto, para no tener
+    que reescribirla en cada carga. Mismo criterio de "exactamente una
+    coincidencia" que _resolver_tarjeta_por_ultimos4: con 0 o 2+ no se
+    adivina."""
+    if not ultimos4:
+        return None
+    filas = conn.execute(
+        "SELECT cedula FROM tarjetas_credito WHERE usuario_id = ? AND activa = 1 AND ultimos4 = ?",
+        (usuario_id, ultimos4),
+    ).fetchall()
+    if len(filas) != 1 or not filas[0]["cedula"]:
+        return None
+    try:
+        return cifrado.descifrar(filas[0]["cedula"])
+    except ValueError:
+        return None
+
+
 def crear_tarjeta(conn: sqlite3.Connection, usuario_id: int, nombre: str, cupo_total: float,
-                   entidad: str | None = None, ultimos4: str | None = None) -> int:
+                   entidad: str | None = None, ultimos4: str | None = None,
+                   cedula: str | None = None) -> int:
     """cupo_total es obligatorio y > 0 (validado acá, no solo en la UI --
-    ver requisitos, "Cupo total es obligatorio")."""
+    ver requisitos, "Cupo total es obligatorio").
+
+    Si viene ultimos4, dispara reasociar_movimientos_huerfanos() para esa
+    tarjeta recién creada (2026-09-10): es el caso típico de "ya tenía
+    gastos de esta tarjeta cargados, pero la tarjeta en sí la doy de alta
+    recién ahora" -- sin esto, esos movimientos viejos quedarían
+    huérfanos para siempre (ver el docstring de esa función)."""
     nombre = (nombre or "").strip()
     if not nombre:
         raise ValueError("Falta el nombre de la tarjeta.")
@@ -942,12 +1412,18 @@ def crear_tarjeta(conn: sqlite3.Connection, usuario_id: int, nombre: str, cupo_t
         raise ValueError("El cupo total tiene que ser mayor a 0.")
     entidad = (entidad or "").strip() or None
     ultimos4 = (ultimos4 or "").strip() or None
+    cedula = (cedula or "").strip()
+    cedula_cifrada = cifrado.cifrar(cedula) if cedula else None
     cur = conn.execute(
-        "INSERT INTO tarjetas_credito (usuario_id, nombre, entidad, cupo_total, ultimos4) VALUES (?, ?, ?, ?, ?)",
-        (usuario_id, nombre, entidad, cupo_total, ultimos4),
+        "INSERT INTO tarjetas_credito (usuario_id, nombre, entidad, cupo_total, ultimos4, cedula) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (usuario_id, nombre, entidad, cupo_total, ultimos4, cedula_cifrada),
     )
+    tarjeta_id = cur.lastrowid
     conn.commit()
-    return cur.lastrowid
+    if ultimos4:
+        reasociar_movimientos_huerfanos(conn, usuario_id, tarjeta_id=tarjeta_id)
+    return tarjeta_id
 
 
 def obtener_tarjetas(conn: sqlite3.Connection, usuario_id: int, solo_activas: bool = False) -> list[dict]:
@@ -958,12 +1434,7 @@ def obtener_tarjetas(conn: sqlite3.Connection, usuario_id: int, solo_activas: bo
     if solo_activas:
         sql += " AND activa = 1"
     sql += " ORDER BY activa DESC, nombre"
-    out = []
-    for r in conn.execute(sql, params).fetchall():
-        d = dict(r)
-        d["activa"] = bool(d["activa"])
-        out.append(d)
-    return out
+    return [_fila_tarjeta_publica(r) for r in conn.execute(sql, params).fetchall()]
 
 
 def obtener_tarjeta(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: int) -> dict | None:
@@ -974,11 +1445,7 @@ def obtener_tarjeta(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: int) 
     r = conn.execute(
         "SELECT * FROM tarjetas_credito WHERE id = ? AND usuario_id = ?", (tarjeta_id, usuario_id)
     ).fetchone()
-    if not r:
-        return None
-    d = dict(r)
-    d["activa"] = bool(d["activa"])
-    return d
+    return _fila_tarjeta_publica(r) if r else None
 
 
 def actualizar_tarjeta(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: int, nombre: str | None = None,
@@ -990,7 +1457,14 @@ def actualizar_tarjeta(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: in
     NULL, son opcionales); nombre es obligatorio y no puede quedar vacío
     -- lanza ValueError en ese caso, igual que cupo_total <= 0. Devuelve
     False si la tarjeta no existe o no es de usuario_id (aislamiento:
-    nunca edita la de otro usuario aunque el id exista)."""
+    nunca edita la de otro usuario aunque el id exista).
+
+    Si ultimos4 se está SETEANDO a un valor no vacío (ya sea que antes
+    estuviera vacío o cambiando por otro), dispara
+    reasociar_movimientos_huerfanos() para esta tarjeta, mismo criterio y
+    mismo motivo que crear_tarjeta() -- cubre el caso de "ya tenía la
+    tarjeta creada pero sin el último-4 cargado, y recién ahora lo
+    completo"."""
     if obtener_tarjeta(conn, usuario_id, tarjeta_id) is None:
         return False
 
@@ -1006,14 +1480,17 @@ def actualizar_tarjeta(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: in
         if cupo_total <= 0:
             raise ValueError("El cupo total tiene que ser mayor a 0.")
         campos.append("cupo_total = ?"); valores.append(cupo_total)
+    ultimos4_nuevo = ultimos4.strip() or None if ultimos4 is not None else None
     if ultimos4 is not None:
-        campos.append("ultimos4 = ?"); valores.append(ultimos4.strip() or None)
+        campos.append("ultimos4 = ?"); valores.append(ultimos4_nuevo)
 
     if campos:
         campos.append("actualizado_en = datetime('now', 'localtime')")
         valores.extend([tarjeta_id, usuario_id])
         conn.execute(f"UPDATE tarjetas_credito SET {', '.join(campos)} WHERE id = ? AND usuario_id = ?", valores)
         conn.commit()
+    if ultimos4_nuevo:
+        reasociar_movimientos_huerfanos(conn, usuario_id, tarjeta_id=tarjeta_id)
     return True
 
 
@@ -1047,9 +1524,11 @@ def borrar_tarjeta(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: int) -
         conn.execute("DELETE FROM tarjetas_credito WHERE id = ? AND usuario_id = ?", (tarjeta_id, usuario_id))
         conn.commit()
         return True, None
-    except sqlite3.IntegrityError:
-        conn.rollback()
-        return False, "Esa tarjeta tiene movimientos asociados -- archivala en vez de borrarla."
+    except Exception as e:
+        if "foreign key" in str(e).lower() or "integrity" in str(e).lower():
+            conn.rollback()
+            return False, "Esa tarjeta tiene movimientos asociados -- archivala en vez de borrarla."
+        raise
 
 
 def _resolver_tarjeta_por_ultimos4(conn: sqlite3.Connection, usuario_id: int, ultimos4: str | None) -> int | None:
@@ -1066,6 +1545,89 @@ def _resolver_tarjeta_por_ultimos4(conn: sqlite3.Connection, usuario_id: int, ul
         (usuario_id, ultimos4),
     ).fetchall()
     return filas[0]["id"] if len(filas) == 1 else None
+
+
+# Exige la palabra "tarjeta"/"T.Cred"/"card" a poco trecho del "*XXXX"
+# -- un extracto de tarjeta también puede mencionar el último-4 de una
+# CUENTA destino en la misma descripción (ej. "Avance T.Cred *4821 a
+# cta *5360", ver tools/reconciliar_extractos.py::_formatear_movimiento):
+# sin ese contexto, un "*XXXX" suelto es ambiguo y NO debe capturarse.
+# "terminada/termina en XXXX" es el otro patrón frecuente cuando alguien
+# lo escribe a mano en la descripción de un registro manual (el modal
+# "Registrar movimiento" de templates/base.html no tiene un campo
+# dedicado de últimos4: solo el selector de tarjeta, que es opcional).
+_RE_ULTIMOS4_EN_TEXTO = re.compile(
+    r"(?:tarjeta|t\.?\s*cred(?:ito)?|card)\D{0,20}?\*\s*(\d{4})\b"
+    r"|termin(?:ada|a)\s+en\s+(\d{4})\b",
+    re.IGNORECASE,
+)
+
+
+def _extraer_ultimos4_de_texto(texto: str | None) -> str | None:
+    """Busca un patrón "...tarjeta *4821" / "T.Cred *4821" / "terminada
+    en 4821" dentro de texto libre (típicamente la descripción de un
+    movimiento) -- ver _RE_ULTIMOS4_EN_TEXTO para el porqué del
+    contexto exigido. None si no encuentra nada: mismo criterio de "no
+    adivinar" que _resolver_tarjeta_por_ultimos4."""
+    if not texto:
+        return None
+    m = _RE_ULTIMOS4_EN_TEXTO.search(texto)
+    if not m:
+        return None
+    return m.group(1) or m.group(2)
+
+
+def reasociar_movimientos_huerfanos(conn: sqlite3.Connection, usuario_id: int, tarjeta_id: int | None = None) -> int:
+    """Backfill retroactivo (2026-09-10, ver el pedido del usuario de
+    "un trigger que asocie tanto movimientos viejos de tarjetas no
+    agregadas como nuevos a tarjetas ya registradas"): recorre los
+    movimientos de usuario_id que quedaron con tarjeta_id NULL y les
+    intenta asociar una tarjeta ahora mismo, usando el mismo
+    _extraer_ultimos4_de_texto()/_resolver_tarjeta_por_ultimos4() que
+    corre al insertar (ver insertar_movimientos()) -- así que aplica la
+    MISMA regla de "nunca adivinar" (0 o 2+ tarjetas activas
+    coincidentes deja el movimiento sin tocar).
+
+    Esto reemplaza deliberadamente la política previa documentada en
+    insertar_movimientos() ("nada se reasigna retroactivamente, ni
+    siquiera implícitamente") -- el usuario pidió explícitamente lo
+    contrario para este caso: una tarjeta que se registra DESPUÉS de
+    tener movimientos ya cargados (típicamente porque el usuario recién
+    ahora la dio de alta en "Mis tarjetas") debe "adoptar" los
+    movimientos viejos que la mencionan, en vez de quedar huérfanos para
+    siempre. Se llama automáticamente desde crear_tarjeta() y desde
+    actualizar_tarjeta() cuando cambia ultimos4 -- nunca hace falta
+    invocarla a mano.
+
+    `tarjeta_id`, si se pasa, acota el barrido a los huérfanos que
+    matchean ESA tarjeta puntual (el caso común: se acaba de crear/
+    editar una sola tarjeta) -- se sigue re-chequeando ambigüedad contra
+    TODAS las tarjetas activas del usuario, no solo esa, para no asociar
+    un movimiento que en realidad es ambiguo entre dos tarjetas con el
+    mismo último-4. Sin `tarjeta_id` (None) barre todos los huérfanos del
+    usuario contra cualquier tarjeta activa -- pensado para poder
+    invocarse también como mantenimiento general a futuro.
+
+    Devuelve cuántos movimientos quedaron asociados."""
+    huerfanos = conn.execute(
+        "SELECT id, descripcion FROM movimientos WHERE usuario_id = ? AND tarjeta_id IS NULL",
+        (usuario_id,),
+    ).fetchall()
+    asociados = 0
+    for fila in huerfanos:
+        ultimos4 = _extraer_ultimos4_de_texto(fila["descripcion"])
+        if not ultimos4:
+            continue
+        resuelto = _resolver_tarjeta_por_ultimos4(conn, usuario_id, ultimos4)
+        if resuelto is None:
+            continue
+        if tarjeta_id is not None and resuelto != tarjeta_id:
+            continue  # matchea OTRA tarjeta activa -- no es el barrido que se pidió, se deja para su propia corrida
+        conn.execute("UPDATE movimientos SET tarjeta_id = ? WHERE id = ?", (resuelto, fila["id"]))
+        asociados += 1
+    if asociados:
+        conn.commit()
+    return asociados
 
 
 def obtener_tarjetas_con_deuda(conn: sqlite3.Connection, usuario_id: int) -> dict:
@@ -1433,9 +1995,11 @@ def borrar_meta_ahorro(conn: sqlite3.Connection, usuario_id: int, meta_id: int) 
         conn.execute("DELETE FROM metas_ahorro WHERE id = ? AND usuario_id = ?", (meta_id, usuario_id))
         conn.commit()
         return True, None
-    except sqlite3.IntegrityError:
-        conn.rollback()
-        return False, "Esa meta tiene aportes (movimientos) asociados -- archivala en vez de borrarla."
+    except Exception as e:
+        if "foreign key" in str(e).lower() or "integrity" in str(e).lower():
+            conn.rollback()
+            return False, "Esa meta tiene aportes (movimientos) asociados -- archivala en vez de borrarla."
+        raise
 
 
 # ----------------------------- Inserción con dedup (usada por cualquier fuente de ingesta) -----------------------------
@@ -1468,6 +2032,75 @@ def _mejor_coincidencia(m: dict, candidatos: list[dict]) -> dict | None:
         return (fecha_exacta, -solapadas, c["id"])
 
     return min(en_ventana, key=_orden)
+
+
+# Orígenes que son el extracto OFICIAL de una tarjeta -- la autoridad
+# sobre qué se cargó a esa tarjeta. Deliberadamente NO incluye
+# 'correo_imap': una alerta de correo es un aviso suelto, no el documento
+# de cierre, y ahí sigue valiendo la regla conservadora de no reasignar
+# nada retroactivamente (ver _conciliar_fila_existente).
+ORIGENES_EXTRACTO_TARJETA = ("upload_pdf_tarjeta",)
+
+
+def _conciliar_fila_existente(conn, cur, match: dict, entrante: dict, origen: str, usuario_id: int) -> bool:
+    """Enriquece la fila YA existente cuando el movimiento entrante resultó
+    ser la MISMA transacción real. Nunca inserta nada: devuelve True solo
+    si hubo una RECLASIFICACIÓN de medio de pago (para poder reportarla).
+
+    Dos casos:
+
+    1. referencia_bancaria -- si la fila era un registro MANUAL y lo que
+       llega es de una fuente automática, se guarda la descripción
+       "oficial" del banco sin pisar la que escribió el usuario.
+
+    2. Reclasificación a deuda -- si lo que llega es un cargo de tarjeta
+       (es_deuda) proveniente del EXTRACTO OFICIAL de esa tarjeta y la fila
+       existente NO estaba marcada como deuda, gana el entrante. El
+       extracto es la AUTORIDAD sobre qué se cargó a esa tarjeta: la
+       clasificación previa salió de adivinar el medio de pago leyendo el
+       texto de la descripción (ver clasificar_medio_pago), que para algo
+       como "SR WOK VIVA ENVIGADO" no tiene forma de saber si se pagó con
+       débito o con crédito. Sin esto la deuda quedaba subestimada -- el
+       extracto de la *2011 reportaba $2.105.617 y la app mostraba
+       $1.157.457 porque 5 compras ya estaban cargadas como débito desde un
+       Excel (bug reportado 2026-09-17).
+
+       Dos límites deliberados para no pisarse con la regla de "nada se
+       reasigna retroactivamente" (ver requisitos de tarjetas, y
+       test_insertar_movimientos_duplicado_nunca_reasigna_tarjeta_id...):
+         - Solo desde ORIGENES_EXTRACTO_TARJETA. Una alerta de correo
+           ('correo_imap') sigue sin reasignar nada.
+         - Unidireccional: débito -> deuda sí, deuda -> débito nunca. Solo
+           el extracto prueba la pertenencia a la tarjeta; nada prueba lo
+           contrario."""
+    cambios: dict[str, object] = {}
+
+    if match["origen"] == "app_manual" and origen != "app_manual" and not match.get("referencia_bancaria"):
+        referencia = (entrante.get("descripcion") or "").strip()
+        if referencia:
+            cambios["referencia_bancaria"] = referencia
+
+    reclasificado = (
+        origen in ORIGENES_EXTRACTO_TARJETA
+        and bool(entrante.get("es_deuda"))
+        and not match.get("es_deuda")
+    )
+    if reclasificado:
+        cambios["medio_pago"] = entrante.get("medio_pago")
+        cambios["es_deuda"] = 1
+        if not match.get("tarjeta_id"):
+            ultimos4 = entrante.get("ultimos4") or _extraer_ultimos4_de_texto(entrante.get("descripcion"))
+            tarjeta_id = _resolver_tarjeta_por_ultimos4(conn, usuario_id, ultimos4)
+            if tarjeta_id:
+                cambios["tarjeta_id"] = tarjeta_id
+
+    if cambios:
+        asignaciones = ", ".join(f"{campo} = ?" for campo in cambios)
+        cur.execute(
+            f"UPDATE movimientos SET {asignaciones} WHERE id = ?",
+            (*cambios.values(), match["id"]),
+        )
+    return reclasificado
 
 
 def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], origen: str, usuario_id: int) -> dict:
@@ -1519,12 +2152,30 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
     cur = conn.cursor()
     existentes = [
         dict(r) for r in cur.execute(
-            "SELECT id, fecha, moneda, monto, tipo, descripcion, entidad, origen, referencia_bancaria "
+            "SELECT id, fecha, moneda, monto, tipo, descripcion, entidad, origen, referencia_bancaria, "
+            "medio_pago, es_deuda, tarjeta_id "
             "FROM movimientos WHERE usuario_id = ? "
             "AND NOT (origen = 'app_manual' AND referencia_bancaria IS NOT NULL)",
             (usuario_id,),
         )
     ]
+    if origen == "app_manual":
+        # Dos movimientos MANUALES con la misma fecha±1/monto/tipo no son
+        # necesariamente la misma transacción real -- a diferencia del caso
+        # que este motor fue diseñado para resolver (una fuente automática
+        # confirmando una fila manual ya cargada), acá no hay ninguna fuente
+        # "más confiable" avisando que de verdad es la misma. Tratarlas como
+        # duplicado descartaba en silencio una segunda compra real del mismo
+        # monto el mismo día -- bug real reportado 2026-09-10 (usuario
+        # registró 16.500000 y después 16.5: la segunda "desaparecía", el
+        # saldo de la tarjeta quedaba corto). El formulario ya protege
+        # contra doble-click (deshabilita el botón al enviar, ver el modal
+        # "Registrar movimiento" en templates/base.html), así que no hace
+        # falta este mecanismo
+        # para ese caso -- una fila manual existente solo puede seguir
+        # absorbiendo coincidencias que lleguen de una fuente automática
+        # (correo/PDF/Excel).
+        existentes = [e for e in existentes if e["origen"] != "app_manual"]
     disponibles: dict[tuple, list[dict]] = defaultdict(list)
     for e in existentes:
         disponibles[(e["moneda"], round(e["monto"]), e["tipo"])].append(e)
@@ -1537,6 +2188,9 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
     #     misma dos veces en la misma carga).
     vistos_en_lote = set()
     nuevos, duplicados_bd, duplicados_lote = [], 0, 0
+    # Duplicados que además corrigieron la clasificación de la fila ya
+    # guardada (débito -> deuda de tarjeta) -- ver _conciliar_fila_existente.
+    reclasificados = 0
     for m_crudo in movimientos:
         # Enriquecer ANTES de armar la clave de match: enriquecer_movimiento
         # puede reclasificar 'tipo' (ej. avance de tarjeta: 'gasto' ->
@@ -1556,10 +2210,8 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
         if match:
             candidatos.remove(match)  # consumida -- una segunda coincidencia real no la vuelve a encontrar
             duplicados_bd += 1
-            if match["origen"] == "app_manual" and origen != "app_manual" and not match.get("referencia_bancaria"):
-                referencia = (m.get("descripcion") or "").strip()
-                if referencia:
-                    cur.execute("UPDATE movimientos SET referencia_bancaria = ? WHERE id = ?", (referencia, match["id"]))
+            if _conciliar_fila_existente(conn, cur, match, m, origen, usuario_id):
+                reclasificados += 1
             continue
 
         vistos_en_lote.add(clave_lote)
@@ -1569,7 +2221,12 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
         e["origen"] = origen
         e["usuario_id"] = usuario_id
         if not e.get("tarjeta_id"):
-            e["tarjeta_id"] = _resolver_tarjeta_por_ultimos4(conn, usuario_id, e.get("ultimos4"))
+            # 'ultimos4' explícito (correo/PDF/Excel, ver el docstring de
+            # arriba) tiene prioridad; si no vino, se intenta extraer del
+            # texto de la descripción (cubre el registro manual, que no
+            # tiene un campo dedicado -- ver _extraer_ultimos4_de_texto).
+            ultimos4 = e.get("ultimos4") or _extraer_ultimos4_de_texto(e.get("descripcion"))
+            e["tarjeta_id"] = _resolver_tarjeta_por_ultimos4(conn, usuario_id, ultimos4)
         # meta_ahorro_id: a diferencia de tarjeta_id, no hay forma de
         # resolverlo automáticamente por texto (no hay un patrón bancario
         # equivalente a "últimos4") -- solo llega explícito cuando el
@@ -1589,6 +2246,7 @@ def insertar_movimientos(conn: sqlite3.Connection, movimientos: list[dict], orig
         "duplicados": duplicados_bd + duplicados_lote,
         "duplicados_bd": duplicados_bd,
         "duplicados_lote": duplicados_lote,
+        "reclasificados": reclasificados,
     }
 
 

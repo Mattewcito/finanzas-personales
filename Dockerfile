@@ -38,12 +38,25 @@ ENV PORT=5001
 WORKDIR /app/src
 EXPOSE 5001
 
-# --preload: importa app.py UNA sola vez en el proceso master antes de
-# bifurcar los workers, en vez de una vez por cada uno. Sin esto, el
-# código de arranque de app.py (crear el esquema de la BD) corría 2
-# veces casi en simultáneo -- provocó una carrera real entre workers al
-# agregar una columna nueva (ALTER TABLE, "duplicate column name") que
-# tumbaba el primer boot del contenedor. db_finanzas.py igual quedó
-# protegido contra esa carrera (ver _agregar_columna_si_falta), pero
-# --preload además evita repetir ese trabajo de arranque sin necesidad.
-CMD ["gunicorn", "--preload", "--bind", "0.0.0.0:5001", "--workers", "2", "app:app"]
+# NOTA: --preload fue eliminado (F6/Turso). libsql-experimental usa un
+# runtime Tokio (Rust). Con --preload, gunicorn importa app.py en el
+# master ANTES del fork() -- el runtime Tokio arranca en el master,
+# los workers heredan sus thread handles via fork y panican con
+# EDEADLK al intentar joinearlos. Sin --preload cada worker importa
+# app.py en su propio proceso limpio: Tokio arranca fresh, sin carrera.
+# La carrera original de ALTER TABLE (SQLite local) ya no aplica porque
+# la BD es Turso (remota) con CREATE TABLE IF NOT EXISTS en todo.
+#
+# --timeout 300 (default de gunicorn es 30s): "Sincronizar ahora"
+# (routes/correo.py::api_correo_sincronizar_ahora) es sincrónico y
+# recorre por IMAP un correo a la vez (leer_correo.py::
+# buscar_movimientos_correo) -- con el rango ampliado de la primera
+# corrida (desde el 1 de enero, ver leer_correo.py::
+# calcular_dias_a_revisar, 2026-09-10) puede haber muchos más correos
+# que revisar que antes, y 30s no alcanzaba: el worker se mataba a
+# mitad de camino (WORKER TIMEOUT en el log) y el navegador veía la
+# conexión cortada ("No se pudo conectar con el servidor"), aunque el
+# usuario ya había guardado su configuración bien. 300s es un margen
+# generoso para una request ocasional y manual, no algo que se llame
+# seguido -- no afecta el resto de rutas, que responden en milisegundos.
+CMD ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "2", "--timeout", "300", "app:app"]

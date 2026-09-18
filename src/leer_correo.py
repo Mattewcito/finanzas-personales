@@ -77,6 +77,7 @@ ingreso/gasto/deuda, que dependen de tipo/medio_pago/monto, no de categoria.
 import re
 import io
 import sys
+import time
 import imaplib
 import email
 import argparse
@@ -383,7 +384,6 @@ def esta_pendiente(config: dict, ahora: datetime.datetime) -> bool:
 
 
 DIAS_MAXIMO_SI_HUBO_HUECO = 60  # tope: si la automatización estuvo caída meses, no escanea años de correo
-DIAS_PRIMERA_CORRIDA = 30       # sin ninguna corrida previa, cubre un mes hacia atrás por las dudas
 
 
 def calcular_dias_a_revisar(config: dict, ahora: datetime.datetime, dias_minimo: int) -> int:
@@ -391,11 +391,23 @@ def calcular_dias_a_revisar(config: dict, ahora: datetime.datetime, dias_minimo:
     `dias_minimo` (el piso que se le pide por CLI), pero ampliado para
     cubrir todo el hueco desde su última corrida -- si la automatización
     estuvo caída o pausada varios días, esta corrida no se pierde ese
-    tramo. Sin ninguna corrida previa, usa DIAS_PRIMERA_CORRIDA en vez de
-    `dias_minimo` a secas, para no arrancar viendo solo lo de hoy."""
+    tramo.
+
+    Sin ninguna corrida previa (primera vez que se activa/corre esta
+    cuenta), busca desde el 1 de enero del año en curso hasta `ahora`
+    -- no un tope fijo de días -- para traer todo lo que hay en lo que
+    va del año en vez de perderse meses de historial (2026-09-10: con
+    el tope fijo anterior de 30 días, la primera corrida real de un
+    usuario solo recuperó 26 movimientos, mucho menos de lo que
+    esperaba). A PARTIR DE LA SEGUNDA corrida (ya hay `ultima_corrida`
+    guardado) la ventana vuelve al criterio de siempre -- cubrir el
+    hueco desde la última corrida, topado en DIAS_MAXIMO_SI_HUBO_HUECO
+    -- que ya viene funcionando bien y no se toca."""
     ultima = config.get("ultima_corrida")
     if not ultima:
-        return max(dias_minimo, DIAS_PRIMERA_CORRIDA)
+        primer_dia_anio = ahora.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        dias_desde_enero = (ahora - primer_dia_anio).days + 1  # +1: incluye el propio 1 de enero completo
+        return max(dias_minimo, dias_desde_enero)
     ultima_dt = datetime.datetime.fromisoformat(ultima)
     hueco_dias = (ahora - ultima_dt).days + 1  # +1: cubre el día de la última corrida completo, no solo desde su hora exacta
     return max(dias_minimo, min(hueco_dias, DIAS_MAXIMO_SI_HUBO_HUECO))
@@ -480,18 +492,10 @@ def _parsear_pdf_adjunto(datos: bytes, cedula: str) -> list[dict]:
         except Exception:
             return []
         movimientos = [rex.normalizar_card(m, "Credito") for m in crudos]
-        for (fecha_interes, moneda), val in intereses_por_moneda.items():
-            if abs(val) < 0.001:
-                continue
-            movimientos.append({
-                "fecha": fecha_interes, "tipo": "gasto", "categoria": "intereses", "moneda": moneda,
-                "monto": round(val, 2), "descripcion": f"Interes corriente T.Cred *{ultimos4}",
-                "entidad": "Bancolombia",
-                # Solo si el último-4 se detectó de verdad (no el "????" de
-                # mejor-esfuerzo) -- un valor inventado nunca debe intentar
-                # matchear una tarjeta real.
-                "ultimos4": ultimos4 if m4 else None,
-            })
+        # asociar=bool(m4): solo si el último-4 se detectó de verdad (no el
+        # "????" de mejor-esfuerzo) -- ver normalizar_intereses_card.
+        movimientos += rex.normalizar_intereses_card(
+            intereses_por_moneda, ultimos4, asociar=bool(m4))
         return movimientos
 
     return []
@@ -545,6 +549,7 @@ def procesar_cuenta(config: dict, dias: int, aplicar: bool) -> str:
     para loguearlo/mostrarlo."""
     usuario_id = config["usuario_id"]
     etiqueta = f"usuario {usuario_id} ({config.get('email', '?')})"
+    inicio = time.monotonic()  # para el detalle técnico de la corrida -- ver más abajo
 
     log(f"[{etiqueta}] Buscando notificaciones de Bancolombia de los últimos {dias} días...")
     movimientos = buscar_movimientos_correo(dias, config)
@@ -559,6 +564,7 @@ def procesar_cuenta(config: dict, dias: int, aplicar: bool) -> str:
 
     if not movimientos:
         mensaje = "sin movimientos nuevos en el correo, nada que insertar."
+        stats = {"nuevos": 0, "duplicados": 0, "duplicados_bd": 0, "duplicados_lote": 0}
     else:
         conn = db.conectar()
         try:
@@ -568,8 +574,34 @@ def procesar_cuenta(config: dict, dias: int, aplicar: bool) -> str:
         finally:
             conn.close()
 
+    # Detalle técnico de ESTA corrida (2026-09-10, pedido del usuario:
+    # "Última corrida" en la interfaz solo decía ok/error, sin decir qué
+    # hizo realmente) -- se guarda tal cual en correo_config y solo se le
+    # muestra al admin (ver routes/correo.py / configurar_correo.html).
+    # La lista de movimientos queda acotada a 100: una primera corrida
+    # ampliada a "todo el año" puede traer varios cientos, y el detalle de
+    # cada uno ya vive de sobra en la tabla `movimientos` real -- acá
+    # alcanza con una muestra representativa, no un espejo completo.
+    categorias: dict[str, int] = {}
+    for m in movimientos:
+        categorias[m["categoria"]] = categorias.get(m["categoria"], 0) + 1
+    detalle = {
+        "duracion_seg": round(time.monotonic() - inicio, 1),
+        "dias_revisados": dias,
+        "correos_encontrados": len(movimientos),
+        "nuevos": stats["nuevos"],
+        "duplicados_bd": stats["duplicados_bd"],
+        "duplicados_lote": stats["duplicados_lote"],
+        "categorias": categorias,
+        "movimientos": [
+            {"fecha": m["fecha"], "tipo": m["tipo"], "categoria": m["categoria"],
+             "moneda": m["moneda"], "monto": m["monto"], "descripcion": m["descripcion"]}
+            for m in movimientos[:100]
+        ],
+    }
+
     with db.conexion() as conn:
-        db.actualizar_estado_correo(conn, usuario_id, ok=True, error=None)
+        db.actualizar_estado_correo(conn, usuario_id, ok=True, error=None, detalle=detalle)
 
     log(f"[{etiqueta}] OK — {mensaje}")
     return mensaje

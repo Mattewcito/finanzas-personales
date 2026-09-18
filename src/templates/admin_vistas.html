@@ -1,28 +1,30 @@
-{% extends "base.html" %}
-{% block title %}Ocultar vistas{% endblock %}
+﻿{% extends "base.html" %}
+{% block title %}Visibilidad de vistas · Cuadre{% endblock %}
 
 {% block head %}
 <style>
   .vistas-tabla{ width:100%; border-collapse:collapse; }
-  .vistas-tabla th, .vistas-tabla td{ padding:12px 14px; border-bottom:1px solid var(--card-border); text-align:left; font-size:13px; }
-  .vistas-tabla th{ color:var(--text-faint); font-weight:600; font-size:11px; text-transform:uppercase; }
+  .vistas-tabla th, .vistas-tabla td{ padding:12px 14px; border-bottom:1px solid var(--border); text-align:left; font-size:13px; }
+  .vistas-tabla th{ color:var(--text-subtle); font-weight:600; font-size:11px; text-transform:uppercase; }
   .vistas-tabla td.usuario{ font-weight:600; }
-  .vistas-tabla td.usuario span{ display:block; font-weight:400; font-size:11.5px; color:var(--text-faint); }
+  .vistas-tabla td.usuario span{ display:block; font-weight:400; font-size:11.5px; color:var(--text-subtle); }
   .vistas-tabla td.centro{ text-align:center; }
 
   /* Toggle simple (checkbox estilizado como switch) */
   .mini-switch{ position:relative; display:inline-block; width:38px; height:21px; vertical-align:middle; }
   .mini-switch input{ opacity:0; width:0; height:0; }
   .mini-switch .slider{
-    position:absolute; inset:0; background: var(--card-hover); border-radius:999px; cursor:pointer;
-    transition: background .15s ease;
+    position:absolute; inset:0; background: var(--surface-hover);
+    border: 1.5px solid var(--text-muted); border-radius:999px; cursor:pointer;
+    transition: background .15s ease, border-color .15s ease;
   }
   .mini-switch .slider::before{
     content:''; position:absolute; width:15px; height:15px; left:3px; top:3px;
-    background:#fff; border-radius:50%; transition: transform .15s ease;
+    /* pip: dark in unchecked state so it's visible on light background */
+    background: var(--text-muted); border-radius:50%; transition: transform .15s ease, background .15s ease;
   }
-  .mini-switch input:checked + .slider{ background: var(--accent); }
-  .mini-switch input:checked + .slider::before{ transform: translateX(17px); }
+  .mini-switch input:checked + .slider{ background: var(--brand); border-color: var(--brand); }
+  .mini-switch input:checked + .slider::before{ transform: translateX(17px); background:#fff; }
   .mini-switch input:disabled + .slider{ opacity:.5; cursor:not-allowed; }
 </style>
 {% endblock %}
@@ -31,8 +33,8 @@
 <div class="page-wrap">
 
   <div class="page-header">
-    <h1>🧩 Ocultar vistas</h1>
-    <p>Elegí qué secciones puede ver cada usuario en su menú. Apagado = oculto para esa cuenta (ni el ítem del menú ni la página quedan disponibles). Se puede reactivar en cualquier momento.</p>
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="22" height="22" aria-hidden="true" style="vertical-align:middle; margin-right:8px;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>Visibilidad de vistas</h1>
+    <p>Elige qué secciones puede ver cada usuario en su menú. Apagado = oculto para esa cuenta (ni el ítem del menú ni la página quedan disponibles). Se puede reactivar en cualquier momento.</p>
   </div>
 
   <div class="card" style="margin-top:26px; padding:0; overflow-x:auto;">
@@ -53,8 +55,9 @@
           <td class="centro">
             <label class="mini-switch">
               <input type="checkbox" class="toggle-vista" data-usuario-id="{{ u.id }}" data-vista="{{ v.id }}"
+                     aria-label="Mostrar {{ v.label }} a {{ u.nombre_mostrado }}"
                      {{ 'checked' if v.id not in ocultas_por_usuario.get(u.id, []) else '' }}>
-              <span class="slider"></span>
+              <span class="slider" aria-hidden="true"></span>
             </label>
           </td>
           {% endfor %}
@@ -64,13 +67,11 @@
     </table>
   </div>
 
-  <div id="resultado" class="result-box" style="display:none; max-width:520px;"></div>
 </div>
 
 <script>
 document.querySelectorAll('.toggle-vista').forEach((chk) => {
   chk.addEventListener('change', async () => {
-    const resultado = document.getElementById('resultado');
     chk.disabled = true;
     const datos = new FormData();
     datos.set('usuario_id', chk.dataset.usuarioId);
@@ -81,15 +82,11 @@ document.querySelectorAll('.toggle-vista').forEach((chk) => {
       const json = await res.json();
       if (!res.ok || !json.ok) {
         chk.checked = !chk.checked; // revertir en la UI
-        resultado.style.display = 'block';
-        resultado.className = 'result-box error';
-        resultado.textContent = '❌ ' + (json.error || 'Error desconocido');
+        await mostrarAlertaApp('error', json.error || 'Error desconocido');
       }
     } catch (err) {
       chk.checked = !chk.checked;
-      resultado.style.display = 'block';
-      resultado.className = 'result-box error';
-      resultado.textContent = '❌ No se pudo conectar con el servidor.';
+      await mostrarAlertaApp('error', 'No se pudo conectar con el servidor.');
     } finally {
       chk.disabled = false;
     }

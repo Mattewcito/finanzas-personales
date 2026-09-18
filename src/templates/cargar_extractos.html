@@ -1,5 +1,5 @@
-{% extends "base.html" %}
-{% block title %}Cargar extractos{% endblock %}
+﻿{% extends "base.html" %}
+{% block title %}Extractos bancarios · Cuadre{% endblock %}
 
 {% block head %}
 <style>
@@ -17,20 +17,20 @@
 
   .dropzone{
     margin-top: 6px; padding: 26px 16px; border-radius: 12px;
-    border: 1.5px dashed var(--card-border); text-align:center;
+    border: 1.5px dashed var(--border); text-align:center;
     cursor:pointer; transition: border-color .15s, background .15s;
   }
-  .dropzone:hover, .dropzone.dragover{ border-color: var(--accent); background: rgba(124,108,251,0.06); }
-  .dropzone svg{ width:26px; height:26px; color: var(--text-faint); margin-bottom:8px; }
-  .dropzone .dz-text{ margin:0; font-size:13px; color: var(--text-dim); }
-  .dropzone .dz-text span{ color: var(--accent-2); font-weight:600; }
+  .dropzone:hover, .dropzone.dragover{ border-color: var(--brand); background: rgba(91,100,114,0.06); }
+  .dropzone svg{ width:26px; height:26px; color: var(--text-subtle); margin-bottom:8px; }
+  .dropzone .dz-text{ margin:0; font-size:13px; color: var(--text-muted); }
+  .dropzone .dz-text span{ color: var(--brand); font-weight:600; }
   .dropzone .dz-file{ margin: 8px 0 0; font-size:12.5px; color: var(--text); font-weight:600; }
 
   .info-card h3{ margin:0 0 14px; font-size:14.5px; }
   .info-card .item{ display:flex; gap:10px; margin-bottom:16px; }
   .info-card .item:last-child{ margin-bottom:0; }
-  .info-card .item svg{ width:17px; height:17px; color: var(--accent-2); flex-shrink:0; margin-top:2px; }
-  .info-card .item p{ margin:0; font-size:12.5px; color: var(--text-dim); line-height:1.5; }
+  .info-card .item svg{ width:17px; height:17px; color: var(--brand); flex-shrink:0; margin-top:2px; }
+  .info-card .item p{ margin:0; font-size:12.5px; color: var(--text-muted); line-height:1.5; }
   .info-card .item b{ color: var(--text); }
 
   /* Aviso de a qué cuenta se le va a cargar el archivo -- solo aplica a
@@ -41,9 +41,30 @@
   .aviso-cuenta{
     display:flex; align-items:center; gap:8px; margin: 0 0 18px;
     padding: 10px 14px; border-radius: 10px; font-size: 13px;
-    background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.28); color: var(--text);
+    background: color-mix(in srgb, var(--warning) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent); color: var(--text);
   }
-  .aviso-cuenta b{ color: #fbbf24; }
+  .aviso-cuenta b{ color: var(--warning); }
+
+  /* Resultado de carga — más grande y legible que el toast */
+  #resultado.ok{
+    border-left-width: 4px; padding: 16px 18px;
+    font-size: 14px; line-height: 1.65;
+    background: color-mix(in srgb, var(--positive) 9%, var(--surface));
+    border-color: var(--positive); color: var(--text);
+  }
+  #resultado.ok .res-titulo{
+    display:block; font-weight:700; font-size:15px; color: var(--positive); margin-bottom:6px;
+  }
+  #resultado.error{
+    border-left-width: 4px; padding: 16px 18px;
+    font-size: 14px; line-height: 1.65;
+    background: color-mix(in srgb, var(--negative) 9%, var(--surface));
+    border-color: var(--negative); color: var(--text);
+  }
+  #resultado.error .res-titulo{
+    display:block; font-weight:700; font-size:15px; color: var(--negative); margin-bottom:6px;
+  }
 </style>
 {% endblock %}
 
@@ -51,14 +72,15 @@
 <div class="page-wrap">
 
   <div class="page-header">
-    <h1>📥 Cargar extracto bancario</h1>
-    <p>Subí un Excel o un PDF de extracto — se procesa y se inserta en <b style="color:var(--text-dim)">finanzas.db</b> sin duplicar lo que ya esté registrado.</p>
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="22" height="22" aria-hidden="true" style="vertical-align:middle; margin-right:8px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Extractos bancarios</h1>
+    <p>Sube un Excel o un PDF de extracto bancario. Se procesa automáticamente y los movimientos quedan en tu historial, sin duplicar lo que ya está registrado.</p>
   </div>
 
-  {% if usuario_rol == 'admin' %}
+  {% if usuario_rol == 'admin' and viendo_id != usuario_id %}
   <div class="aviso-cuenta">
-    ⚠️ Estás por cargar movimientos para la cuenta de <b>{{ usuario_viendo_nombre }}</b>.
-    Si no es la que querés, cambiala primero en "Viendo perfil de" (menú de la izquierda).
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true" style="flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    Vas a cargar movimientos para la cuenta de <b>{{ usuario_viendo_nombre }}</b>.
+    Cambia el perfil en "Viendo perfil de" (menú izquierdo) si no es el que quieres.
   </div>
   {% endif %}
 
@@ -68,35 +90,58 @@
       <form id="formCarga">
         <label class="field-label">Tipo de archivo</label>
         <select name="tipo" id="tipoArchivo" class="field-select">
-          <option value="excel">Excel (mismo formato que la base de datos)</option>
+          <option value="excel">Excel (.xlsx — plantilla descargable)</option>
           <option value="pdf_ahorros">PDF — Extracto de cuenta de ahorros</option>
           <option value="pdf_tarjeta">PDF — Extracto de tarjeta de crédito</option>
         </select>
 
         <p id="ayudaPlantilla" style="margin:8px 0 0; font-size:12px;">
-          ¿No sabés qué formato lleva? <a href="/plantilla-excel" style="color:var(--accent-2); font-weight:600;">Descargá la plantilla</a>, completala y subila acá mismo.
+          ¿No sabes qué formato usar? <a href="/plantilla-excel" style="color:var(--brand); font-weight:600;">Descarga la plantilla</a>, complétala y súbela aquí mismo.
         </p>
 
-        <div id="camposTarjeta" class="field-row" style="display:none;">
-          <div>
-            <label class="field-label">Marca de la tarjeta</label>
-            <input type="text" name="marca" class="field-input" placeholder="Mastercard, Amex...">
+        <div id="camposTarjeta" style="display:none;">
+          <div class="field-row">
+            <div>
+              <label class="field-label">Marca de la tarjeta</label>
+              <input type="text" name="marca" class="field-input" placeholder="Mastercard, Amex...">
+            </div>
+            <div>
+              <label class="field-label">Últimos 4 dígitos</label>
+              <input type="text" name="ultimos4" maxlength="4" class="field-input" placeholder="2011">
+            </div>
           </div>
-          <div>
-            <label class="field-label">Últimos 4 dígitos</label>
-            <input type="text" name="ultimos4" maxlength="4" class="field-input" placeholder="2011">
-          </div>
+
+          <label class="field-label">Cédula del titular
+            <span style="color:var(--text-subtle); font-weight:400;">(solo si el PDF viene protegido)</span>
+          </label>
+          <input type="text" name="cedula" class="field-input" inputmode="numeric" autocomplete="off"
+                 placeholder="Bancolombia cifra estos PDF con este número">
+          <p style="margin:6px 0 0; font-size:12px; color:var(--text-subtle);">
+            Se usa para abrir el PDF y queda guardada cifrada junto a la tarjeta,
+            así no tienes que escribirla de nuevo la próxima vez.
+          </p>
         </div>
 
-        <label class="field-label">Archivo</label>
-        <div class="dropzone" id="dropzone">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <label class="field-label" id="archivoLabel">Archivo</label>
+        <div class="dropzone" id="dropzone" role="button" tabindex="0"
+             aria-label="Elegir archivo de extracto para subir" aria-describedby="dzFile">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M12 16V4"></path><path d="M7 9l5-5 5 5"></path>
             <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path>
           </svg>
-          <p class="dz-text">Arrastrá el archivo acá o <span>hacé clic para elegirlo</span></p>
+          <p class="dz-text">Arrastra el archivo acá o <span>haz clic para elegirlo</span></p>
           <p class="dz-file" id="dzFile"></p>
-          <input type="file" name="archivo" id="archivoInput" required hidden>
+          <!-- a11y (fix crítico 2026-09-11): antes tenía `hidden`, que lo
+               sacaba del todo del árbol de foco -- un usuario de teclado
+               no tenía forma de abrir el selector de archivos. Ahora
+               queda "visualmente oculto" (técnica sr-only) pero sigue
+               existiendo en el DOM; el control operable real es el
+               `.dropzone` de arriba (role="button" + tabindex="0" +
+               keydown de Enter/Espacio en el <script> de abajo), por eso
+               este input tiene tabindex="-1" (no genera un segundo
+               parate de Tab redundante) y aria-hidden="true". -->
+          <input type="file" name="archivo" id="archivoInput" required tabindex="-1" aria-hidden="true"
+                 style="position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;">
         </div>
 
         <button type="submit" class="btn-primary" id="btnSubmit">Subir e insertar</button>
@@ -109,7 +154,7 @@
       <h3>Cómo funciona</h3>
       <div class="item">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
-        <p><b>Excel:</b> mismas columnas que la tabla movimientos — fecha, tipo, categoria, moneda, monto, descripcion, entidad.</p>
+        <p><b>Excel:</b> columnas requeridas — fecha, tipo, categoría, moneda, monto, descripción, entidad. Descarga la plantilla para ver el formato exacto.</p>
       </div>
       <div class="item">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
@@ -134,13 +179,23 @@ const archivoInput = document.getElementById('archivoInput');
 const dzFile = document.getElementById('dzFile');
 
 document.getElementById('tipoArchivo').addEventListener('change', (e) => {
-  document.getElementById('camposTarjeta').style.display = e.target.value === 'pdf_tarjeta' ? 'grid' : 'none';
+  document.getElementById('camposTarjeta').style.display = e.target.value === 'pdf_tarjeta' ? 'block' : 'none';
   document.getElementById('ayudaPlantilla').style.display = e.target.value === 'excel' ? 'block' : 'none';
 });
 
 dropzone.addEventListener('click', () => archivoInput.click());
+dropzone.addEventListener('keydown', (e) => {
+  // El input real tiene tabindex="-1" (ver comentario de a11y arriba
+  // del dropzone en el HTML) -- el propio dropzone es el control
+  // operable por teclado, así que Enter/Espacio deben abrir el
+  // selector de archivos igual que el click de mouse.
+  if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+    e.preventDefault();
+    archivoInput.click();
+  }
+});
 archivoInput.addEventListener('change', () => {
-  dzFile.textContent = archivoInput.files.length ? '📄 ' + archivoInput.files[0].name : '';
+  dzFile.textContent = archivoInput.files.length ? archivoInput.files[0].name : '';
 });
 
 ['dragover', 'dragleave', 'drop'].forEach(evento => {
@@ -150,19 +205,19 @@ archivoInput.addEventListener('change', () => {
     dropzone.classList.toggle('dragover', evento === 'dragover');
     if (evento === 'drop' && e.dataTransfer.files.length) {
       archivoInput.files = e.dataTransfer.files;
-      dzFile.textContent = '📄 ' + e.dataTransfer.files[0].name;
+      dzFile.textContent = e.dataTransfer.files[0].name;
     }
   });
 });
 
+let _cancelarDismiss = null;
+
 document.getElementById('formCarga').addEventListener('submit', async (e) => {
   e.preventDefault();
 
-  {% if usuario_rol == 'admin' %}
-  // Confirmación explícita solo para admin -- es quien puede tener
-  // seleccionado el perfil de OTRA persona en "Viendo perfil de" y no
-  // haberse dado cuenta (esto ya pasó una vez de verdad).
-  const confirmado = confirm('¿Confirmás que este archivo es de la cuenta de "{{ usuario_viendo_nombre }}"?');
+  {% if usuario_rol == 'admin' and viendo_id != usuario_id %}
+  // Confirmación solo cuando admin está viendo perfil de otra cuenta
+  const confirmado = await confirmarApp('¿Confirmas que este archivo es de la cuenta de "{{ usuario_viendo_nombre }}"?');
   if (!confirmado) return;
   {% endif %}
 
@@ -170,6 +225,9 @@ document.getElementById('formCarga').addEventListener('submit', async (e) => {
   const resultado = document.getElementById('resultado');
   const btn = document.getElementById('btnSubmit');
 
+  // Cancela cualquier dismiss pendiente del resultado anterior
+  if (_cancelarDismiss) { _cancelarDismiss(); _cancelarDismiss = null; }
+  resultado.classList.remove('saliendo');
   resultado.style.display = 'block';
   resultado.className = 'result-box loading';
   resultado.textContent = 'Procesando...';
@@ -180,18 +238,37 @@ document.getElementById('formCarga').addEventListener('submit', async (e) => {
     const json = await res.json();
     if (!res.ok || !json.ok) {
       resultado.className = 'result-box error';
-      resultado.textContent = '❌ ' + (json.error || 'Error desconocido');
+      resultado.innerHTML =
+        '<span class="res-titulo">No se pudo procesar el archivo</span>' +
+        (json.error || 'Error desconocido');
+      _cancelarDismiss = window.autoDismissAlert(resultado, 5000);
       return;
     }
+    const n = json.nuevos;
+    const partes = [];
+    if (json.duplicados_bd > 0)
+      partes.push(`${json.duplicados_bd} ${json.duplicados_bd === 1 ? 'ya estaba guardado' : 'ya estaban guardados'} de antes (mismo día y monto).`);
+    if (json.duplicados_lote > 0)
+      partes.push(`${json.duplicados_lote} ${json.duplicados_lote === 1 ? 'estaba repetido' : 'estaban repetidos'} dentro del mismo archivo.`);
+    if (json.reclasificados > 0)
+      partes.push(`${json.reclasificados} ${json.reclasificados === 1 ? 'movimiento que estaba' : 'movimientos que estaban'} como débito ${json.reclasificados === 1 ? 'pasó' : 'pasaron'} a deuda de esta tarjeta.`);
+    if (json.tarjeta_creada) {
+      const t = json.tarjeta_creada;
+      const cupo = t.cupo_total.toLocaleString('es-CO', { maximumFractionDigits: 0 });
+      partes.push(`Se creó la tarjeta <strong>${t.nombre} *${t.ultimos4}</strong> con cupo $${cupo}, tomado del extracto.`);
+    }
+    partes.push('El dashboard ya refleja estos datos.');
     resultado.className = 'result-box ok';
-    const lineas = [`✅ ${json.nuevos} movimiento(s) nuevo(s) insertado(s).`];
-    if (json.duplicados_bd > 0) lineas.push(`${json.duplicados_bd} ya estaban guardados de antes (mismo día y monto).`);
-    if (json.duplicados_lote > 0) lineas.push(`${json.duplicados_lote} estaban repetidos dentro del mismo archivo.`);
-    lineas.push('El dashboard ya se actualizó con estos datos.');
-    resultado.textContent = lineas.join('\n');
+    resultado.innerHTML =
+      `<span class="res-titulo">${n} ${n === 1 ? 'movimiento nuevo insertado' : 'movimientos nuevos insertados'}</span>` +
+      partes.join('<br>');
+    _cancelarDismiss = window.autoDismissAlert(resultado, 5000);
   } catch (err) {
     resultado.className = 'result-box error';
-    resultado.textContent = '❌ No se pudo conectar con el servidor.';
+    resultado.innerHTML =
+      '<span class="res-titulo">Error de conexión</span>' +
+      'No se pudo conectar con el servidor.';
+    _cancelarDismiss = window.autoDismissAlert(resultado, 5000);
   } finally {
     btn.disabled = false;
   }

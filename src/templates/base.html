@@ -1,40 +1,62 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}Finanzas Personales{% endblock %}</title>
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='brand/favicon.svg') }}">
+<!-- Tema fijo en claro (toggle desactivado; ignoramos localStorage y OS). -->
+<script>document.documentElement.setAttribute('data-theme','light');</script>
+<title>{% block title %}Cuadre{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
 <style>
-  :root{
-    --bg: #090c13;
-    --bg-soft: #0d111b;
-    --card-solid: #131928;
-    --card-border: rgba(255,255,255,0.07);
-    --card-hover: #171e30;
-    --text: #e7ebf5;
-    --text-dim: #8d96ab;
-    --text-faint: #5b6379;
-    --accent: #7c6cfb;
-    --accent-2: #38bdf8;
-    --sidebar-w: 226px;
-    --sidebar-w-collapsed: 68px;
-  }
+  /* ================================================================
+     SISTEMA DE DISEÑO -- reskin 2026-09-11
+     Identidad de marca "Cobre & Grafito" (2026-09-10) + soporte
+     completo de Modo Claro/Oscuro. Mismos NOMBRES de variable en los
+     dos temas -- cada plantilla sigue usando var(--surface), etc.
+     sin saber en qué tema está; solo cambia el valor detrás.
+
+     Modo claro es el default de :root (2026-09-12: invertido desde
+     oscuro -- el usuario prefiere claro como punto de partida). Modo
+     oscuro se activa por:
+       1) preferencia del sistema operativo (prefers-color-scheme:dark),
+          si el usuario nunca eligió nada a mano, o
+       2) el interruptor de tema del pie del menú (persiste en
+          localStorage como 'finanzas_theme': 'light' | 'dark').
+     Los 4 bloques de abajo (:root, @media, [data-theme=light],
+     [data-theme=dark]) son el patrón estándar para que las tres
+     fuentes de verdad (default, SO, elección manual) no compitan
+     entre sí -- ver comentario junto a cada uno.
+  ================================================================ */
   *{ box-sizing: border-box; }
   html, body{ margin:0; height:100%; }
   body{
     background: var(--bg); color: var(--text);
     font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    transition: background-color .18s ease, color .18s ease;
   }
+  /* Todo lo que cambia de color entre temas transiciona parejo -- así
+     el toggle se siente como un "fundido" prolijo en vez de un
+     parpadeo. Los elementos con su propia animación de entrada
+     (modal, dropdowns) no se ven afectados: son propiedades distintas. */
+  .app-shell, .app-sidebar, .sidebar-brand, .sidebar-toggle, .sidebar-nav a,
+  .sidebar-footer, .card, .field-select, .field-input, .btn-primary,
+  .result-box, .alerta-app-box, .switcher-select, .switcher-buscador,
+  .switcher-buscador input, .switcher-opcion, .theme-toggle{
+    transition: background-color .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease;
+  }
+
   .app-shell{ display:flex; min-height:100vh; }
 
   .app-sidebar{
     width: var(--sidebar-w);
     flex-shrink:0;
-    background: var(--bg-soft);
-    border-right: 1px solid var(--card-border);
+    background: var(--surface-2);
+    border-right: 1px solid var(--border);
     display:flex; flex-direction:column;
     position: sticky; top:0; align-self:flex-start; height:100vh;
-    transition: width .18s ease;
+    transition: width .18s ease, background-color .18s ease, border-color .18s ease;
     overflow: hidden;
   }
   .app-sidebar.collapsed{ width: var(--sidebar-w-collapsed); }
@@ -42,213 +64,301 @@
   .sidebar-brand{
     display:flex; align-items:center; gap:10px;
     padding: 18px 16px;
-    border-bottom: 1px solid var(--card-border);
+    border-bottom: 1px solid var(--border);
     position: relative;
     flex-shrink:0;
   }
   .sidebar-brand .logo{
     width:32px; height:32px; border-radius:9px; flex-shrink:0;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    background: var(--brand); /* plano, no degradado -- identidad "Cobre & Grafito" */
     display:flex; align-items:center; justify-content:center;
-    font-size:16px;
+    color:#fff;
   }
+  .sidebar-brand .logo svg{ width:18px; height:18px; }
   .sidebar-brand span{ font-weight:700; font-size:14.5px; white-space:nowrap; }
   .app-sidebar.collapsed .sidebar-brand span{ display:none; }
 
+  /* `position: fixed` A PROPÓSITO (2026-09-17). Como botón `absolute`
+     dentro de .sidebar-brand quedaba cortado por la mitad: .app-sidebar
+     tiene overflow:hidden y este botón asoma 12px por fuera del borde,
+     así que colapsado no se veía con qué volver a abrir el menú. Un
+     elemento fijo NO lo recorta el overflow de un ancestro (su bloque
+     contenedor es el viewport), y así puede quedar montado sobre el
+     borde como pide el patrón. Sigue siendo hijo de .sidebar-brand, que
+     en celular es display:none -- eso lo esconde también acá, que es lo
+     que queremos: ahí el menú es una barra inferior y no se colapsa. */
   .sidebar-toggle{
-    position:absolute; right:-12px; top:22px;
+    position: fixed; top: 22px; right: auto;
+    left: calc(var(--sidebar-w) - 12px);
     width:24px; height:24px; border-radius:50%;
-    background: var(--card-solid); border:1px solid var(--card-border);
-    color: var(--text-dim); cursor:pointer; z-index:5;
+    background: var(--surface); border:1px solid var(--border);
+    color: var(--text-muted); cursor:pointer; z-index:120;
     display:flex; align-items:center; justify-content:center;
-    font-size:12px; line-height:1;
+    box-shadow: var(--shadow-2);
+    transition: left .18s ease, background-color .15s ease, color .15s ease, border-color .15s ease;
   }
-  .sidebar-toggle:hover{ color:#fff; background:var(--card-hover); }
+  .app-sidebar.collapsed .sidebar-toggle{ left: calc(var(--sidebar-w-collapsed) - 12px); }
+  .sidebar-toggle svg{ width:13px; height:13px; transition: transform .18s ease; }
+  .app-sidebar.collapsed .sidebar-toggle svg{ transform: rotate(180deg); }
+  .sidebar-toggle:hover{ color: var(--brand); border-color: var(--brand); }
 
   .sidebar-nav{ flex:1; padding: 14px 10px; overflow-y:auto; overflow-x:hidden; }
   .sidebar-nav a{
     display:flex; align-items:center; gap:12px;
-    padding:10px 12px; margin-bottom:4px; border-radius:9px;
-    color: var(--text-dim); text-decoration:none; font-size:13.5px;
+    padding:10px 12px; margin-bottom:2px; border-radius:10px;
+    color: var(--text-muted); text-decoration:none; font-size:13.5px;
     white-space:nowrap;
+    transition: background-color .15s ease, color .15s ease;
   }
   .sidebar-nav a svg{ width:18px; height:18px; flex-shrink:0; color: inherit; }
-  .sidebar-nav a:hover{ background: var(--card-hover); color:#fff; }
+  .sidebar-nav a:hover{ background: var(--surface-hover); color: var(--text); }
   .sidebar-nav a.active{
-    background: var(--card-solid); color: var(--accent-2); font-weight:600;
-    box-shadow: inset 3px 0 0 var(--accent-2);
+    background: var(--brand-soft); color: var(--brand); font-weight:600;
+    box-shadow: inset 3px 0 0 var(--brand);
   }
   .app-sidebar.collapsed .sidebar-nav a{ justify-content:center; }
   .app-sidebar.collapsed .sidebar-nav a span{ display:none; }
-  /* Bug real (reporte usuario 2026-09-08 punto 4): el botón "Cuenta" del
-     final del nav está pensado EXCLUSIVAMENTE para mobile (ver su
-     comentario y el @media max-width:720px más abajo, que es el único
-     lugar que le pone `display:flex`) -- pero nunca tuvo un `display:none`
-     por defecto acá arriba, así que en desktop/tablet caía en el
-     `display: inline-block` de un <button> sin estilos y aparecía suelto
-     al final del menú lateral, sin ningún propósito (en esos anchos el
-     footer de abajo ya está siempre visible). */
   .sidebar-nav-account-toggle{ display:none; }
 
   .sidebar-footer{
-    padding: 13px 18px; border-top:1px solid var(--card-border);
-    font-size:11.5px; color:var(--text-faint); white-space:nowrap; overflow:hidden;
+    padding: 13px 18px; border-top:1px solid var(--border);
+    font-size:11.5px; color:var(--text-subtle); white-space:nowrap; overflow:hidden;
     flex-shrink:0;
   }
-  .app-sidebar.collapsed .sidebar-footer{ text-align:center; padding:13px 4px; }
+  /* Colapsado, el pie NO se vacía (2026-09-17): antes se escondía todo
+     lo marcado .full-text y quedaba un "●" suelto -- no había forma de
+     ver de quién era la sesión ni de cerrarla sin volver a expandir el
+     menú. Ahora se esconde solo lo que no entra en 68px (el selector de
+     perfil y las etiquetas de texto) y quedan el avatar y el botón de
+     cerrar sesión como íconos centrados, cada uno con su tooltip. */
+  .app-sidebar.collapsed .sidebar-footer{ padding:12px 8px; }
   .app-sidebar.collapsed .sidebar-footer .full-text{ display:none; }
-  .app-sidebar.collapsed .sidebar-footer .dot-text{ display:inline; }
-  .sidebar-footer .dot-text{ display:none; }
-  /* Flecha propia para los <select> -- la del sistema operativo se ve
-     inconsistente (y a veces torcida) sobre fondo oscuro según el
-     navegador, así que la reemplazamos por una nuestra, siempre igual. */
+  .app-sidebar.collapsed .sidebar-user{ justify-content:center; gap:0; }
+  .app-sidebar.collapsed .sidebar-user-info{ display:none; }
+  .app-sidebar.collapsed .sidebar-logout{ justify-content:center; padding:8px 0; }
+  .app-sidebar.collapsed .sidebar-logout span{ display:none; }
+
+  /* Interruptor de tema -- vive en el pie del menú, junto a los datos
+     de la cuenta. Sol/luna en un solo <svg> (dos grupos, se muestra
+     uno u otro según el tema activo -- sin JS que arme markup nuevo). */
+  .theme-toggle{
+    display:flex; align-items:center; gap:8px; width:100%;
+    margin: 10px 0 12px; padding: 8px 10px; border-radius: 9px;
+    background: var(--surface); border:1px solid var(--border);
+    color: var(--text-muted); font-family:inherit; font-size:11.5px; font-weight:600;
+    cursor:pointer;
+  }
+  .theme-toggle:hover{ background: var(--surface-hover); color: var(--text); }
+  .theme-toggle svg{ width:15px; height:15px; flex-shrink:0; }
+  /* Default light: mostrar luna (para cambiar a oscuro) */
+  .theme-toggle .icon-sol{ display:none; }
+  :root[data-theme="dark"] .theme-toggle .icon-luna{ display:none; }
+  :root[data-theme="dark"] .theme-toggle .icon-sol{ display:block; }
+  :root[data-theme="light"] .theme-toggle .icon-sol{ display:none; }
+  :root[data-theme="light"] .theme-toggle .icon-luna{ display:block; }
+  .app-sidebar.collapsed .theme-toggle span{ display:none; }
+  .app-sidebar.collapsed .theme-toggle{ justify-content:center; }
+
   .switcher-select, .field-select{
     appearance: none; -webkit-appearance: none; -moz-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238d96ab' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    /* Trazo oscuro para fondo claro (default light). El color del trazo
+       es fijo en el data-URI (no puede leer var CSS). */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235b6472' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 10px center;
     background-size: 14px;
     padding-right: 30px;
   }
+  /* El SVG de la flecha de arriba va incrustado como texto (data-URI) --
+     su color queda fijo en el momento en que el navegador arma el
+     background-image, no puede leer variables CSS. Le damos una
+     versión con trazo oscuro para fondos claros. */
+  :root[data-theme="dark"] .switcher-select,
+  :root[data-theme="dark"] .field-select{
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239aa3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  }
+  :root[data-theme="light"] .switcher-select,
+  :root[data-theme="light"] .field-select{
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235b6472' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  }
 
   .switcher-select{
     width:100%; padding:5px 26px 5px 8px; font-size:11.5px; font-family:inherit;
-    background-color: var(--card-solid); color: var(--text);
-    border:1px solid var(--card-border); border-radius:6px;
+    background-color: var(--surface); color: var(--text);
+    border:1px solid var(--border); border-radius:6px;
   }
-  /* El trigger (más de 5 cuentas) es un <button> pero se ve IDÉNTICO al
-     <select> de siempre -- reusa .switcher-select (mismo fondo/flecha
-     de fondo) y solo ajusta lo que un <button> no hereda por defecto
-     (texto centrado, cursor). Su propio <svg> de flecha queda oculto:
-     la de fondo de .switcher-select ya alcanza. */
   .switcher-trigger{ display:block; text-align:left; cursor:pointer; }
   .switcher-trigger svg{ display:none; }
-  .switcher-trigger[hidden]{ display:none; } /* [hidden] del navegador pierde contra el display:block de arriba sin esto */
+  .switcher-trigger[hidden]{ display:none; }
 
-  /* Buscador de "Viendo perfil de" -- solo aparece con más de 5 cuentas
-     (ver el <select> simple arriba para 5 o menos), y solo mientras el
-     trigger de arriba está desplegado (JS). Una sola caja (buscador +
-     lista fusionados, mismo fondo/borde) -- la lista recortada a
-     exactamente 2 filas de alto (scrollea para ver el resto) para que
-     el conjunto completo (buscador + 2 filas) ocupe lo mismo que 3
-     opciones de un <select>. */
   .switcher-buscador{
-    border:1px solid var(--card-border); border-radius:6px; overflow:hidden;
-    background-color: var(--card-solid);
+    border:1px solid var(--border); border-radius:6px; overflow:hidden;
+    background-color: var(--surface);
   }
   .switcher-buscador input{
     display:block; box-sizing:border-box; width:100%; padding:6px 8px;
     font-size:11.5px; font-family:inherit; color: var(--text);
-    background-color: var(--card-solid); border:none; border-bottom:1px solid var(--card-border);
+    background-color: var(--surface); border:none; border-bottom:1px solid var(--border);
     outline:none; -webkit-appearance:none; appearance:none;
   }
-  .switcher-buscador input::placeholder{ color: var(--text-faint); }
-  /* Chrome ignora background-color en un input que decide autocompletar
-     (a veces incluso con autocomplete="off") y lo pinta blanco -- este
-     es el único override que de verdad lo evita. */
+  .switcher-buscador input::placeholder{ color: var(--text-subtle); }
   .switcher-buscador input:-webkit-autofill,
   .switcher-buscador input:-webkit-autofill:hover,
   .switcher-buscador input:-webkit-autofill:focus{
-    -webkit-box-shadow: 0 0 0 1000px var(--card-solid) inset !important;
+    -webkit-box-shadow: 0 0 0 1000px var(--surface) inset !important;
     -webkit-text-fill-color: var(--text) !important;
     caret-color: var(--text);
   }
-  .switcher-lista{ max-height:56px; overflow-y:auto; } /* 56px = 2 filas de 28px */
+  .switcher-lista{ max-height:56px; overflow-y:auto; }
   .switcher-opcion{
     display:block; box-sizing:border-box; width:100%; height:28px; line-height:28px;
     padding:0 8px; text-align:left; font-size:11.5px; font-family:inherit;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    background-color: var(--card-solid); background-image:none; border:none;
-    color: var(--text-dim); cursor:pointer; -webkit-appearance:none; appearance:none;
+    background-color: var(--surface); background-image:none; border:none;
+    color: var(--text-muted); cursor:pointer; -webkit-appearance:none; appearance:none;
   }
-  .switcher-opcion:hover{ background-color: var(--card-hover); color:#fff; }
-  .switcher-opcion.activa{ color: var(--accent-2); font-weight:600; }
+  .switcher-opcion:hover{ background-color: var(--surface-hover); color: var(--text); }
+  .switcher-opcion.activa{ color: var(--brand); font-weight:600; }
   .switcher-opcion[hidden]{ display:none; }
 
   .app-main{ flex:1; min-width:0; }
 
-  /* Ícono de "mi perfil" -- fijo, aparece en todas las páginas, siempre
-     representa a QUIEN INICIÓ SESIÓN (no al perfil que un admin esté
-     viendo, para no confundir "mi cuenta" con la de otro). */
-  .profile-icon{
-    position: fixed; top: 16px; right: 20px; z-index: 200;
-    width: 38px; height: 38px; border-radius: 50%;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
-    color: #fff; display:flex; align-items:center; justify-content:center;
-    font-weight:700; font-size:15px; text-decoration:none;
-    border: 2px solid var(--bg-soft);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.35);
-  }
-  .profile-icon:hover{ filter: brightness(1.12); }
-  @media (max-width: 720px){
-    .profile-icon{ top: 10px; right: 10px; width: 32px; height: 32px; font-size: 13px; }
-  }
-
-  /* ---- Estilos compartidos por las páginas de formulario (Registrar
-     movimiento, Cargar extractos) -- un solo lugar, no duplicado ---- */
   .page-wrap{ max-width: 1200px; margin: 0 auto; padding: 32px 28px 60px; }
   .page-header h1{ font-size: 24px; margin: 0 0 6px; }
-  .page-header p{ margin:0; color: var(--text-dim); font-size: 13.5px; max-width: 640px; }
+  .page-header p{ margin:0; color: var(--text-muted); font-size: 13.5px; max-width: 640px; }
 
   .card{
-    background: linear-gradient(180deg, var(--card-solid), #10141f);
-    border: 1px solid var(--card-border);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 16px;
     padding: 24px;
+    box-shadow: var(--shadow-1);
   }
 
-  .field-label{ display:block; font-size: 12.5px; color: var(--text-dim); margin: 18px 0 6px; font-weight:600; }
+  .field-label{ display:block; font-size: 12.5px; color: var(--text-muted); margin: 18px 0 6px; font-weight:600; }
   .field-label:first-child{ margin-top:0; }
   .field-select, .field-input{
     width:100%; padding: 10px 12px; font-size: 13.5px;
-    background-color: var(--bg-soft); color: var(--text);
-    border: 1px solid var(--card-border); border-radius: 10px;
+    background-color: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
     font-family: inherit;
+    transition: border-color .15s ease, box-shadow .15s ease;
   }
-  .field-select:focus, .field-input:focus{ outline:none; border-color: var(--accent); }
-  .field-select{ padding-right: 30px; } /* deja lugar para la flecha propia, sin que la pise el padding de arriba */
+  .field-select:focus, .field-input:focus{
+    outline:none; border-color: var(--brand);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 25%, transparent);
+  }
+  .field-select{ padding-right: 30px; }
   .field-row{ display:grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+  /* Foco visible consistente (2.4.11) -- cubre todo control interactivo
+     de esta plantilla que no tenga ya su propio anillo de foco (links y
+     botones del sidebar, tabs, toggles, botones de modal, etc.). Los
+     campos con su propio box-shadow de foco (.field-select/.field-input
+     arriba) siguen intactos, esta regla no los pisa porque no cambia su
+     `outline` (que ya está en `none` solo en ese selector puntual). */
+  a:focus-visible, button:focus-visible, [tabindex]:focus-visible,
+  input:focus-visible, select:focus-visible, textarea:focus-visible{
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
 
   .btn-primary{
     margin-top: 20px; padding: 11px 24px; border-radius: 10px; border:none;
-    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    background: var(--brand); /* plano, no degradado -- identidad "Cobre & Grafito" */
     color:#fff; font-weight:700; font-size:13.5px; cursor:pointer;
     font-family: inherit;
+    transition: filter .15s ease, transform .1s ease, box-shadow .15s ease;
   }
-  .btn-primary:hover{ filter: brightness(1.08); }
-  .btn-primary:disabled{ opacity:.5; cursor:not-allowed; }
+  .btn-primary:hover{ filter: brightness(1.08); box-shadow: var(--shadow-2); }
+  .btn-primary:active{ transform: translateY(1px); }
+  .btn-primary:disabled{ opacity:.5; cursor:not-allowed; transform:none; box-shadow:none; }
 
   .result-box{
     margin-top: 18px; padding: 12px 14px; border-radius: 10px;
-    font-size: 13px; border-left: 3px solid var(--text-faint);
-    background: var(--bg-soft); white-space:pre-line;
+    font-size: 13px; border-left: 3px solid var(--text-subtle);
+    background: var(--surface-2); white-space:pre-line;
+    animation: resultBoxIn .22s var(--ease);
+    transition: box-shadow .18s ease;
   }
-  .result-box.ok{ border-left-color:#34d399; color:#34d399; }
-  .result-box.error{ border-left-color:#f87171; color:#f87171; }
-  .result-box.loading{ border-left-color: var(--accent-2); color: var(--text-dim); }
+  @keyframes resultBoxIn{ from{ opacity:0; transform:translateX(24px); } to{ opacity:1; transform:translateX(0); } }
+  @keyframes resultBoxOut{ from{ opacity:1; transform:translateX(0); } to{ opacity:0; transform:translateX(48px); } }
+  .result-box.saliendo{ animation: resultBoxOut .5s var(--ease) forwards; }
+  .result-box.ok{ border-left-color: var(--positive); color: var(--positive); }
+  .result-box.error{ border-left-color: var(--negative); color: var(--negative); }
+  .result-box.loading{ border-left-color: var(--brand); color: var(--text-muted); }
+  .result-box.ok:hover{
+    box-shadow: 0 4px 20px -4px color-mix(in srgb, var(--positive) 35%, transparent);
+    cursor: default;
+  }
+  .result-box.error:hover{
+    box-shadow: 0 4px 20px -4px color-mix(in srgb, var(--negative) 35%, transparent);
+    cursor: default;
+  }
+  /* Spinner del estado "cargando" -- reemplaza el texto suelto por un
+     indicador visual, más moderno y más claro de leer de un vistazo. */
+  .result-box.loading{ display:flex; align-items:center; gap:10px; }
+  .result-box.loading::before{
+    content:""; flex-shrink:0; width:14px; height:14px; border-radius:50%;
+    border:2px solid var(--border); border-top-color: var(--brand);
+    animation: girar .7s linear infinite;
+  }
+  @keyframes girar{ to{ transform: rotate(360deg); } }
 
-  /* Pantallas chicas (celular/tablet en vertical): el menú lateral pasa a
-     ser una barra inferior fija, tipo app nativa -- nada de sidebar de
-     226px comiéndose la pantalla. */
+  /* ---- Modal global de alertas/confirmaciones ---- */
+  .alerta-app-overlay{
+    display:none; position:fixed; inset:0; background:rgba(5,7,12,0.6);
+    backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    z-index:1000; align-items:center; justify-content:center; padding:24px;
+    animation: alertaAppFondoIn .16s ease;
+  }
+  @keyframes alertaAppFondoIn{ from{ opacity:0; } to{ opacity:1; } }
+  .alerta-app-overlay.abierto{ display:flex; }
+  .alerta-app-box{
+    position:relative; max-width:400px; width:100%;
+    background: var(--surface);
+    border:1px solid var(--border); border-radius:18px; padding:34px 28px 24px;
+    text-align:center; box-shadow: var(--shadow-modal);
+    animation: alertaAppPop .18s cubic-bezier(.2,.9,.3,1.2);
+  }
+  @keyframes alertaAppPop{ from{ transform:scale(.94); opacity:0; } to{ transform:scale(1); opacity:1; } }
+  .alerta-app-cerrar{
+    position:absolute; top:12px; right:12px; width:28px; height:28px; border-radius:50%;
+    border:none; background:var(--surface-2); color:var(--text-muted); cursor:pointer;
+    display:flex; align-items:center; justify-content:center; font-family:inherit;
+    transition: background-color .15s ease, color .15s ease;
+  }
+  .alerta-app-cerrar svg{ width:13px; height:13px; }
+  .alerta-app-cerrar:hover{ background:var(--surface-hover); color: var(--text); }
+  .alerta-app-icono{
+    width:56px; height:56px; border-radius:50%; margin:0 auto 16px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .alerta-app-icono svg{ width:26px; height:26px; }
+  .alerta-app-icono.ok{ background: color-mix(in srgb, var(--positive) 16%, transparent); color: var(--positive); }
+  .alerta-app-icono.error{ background: color-mix(in srgb, var(--negative) 16%, transparent); color: var(--negative); }
+  .alerta-app-icono.confirmar{ background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); }
+  .alerta-app-mensaje{ margin:0 0 24px; font-size:14px; color:var(--text); line-height:1.55; white-space:pre-line; }
+  .alerta-app-botones{ display:flex; gap:10px; justify-content:center; }
+  .alerta-app-botones .btn-primary{ margin-top:0; flex:1; max-width:160px; }
+  .alerta-app-btn-secundario{
+    flex:1; max-width:160px; padding: 11px 20px; border-radius: 10px;
+    border:1px solid var(--border); background: var(--surface-2); color: var(--text);
+    font-weight:600; font-size:13.5px; cursor:pointer; font-family: inherit;
+    transition: background-color .15s ease;
+  }
+  .alerta-app-btn-secundario:hover{ background: var(--surface-hover); }
+
   @media (max-width: 720px){
     .app-shell{ flex-direction: column; }
     .app-sidebar, .app-sidebar.collapsed{
       width: 100%; height: auto; flex-direction: row;
       position: fixed; bottom: 0; left: 0; top: auto;
-      border-right: none; border-top: 1px solid var(--card-border);
+      border-right: none; border-top: 1px solid var(--border);
       z-index: 100;
     }
     .sidebar-brand{ display: none; }
-    /* QA 2026-09-06/07: .sidebar-nav medía scrollWidth=506px contra un
-       viewport de 375px ("Crear usuario" cortado y "Ocultar vistas"
-       directamente fuera de pantalla, SIN scroll para alcanzarlo --
-       overflow-x era "visible", no "auto"). flex-wrap deja que los ítems
-       que no entran en una fila bajen a una segunda en vez de desbordar
-       horizontalmente. La altura de la barra ya no es un número fijo:
-       ver --mobile-nav-h (JS al final del archivo), que la recalcula
-       cada vez que el contenido de la barra cambia de alto (1 fila vs 2,
-       admin vs no-admin) para que el padding del contenido y el alto del
-       iframe siempre coincidan con la barra real. */
     .sidebar-nav{
       display: flex; flex-direction: row; flex-wrap: wrap; padding: 6px 8px;
       justify-content: center; column-gap: 4px; row-gap: 2px; overflow: visible;
@@ -258,149 +368,374 @@
       padding: 6px 10px; font-size: 10.5px; margin-bottom: 0;
     }
     .sidebar-nav a span, .sidebar-nav-account-toggle span{ display: block !important; white-space: nowrap; }
-    .sidebar-nav a.nav-cargar{ display: none !important; } /* subir archivos desde el celular no es el caso de uso -- solo queda Dashboard */
-    .sidebar-nav a.nav-correo{ display: none !important; } /* configurar IMAP/contraseñas de aplicación desde el celular tampoco */
+    .sidebar-nav a.nav-cargar{ display: none !important; }
+    .sidebar-nav a.nav-correo{ display: none !important; }
 
-    /* Botón "Cuenta" -- solo existe en mobile (en desktop/tablet el
-       footer de abajo ya está siempre visible). Se ve igual que los
-       demás ítems de la barra inferior. */
     .sidebar-nav-account-toggle{
       display: flex; background: none; border: none; cursor: pointer;
-      color: var(--text-dim); font-family: inherit; border-radius: 9px;
+      color: var(--text-muted); font-family: inherit; border-radius: 9px;
     }
     .sidebar-nav-account-toggle svg{ width: 18px; height: 18px; flex-shrink: 0; }
     .sidebar-nav-account-toggle:hover,
-    .sidebar-nav-account-toggle[aria-expanded="true"]{ background: var(--card-hover); color: #fff; }
+    .sidebar-nav-account-toggle[aria-expanded="true"]{ background: var(--surface-hover); color: var(--text); }
 
-    /* QA 2026-09-06/07: .sidebar-footer se ocultaba ENTERO (display:none)
-       por debajo de 720px, y con él "Cerrar sesión" y "Viendo perfil de"
-       -- un admin en el celular no tenía NINGUNA forma de cerrar sesión
-       ni cambiar de perfil. En vez de ocultarlo, se convierte en un panel
-       flotante que abre/cierra el botón "Cuenta" de la barra inferior
-       (mismo contenido de siempre, sin duplicar el markup del servidor).
-       Arranca fuera de pantalla (translateY) en vez de con display:none
-       para poder animar la entrada/salida. */
     .sidebar-footer{
       position: fixed; left: 8px; right: 8px;
       bottom: calc(var(--mobile-nav-h, 62px) + 8px);
-      background: var(--card-solid); border: 1px solid var(--card-border);
-      border-radius: 14px; box-shadow: 0 -6px 20px rgba(0,0,0,0.4);
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; box-shadow: var(--shadow-dropdown);
       padding: 14px 16px; white-space: normal; overflow: visible;
       transform: translateY(calc(100% + 24px)); opacity: 0; pointer-events: none;
       transition: transform .18s ease, opacity .18s ease;
       z-index: 150;
     }
     .sidebar-footer.abierto{ transform: translateY(0); opacity: 1; pointer-events: auto; }
-    /* El estado "collapsed" del sidebar (desktop) no tiene sentido acá --
-       si alguien colapsó el menú en desktop y después achica la ventana,
-       el panel mobile no puede quedarse mostrando solo el "●". */
     .sidebar-footer .full-text{ display: block !important; }
-    .sidebar-footer .dot-text{ display: none !important; }
+    /* El menú puede venir con .collapsed guardado desde escritorio
+       (localStorage). En celular el pie es un desplegable de ancho
+       completo, así que hay que deshacer ahí las reglas de colapsado. */
+    .app-sidebar.collapsed .sidebar-footer{ padding: 14px 16px; }
+    .app-sidebar.collapsed .sidebar-user{ justify-content: flex-start; gap: 8px; }
+    .app-sidebar.collapsed .sidebar-user-info{ display: block !important; }
+    .app-sidebar.collapsed .sidebar-logout{ justify-content: flex-start; padding: 7px 10px; }
+    .app-sidebar.collapsed .sidebar-logout span{ display: inline !important; }
 
-    .app-main{ padding-bottom: calc(var(--mobile-nav-h, 62px) + 4px); } /* deja ver el contenido por encima de la barra */
+    .app-main{ padding-bottom: calc(var(--mobile-nav-h, 62px) + 4px); }
     .app-main iframe{ height: calc(100vh - var(--mobile-nav-h, 62px) - 4px) !important; }
   }
+
+  /* ===========================================================
+     prefers-reduced-motion -- WCAG 2.2 SC 2.3.3 (AAA) / 2.3.1 (AA)
+     -----------------------------------------------------------------
+     Elimina transiciones y animaciones de movimiento. Las de color
+     (tema claro/oscuro) se preservan: no son movimiento.
+     =========================================================== */
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+    body, .app-sidebar, .card, .app-shell, .sidebar-nav a,
+    .sidebar-toggle, .alerta-app-box, .alerta-app-overlay{
+      transition-property: background-color, color, border-color, box-shadow !important;
+      transition-duration: 0.18s !important;
+    }
+  }
+
+  /* ---- CTA sidebar ---- */
+  .sidebar-cta{ padding: 10px 10px 6px; }
+  .btn-sidebar-cta{
+    display:flex; align-items:center; gap:10px; width:100%;
+    padding:10px 12px; border-radius:10px;
+    background: var(--brand); color: var(--on-brand);
+    text-decoration:none; font-size:13.5px; font-weight:600;
+    transition: background-color var(--dur-fast) var(--ease);
+  }
+  .btn-sidebar-cta:hover{ background: var(--brand-hover); }
+  .app-sidebar.collapsed .btn-sidebar-cta{ justify-content:center; }
+  .app-sidebar.collapsed .btn-sidebar-cta span{ display:none; }
+
+  /* ---- Group labels ---- */
+  .nav-group-label{
+    display:block; padding: 14px 12px 4px;
+    font-size: 11px; font-weight:600; letter-spacing:.06em;
+    text-transform:uppercase; color: var(--text-subtle);
+    white-space:nowrap; overflow:hidden;
+  }
+  .app-sidebar.collapsed .nav-group-label{ display:none; }
+
+  /* ---- Sidebar user footer ---- */
+  .sidebar-user{
+    display:flex; align-items:center; gap:8px;
+    padding:8px 0 6px; margin-bottom:4px;
+  }
+  .sidebar-user-avatar{
+    width:28px; height:28px; border-radius:50%; flex-shrink:0;
+    background: var(--brand-soft); color: var(--brand);
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; font-weight:700;
+  }
+  .sidebar-user-info{ flex:1; min-width:0; }
+  .sidebar-user-name{ display:block; font-size:12.5px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sidebar-user-mode{ display:block; font-size:11px; color:var(--text-subtle); }
+  .sidebar-logout{
+    display:flex; align-items:center; gap:8px;
+    padding:7px 10px; border-radius:8px; margin-top:2px;
+    color:var(--text-muted); text-decoration:none; font-size:12.5px;
+    transition: background-color var(--dur-fast), color var(--dur-fast);
+  }
+  .sidebar-logout:hover{ background:var(--surface-hover); color:var(--text); }
+
+  /* ---- Toasts ---- */
+  .toast{
+    display:flex; align-items:flex-start; gap:10px;
+    padding:12px 14px; border-radius:10px; max-width:320px;
+    background: var(--surface); border:1px solid var(--border);
+    box-shadow: var(--shadow-2); pointer-events:all;
+    animation: toastIn var(--dur-base) var(--ease);
+    font-size:13.5px; color:var(--text); line-height:1.45;
+    cursor: default; transition: filter .18s ease;
+  }
+  .toast:hover{ box-shadow: 0 8px 28px -6px rgba(14,19,33,.28); }
+  .toast.saliendo{ animation: toastOut .5s var(--ease) forwards; }
+  @keyframes toastIn{ from{ opacity:0; transform:translateX(20px); } to{ opacity:1; transform:translateX(0); } }
+  @keyframes toastOut{ from{ opacity:1; transform:translateX(0); } to{ opacity:0; transform:translateX(40px); } }
+  .toast-icon{ width:18px; height:18px; flex-shrink:0; margin-top:1px; }
+  .toast-ok .toast-icon{ color: var(--positive); }
+  .toast-error .toast-icon{ color: var(--negative); }
+  .toast-info .toast-icon{ color: var(--brand); }
+
+  /* ================= Tooltips del menú colapsado (2026-09-17) =========
+     UN solo nodo, hijo de <body> y position:fixed, en vez de un ::after
+     por ítem: los ítems viven dentro de contenedores que recortan
+     (.sidebar-nav necesita overflow-y:auto para hacer scroll, y eso
+     obliga a recortar también en X; .sidebar-footer es overflow:hidden),
+     así que un pseudo-elemento saldría cortado justo del lado en que
+     tiene que aparecer. Colores de marca, como el resto de los acentos.
+     Contraste: --on-brand sobre --brand da 7.1:1 en los dos temas (AAA).
+  ==================================================================== */
+  .sidebar-tooltip{
+    position: fixed; z-index: 1200; pointer-events: none;
+    max-width: 240px; padding: 7px 11px; border-radius: 8px;
+    background: var(--brand); color: var(--on-brand);
+    font-family: inherit; font-size: 12.5px; font-weight: 600; line-height: 1.35;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    box-shadow: var(--shadow-dropdown);
+    opacity: 0; transform: translateX(-6px);
+    transition: opacity .12s var(--ease), transform .12s var(--ease);
+  }
+  .sidebar-tooltip::before{
+    content: ""; position: absolute; left: -3px; top: 50%;
+    width: 8px; height: 8px; margin-top: -4px; border-radius: 2px;
+    background: var(--brand); transform: rotate(45deg);
+  }
+  .sidebar-tooltip.visible{ opacity: 1; transform: translateX(0); }
+  /* En celular el menú es una barra inferior CON etiquetas visibles: el
+     tooltip no agrega nada y no hay hover que lo dispare. */
+  @media (max-width: 720px){ .sidebar-tooltip{ display: none; } }
+
+  /* ============ Modal "Registrar movimiento" (2026-09-17) =============
+     <dialog> nativo, y no el patrón overlay+div de .alerta-app-overlay
+     de arriba: este modal lleva un formulario entero, así que la trampa
+     de foco, el cierre con Escape y el quedar por encima del <iframe>
+     del dashboard dejan de ser detalles -- showModal() los resuelve bien
+     (top layer del navegador) en vez de reimplementados a mano.
+  ==================================================================== */
+  .modal-reg{
+    width: min(560px, calc(100vw - 32px));
+    max-height: min(88vh, 780px);
+    padding: 0; border: 1px solid var(--border); border-radius: 18px;
+    background: var(--surface); color: var(--text);
+    box-shadow: var(--shadow-modal);
+    overflow: hidden;
+  }
+  /* display:flex SOLO con [open] -- el user-agent pone display:none en
+     dialog:not([open]), y pisarlo sin esa condición dejaría el modal
+     visible siempre. */
+  .modal-reg[open]{ display: flex; flex-direction: column; animation: modalRegIn .2s var(--ease); }
+  .modal-reg::backdrop{
+    background: rgba(5,7,12,.55);
+    backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  }
+  .modal-reg[open]::backdrop{ animation: modalRegFondo .2s ease; }
+  .modal-reg.cerrando{ animation: modalRegOut .14s ease forwards; }
+  .modal-reg.cerrando::backdrop{ animation: modalRegFondoOut .14s ease forwards; }
+  @keyframes modalRegIn{ from{ opacity:0; transform: translateY(12px) scale(.97); } to{ opacity:1; transform:none; } }
+  @keyframes modalRegOut{ from{ opacity:1; transform:none; } to{ opacity:0; transform: translateY(8px) scale(.98); } }
+  @keyframes modalRegFondo{ from{ opacity:0; } to{ opacity:1; } }
+  @keyframes modalRegFondoOut{ from{ opacity:1; } to{ opacity:0; } }
+
+  .modal-reg-form{ display:flex; flex-direction:column; min-height:0; flex:1; width:100%; }
+  .modal-reg-head{
+    display:flex; align-items:flex-start; gap:12px; flex-shrink:0;
+    padding: 20px 22px 16px; border-bottom: 1px solid var(--border);
+  }
+  .modal-reg-head-icono{
+    width:38px; height:38px; border-radius:11px; flex-shrink:0;
+    background: var(--brand-soft); color: var(--brand);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .modal-reg-head-icono svg{ width:20px; height:20px; }
+  .modal-reg-head-textos{ flex:1; min-width:0; }
+  .modal-reg-head h2{
+    margin:0; font-family: var(--font-display);
+    font-size: var(--fs-h2); line-height: var(--lh-h2); font-weight:700; color: var(--text);
+  }
+  .modal-reg-head p{ margin:2px 0 0; font-size:12.5px; color: var(--text-muted); line-height:1.45; }
+  .modal-reg-cerrar{
+    width:30px; height:30px; border-radius:50%; flex-shrink:0;
+    border:none; background: var(--surface-2); color: var(--text-muted); cursor:pointer;
+    display:flex; align-items:center; justify-content:center; font-family:inherit;
+    transition: background-color .15s ease, color .15s ease;
+  }
+  .modal-reg-cerrar svg{ width:13px; height:13px; }
+  .modal-reg-cerrar:hover{ background: var(--surface-hover); color: var(--text); }
+
+  .modal-reg-cuerpo{ padding: 18px 22px 20px; overflow-y:auto; flex:1; min-height:0; }
+  .modal-reg-pie{
+    display:flex; gap:10px; justify-content:flex-end; flex-shrink:0;
+    padding: 14px 22px; border-top:1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .modal-reg-pie .btn-primary{ margin-top:0; }
+  .modal-reg-pie .alerta-app-btn-secundario{ flex:0 0 auto; max-width:none; }
+
+  .modal-reg-aviso{
+    display:flex; align-items:flex-start; gap:8px; margin: 0 0 18px;
+    padding: 10px 12px; border-radius: 10px; font-size:12.5px; line-height:1.45;
+    background: var(--warning-soft); color: var(--text);
+    border:1px solid color-mix(in srgb, var(--warning) 32%, transparent);
+  }
+  .modal-reg-aviso svg{ width:15px; height:15px; flex-shrink:0; margin-top:1px; color: var(--warning); }
+  .modal-reg .result-box{ margin-top:18px; }
+
+  /* Control segmentado Gasto/Ingreso -- vivía en registrar.html, que
+     desde 2026-09-17 ya no tiene el formulario. */
+  .seg-control{
+    display: inline-flex; border: 1.5px solid var(--border); border-radius: 10px;
+    overflow: hidden; width: 100%; box-sizing: border-box;
+  }
+  .seg-input{ position: absolute; opacity: 0; width: 0; height: 0; }
+  .seg-label{
+    flex: 1; text-align: center; padding: 9px 14px; font-size: 13.5px;
+    font-weight: 600; cursor: pointer; color: var(--text-muted);
+    background: var(--surface-2); transition: background .15s, color .15s;
+    user-select: none;
+  }
+  .seg-label:not(:last-of-type){ border-right: 1.5px solid var(--border); }
+  .seg-input:checked + .seg-label{ background: var(--brand); color: var(--on-brand); }
+  /* El foco del radio es invisible (el input está fuera de pantalla): se
+     dibuja sobre su etiqueta, que es lo que el usuario realmente ve. */
+  .seg-input:focus-visible + .seg-label{ outline: 2px solid var(--brand); outline-offset: -2px; }
+
+  @media (max-width: 560px){
+    /* Hoja inferior en celular -- el patrón que ya espera el pulgar. */
+    .modal-reg{
+      width:100%; max-width:100%; max-height: 92vh;
+      position: fixed; bottom:0; left:0; right:0; top:auto;
+      margin:0; border-radius: 20px 20px 0 0; border-bottom:none;
+    }
+    .modal-reg[open]{ animation: modalRegHojaIn .22s var(--ease); }
+    .modal-reg.cerrando{ animation: modalRegHojaOut .16s ease forwards; }
+    @keyframes modalRegHojaIn{ from{ transform: translateY(100%); } to{ transform:none; } }
+    @keyframes modalRegHojaOut{ from{ transform:none; } to{ transform: translateY(100%); } }
+  }
+
+  /* Mientras el modal está abierto, el fondo no scrollea. */
+  body.modal-abierto{ overflow: hidden; }
 </style>
 {% block head %}{% endblock %}
 </head>
 <body>
-<a href="/mi-perfil" class="profile-icon" title="Mi perfil">{{ (usuario_nombre or '?')[0]|upper }}</a>
 <div class="app-shell">
   <nav class="app-sidebar" id="appSidebar">
     <div class="sidebar-brand">
-      <div class="logo">💰</div>
-      <span>Finanzas</span>
-      <button class="sidebar-toggle" id="sidebarToggle" title="Colapsar/expandir menú">‹</button>
+      <div class="logo" style="background:var(--brand); color:var(--on-brand);">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="20" height="20" aria-hidden="true">
+          <rect width="32" height="32" rx="10" fill="currentColor"/>
+          <path d="M8 16.5 L13 21.5 L24 11" stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+      </div>
+      <span style="font-family:var(--font-display); font-weight:700; font-size:15px;">Cuadre</span>
+      <!-- Sin title=: el tooltip propio (colores de marca) reemplaza al nativo
+           del navegador -- tener los dos encima se lee como un bug. El texto
+           lo mantiene sincronizado el script del final (Colapsar/Expandir). -->
+      <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-label="Colapsar menú" data-tooltip-siempre>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </button>
+    </div>
+
+    <div class="sidebar-cta">
+      <!-- Sigue siendo un <a> con href real: el click lo intercepta el script
+           del final para abrir el modal sin salir de la página, pero abrir en
+           pestaña nueva / copiar enlace siguen llevando a /registrar, que entra
+           a la app con el diálogo ya abierto. -->
+      <a href="/registrar" id="ctaRegistrar" data-tooltip="Registrar movimiento"
+         class="btn-sidebar-cta {{ 'active' if activo == 'registrar' else '' }}" aria-label="Registrar movimiento">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+        <span>Registrar movimiento</span>
+      </a>
     </div>
 
     <div class="sidebar-nav">
+      <span class="nav-group-label">General</span>
+
       {% if 'dashboard' not in vistas_ocultas_viendo %}
-      <a href="/" class="{{ 'active' if activo == 'dashboard' else '' }}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
-          <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
-          <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
-          <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+      <a href="/" class="{{ 'active' if activo == 'dashboard' else '' }}" aria-label="Resumen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">
+          <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
+          <rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
         </svg>
-        <span>Dashboard</span>
+        <span>Resumen</span>
       </a>
       {% endif %}
-      <a href="/registrar" class="{{ 'active' if activo == 'registrar' else '' }}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="9"></circle>
-          <path d="M12 8v8M8 12h8"></path>
+
+      <a href="/tarjetas" class="{{ 'active' if activo == 'tarjetas' else '' }}" aria-label="Tarjetas">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">
+          <rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>
         </svg>
-        <span>Registrar movimiento</span>
+        <span>Tarjetas</span>
       </a>
-      <a href="/tarjetas" class="{{ 'active' if activo == 'tarjetas' else '' }}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="5" width="20" height="14" rx="2"></rect>
-          <path d="M2 10h20"></path>
+
+      <span class="nav-group-label">Importar datos</span>
+
+      {% if 'cargar_extractos' not in vistas_ocultas %}
+      <a href="/cargar-extractos" class="{{ 'active' if activo == 'cargar' else '' }}" aria-label="Extractos bancarios">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
-        <span>Mis tarjetas</span>
+        <span>Extractos bancarios</span>
       </a>
-      <a href="/cargar-extractos" class="{{ 'nav-cargar' if usuario_rol != 'admin' else '' }} {{ 'active' if activo == 'cargar' else '' }}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 16V4"></path>
-          <path d="M7 9l5-5 5 5"></path>
-          <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path>
-        </svg>
-        <span>Cargar extractos</span>
-      </a>
+      {% endif %}
+
       {% if 'correo_automatico' not in vistas_ocultas %}
-      <a href="/configurar-correo" class="nav-correo {{ 'active' if activo == 'correo' else '' }}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="5" width="18" height="14" rx="2"></rect>
-          <path d="M3 7l9 6 9-6"></path>
+      <a href="/configurar-correo" class="{{ 'active' if activo == 'correo' else '' }}" aria-label="Correo automático">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6 0 19.79 19.79 0 0 1-8.63 3.07A2 2 0 0 1 2 19.92v-3"/><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
         </svg>
         <span>Correo automático</span>
       </a>
       {% endif %}
+
       {% if usuario_rol == 'admin' %}
-      <a href="/crear-usuario" class="{{ 'active' if activo == 'crear_usuario' else '' }}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
-          <circle cx="9" cy="7" r="4"></circle>
-          <path d="M19 8v6M22 11h-6"></path>
+      <span class="nav-group-label">Administración</span>
+
+      <a href="/crear-usuario" class="{{ 'active' if activo == 'crear_usuario' else '' }}" aria-label="Usuarios">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>
         </svg>
-        <span>Crear usuario</span>
+        <span>Usuarios</span>
       </a>
-      <a href="/admin/vistas" class="{{ 'active' if activo == 'admin_vistas' else '' }}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 12l2 2 4-4"></path>
-          <circle cx="12" cy="12" r="9"></circle>
+
+      <a href="/admin/vistas" class="{{ 'active' if activo == 'admin_vistas' else '' }}" aria-label="Visibilidad de vistas">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">
+          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>
         </svg>
-        <span>Ocultar vistas</span>
+        <span>Visibilidad de vistas</span>
       </a>
       {% endif %}
-      <!-- Solo visible en mobile (ver @media max-width:720px) -- abre el
-           panel de abajo (#appSidebarFooter), que en mobile deja de ser
-           un footer siempre visible y pasa a ser un panel flotante. -->
+
       <button type="button" class="sidebar-nav-account-toggle" id="mobileAccountToggle"
               aria-haspopup="true" aria-expanded="false" aria-controls="appSidebarFooter">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="8" r="4"></circle>
-          <path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6"></path>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true">
+          <circle cx="12" cy="8" r="4"/><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6"/>
         </svg>
         <span>Cuenta</span>
       </button>
     </div>
 
     <div class="sidebar-footer" id="appSidebarFooter">
+      <!-- Selector "Viendo perfil de" -- solo admin con múltiples usuarios (condición idéntica al bloque que ya existe) -->
       {% if usuario_rol == 'admin' and usuarios_disponibles|length > 1 %}
       <div class="full-text" style="margin-bottom:8px;">
-        <label style="display:block; font-size:10.5px; color:var(--text-faint); margin-bottom:3px;">Viendo perfil de</label>
+        <label style="display:block; font-size:11px; color:var(--text-subtle); margin-bottom:3px; text-transform:uppercase; letter-spacing:.04em;">Viendo perfil de</label>
         {% if usuarios_disponibles|length > 5 %}
-        <!-- Más de 5 cuentas: cerrado se ve IGUAL que el <select> simple
-             de abajo (nombre actual + flecha) -- al hacer click se
-             despliega en su lugar el buscador + lista filtrable (2
-             filas visibles, scroll para el resto). La cuenta propia
-             del admin siempre aparece primero (ver
-             auth.py::inyectar_globales), así que sigue siendo fácil
-             volver a la propia aunque la lista crezca mucho. -->
+        <!-- buscador -- mantener todo el markup con los mismos id/data-* que hoy -->
         <button type="button" class="switcher-select switcher-trigger" id="switcherTrigger">
           <span>{{ usuario_viendo_nombre }}</span>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div class="switcher-buscador" id="switcherBuscador" hidden>
           <input type="text" id="buscadorViendoPerfil" autocomplete="off" placeholder="Buscar usuario...">
@@ -425,9 +760,30 @@
         {% endif %}
       </div>
       {% endif %}
-      <span class="full-text" style="display:block;">{{ usuario_nombre }} · {{ modo }}</span>
-      <a href="/logout" class="full-text" style="display:block; margin-top:4px; color:var(--text-faint); text-decoration:underline;">Cerrar sesión</a>
-      <span class="dot-text">●</span>
+
+      <!-- Usuario + acciones -->
+      <div class="sidebar-user" data-tooltip="{{ usuario_nombre }} · {{ modo }}">
+        <div class="sidebar-user-avatar" aria-hidden="true">{{ (usuario_nombre or '?')[0]|upper }}</div>
+        <div class="sidebar-user-info">
+          <span class="sidebar-user-name">{{ usuario_nombre }}</span>
+          <span class="sidebar-user-mode">{{ modo }}</span>
+        </div>
+      </div>
+      <button type="button" class="theme-toggle full-text" id="themeToggle" title="Cambiar tema" aria-label="Cambiar tema" style="display:none">
+        <svg class="icon-sol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+        </svg>
+        <svg class="icon-luna" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true">
+          <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/>
+        </svg>
+        <span class="full-text">Cambiar tema</span>
+      </button>
+      <a href="/logout" class="sidebar-logout" data-tooltip="Cerrar sesión" aria-label="Cerrar sesión">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+        <span>Cerrar sesión</span>
+      </a>
     </div>
   </nav>
 
@@ -435,6 +791,137 @@
     {% block content %}{% endblock %}
   </div>
 </div>
+
+<!-- Toast container (feedback no bloqueante) -->
+<div id="toastContainer" aria-live="polite" aria-atomic="false" style="
+  position:fixed; top:18px; right:18px; z-index:1100;
+  display:flex; flex-direction:column; gap:8px; pointer-events:none;
+"></div>
+
+<div class="alerta-app-overlay" id="alertaAppOverlay" role="dialog" aria-modal="true" aria-labelledby="alertaAppMensaje">
+  <div class="alerta-app-box">
+    <button type="button" class="alerta-app-cerrar" id="alertaAppCerrar" aria-label="Cerrar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+    </button>
+    <div class="alerta-app-icono" id="alertaAppIcono"></div>
+    <p class="alerta-app-mensaje" id="alertaAppMensaje"></p>
+    <div class="alerta-app-botones">
+      <button type="button" class="alerta-app-btn-secundario" id="alertaAppCancelar" hidden>Cancelar</button>
+      <button type="button" class="btn-primary" id="alertaAppOk">Ok</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tooltip del menú colapsado: un solo nodo reposicionado por JS (ver
+     el porqué en el CSS). aria-hidden porque cada ítem ya trae su propio
+     aria-label -- si no, el lector de pantalla diría el nombre dos veces. -->
+<div class="sidebar-tooltip" id="sidebarTooltip" aria-hidden="true"></div>
+
+<!-- ================== Modal "Registrar movimiento" ===================
+     Antes era /registrar, una vista entera para un formulario chico
+     (2026-09-17). Vive acá, en base.html, para poder abrirse desde
+     cualquier página sin sacar al usuario de donde está. Las opciones de
+     autocompletado NO se renderizan acá: las pide a /api/registrar-opciones
+     la primera vez que se abre, así ninguna página paga esas consultas
+     por un diálogo que la mayoría de las visitas no abre.
+================================================================== -->
+<dialog class="modal-reg" id="modalRegistrar" aria-labelledby="modalRegistrarTitulo">
+  <form class="modal-reg-form" id="formRegistrar" novalidate>
+    <header class="modal-reg-head">
+      <div class="modal-reg-head-icono" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+      </div>
+      <div class="modal-reg-head-textos">
+        <h2 id="modalRegistrarTitulo">Registrar movimiento</h2>
+        <p>Un gasto o ingreso puntual. Queda registrado al instante y aparece en el resumen.</p>
+      </div>
+      <button type="button" class="modal-reg-cerrar" id="modalRegistrarCerrar" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+
+    <div class="modal-reg-cuerpo">
+      {% if usuario_rol == 'admin' and viendo_id != usuario_id %}
+      <div class="modal-reg-aviso">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>Se va a registrar en la cuenta de <b>{{ usuario_viendo_nombre }}</b>. Cambiá el perfil en &laquo;Viendo perfil de&raquo; si no es el que querés.</span>
+      </div>
+      {% endif %}
+
+      <div class="field-row">
+        <div>
+          <label class="field-label" for="regFecha">Fecha</label>
+          <input type="date" name="fecha" id="regFecha" class="field-input" required>
+        </div>
+        <div>
+          <label class="field-label" id="regTipoLabel">Tipo</label>
+          <div class="seg-control" role="group" aria-labelledby="regTipoLabel">
+            <input type="radio" name="tipo" id="regTipoGasto" value="gasto" class="seg-input" checked>
+            <label for="regTipoGasto" class="seg-label">Gasto</label>
+            <input type="radio" name="tipo" id="regTipoIngreso" value="ingreso" class="seg-input">
+            <label for="regTipoIngreso" class="seg-label">Ingreso</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div>
+          <label class="field-label" for="regMonto">Monto</label>
+          <!-- type="text" + máscara de miles, NO type="number" (2026-09-10,
+               bug real reportado: cargar "16.600.000" en COP se guardaba mal
+               "por los ceros"): un <input type="number"> nativo descarta el
+               segundo punto en cuanto se tipea, así que ese valor terminaba
+               siendo "16.600" (16,6). Acá el punto es SIEMPRE separador de
+               miles (igual que en el resto de la app, ver fmtCOP) y la coma
+               es el separador decimal -- hace falta para USD con centavos.
+               El valor que se manda al backend se normaliza en el submit
+               (ver el listener de "input" del script del final), nunca el
+               texto con puntos tal cual. -->
+          <input type="text" inputmode="decimal" name="monto" id="regMonto" class="field-input" placeholder="23.000" required>
+        </div>
+        <div>
+          <label class="field-label" for="regMoneda">Moneda</label>
+          <select name="moneda" id="regMoneda" class="field-select">
+            <option value="COP">COP</option>
+            <option value="USD">USD</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="field-label" for="regDescripcion">Descripción</label>
+      <input type="text" name="descripcion" id="regDescripcion" class="field-input" placeholder="Uber, Mercado, Salario..." required>
+
+      <div class="field-row">
+        <div>
+          <label class="field-label" for="regCategoria">Categoría</label>
+          <input type="text" name="categoria" id="regCategoria" class="field-input" list="regListaCategorias" placeholder="transporte, comida...">
+          <datalist id="regListaCategorias"></datalist>
+        </div>
+        <div>
+          <label class="field-label" for="regEntidad">Entidad</label>
+          <input type="text" name="entidad" id="regEntidad" class="field-input" list="regListaEntidades" placeholder="Bancolombia, Nequi...">
+          <datalist id="regListaEntidades"></datalist>
+        </div>
+      </div>
+
+      <!-- Solo se muestra si la cuenta tiene tarjetas activas -- lo decide
+           el script cuando llegan las opciones. -->
+      <div id="regTarjetaCampo" hidden>
+        <label class="field-label" for="regTarjeta">Tarjeta de crédito <span style="color:var(--text-subtle); font-weight:400;">(opcional -- solo si este movimiento es de una tarjeta registrada)</span></label>
+        <select name="tarjeta_id" id="regTarjeta" class="field-select">
+          <option value="">Sin asignar</option>
+        </select>
+      </div>
+
+      <div id="regResultado" class="result-box" role="status" style="display:none;"></div>
+    </div>
+
+    <footer class="modal-reg-pie">
+      <button type="button" class="alerta-app-btn-secundario" id="regCancelar">Cancelar</button>
+      <button type="submit" class="btn-primary" id="regEnviar">Registrar</button>
+    </footer>
+  </form>
+</dialog>
 
 <script>
 (function(){
@@ -445,7 +932,9 @@
 
   const aplicar = () => {
     sidebar.classList.toggle('collapsed', colapsado);
-    toggle.textContent = colapsado ? '›' : '‹';
+    // Es el único control del menú que nunca tiene etiqueta visible: su
+    // nombre accesible tiene que decir qué va a pasar si lo apretás.
+    toggle.setAttribute('aria-label', colapsado ? 'Expandir menú' : 'Colapsar menú');
   };
   aplicar();
 
@@ -453,22 +942,84 @@
     colapsado = !colapsado;
     aplicar();
     try { localStorage.setItem('finanzas_sidebar_colapsado', colapsado ? '1' : '0'); } catch(e) {}
+    // Los tooltips dependen de si está colapsado y de dónde quedó cada
+    // ítem: que se enteren en vez de sondear la clase.
+    document.dispatchEvent(new CustomEvent('sidebar:colapso'));
   });
 })();
 
-// El Dashboard vive adentro de un <iframe> (mismo origen -- ver
-// templates/dashboard.html) que es un documento APARTE: un click ahí
-// adentro NUNCA burbujea al `document` de esta página de afuera. Todo
-// panel flotante de este archivo (buscador de "Viendo perfil de", panel
-// de cuenta en mobile) que necesite cerrarse "al hacer click afuera"
-// tiene que enganchar el mismo handler también en el documento del
-// iframe (accesible por ser mismo origen) o se queda abierto para
-// siempre en cuanto el usuario toca el dashboard. Un solo helper acá
-// para no repetir esa mecánica en cada panel.
+// ---- Tooltips del menú colapsado (2026-09-17) ----
+// Colapsado, cada ítem queda reducido a su ícono y no había forma de
+// saber qué era sin volver a expandir. Se dibuja un único nodo fijo (ver
+// el CSS para por qué no es un ::after por ítem) reposicionado al vuelo
+// junto al ítem apuntado.
+(function(){
+  const sidebar = document.getElementById('appSidebar');
+  const tip = document.getElementById('sidebarTooltip');
+  if (!sidebar || !tip) return;
+
+  const SELECTOR = '.btn-sidebar-cta, .sidebar-nav a, .sidebar-logout, .sidebar-user, .sidebar-toggle';
+  let sobre = null;
+
+  function texto(el){
+    if (el.dataset.tooltip) return el.dataset.tooltip;
+    const span = el.querySelector('span');
+    if (span && span.textContent.trim()) return span.textContent.trim();
+    return el.getAttribute('aria-label') || '';
+  }
+
+  function ocultar(){
+    sobre = null;
+    tip.classList.remove('visible');
+  }
+
+  function mostrar(el){
+    // En celular el menú es una barra inferior CON etiquetas visibles.
+    if (window.innerWidth <= 720) return;
+    // Salvo el botón de colapsar (que nunca tiene etiqueta), el tooltip
+    // solo aporta algo cuando el texto del ítem está escondido.
+    if (!el.hasAttribute('data-tooltip-siempre') && !sidebar.classList.contains('collapsed')) return;
+    const txt = texto(el);
+    if (!txt) return;
+
+    tip.textContent = txt;
+    tip.classList.add('visible');
+    sobre = el;
+
+    const caja = el.getBoundingClientRect();
+    const alto = tip.offsetHeight;
+    let top = caja.top + caja.height / 2 - alto / 2;
+    top = Math.max(8, Math.min(top, window.innerHeight - alto - 8));
+    tip.style.top = top + 'px';
+    tip.style.left = (caja.right + 12) + 'px';
+  }
+
+  sidebar.querySelectorAll(SELECTOR).forEach((el) => {
+    el.addEventListener('mouseenter', () => mostrar(el));
+    el.addEventListener('mouseleave', ocultar);
+    // Con teclado vale lo mismo: al tabular tampoco se ve la etiqueta.
+    el.addEventListener('focus', () => mostrar(el));
+    el.addEventListener('blur', ocultar);
+    el.addEventListener('click', ocultar);
+  });
+
+  // Si se colapsa/expande con un tooltip abierto, el texto y la posición
+  // dejan de corresponder: se recalcula sobre el mismo ítem una vez que
+  // terminó la transición de ancho.
+  document.addEventListener('sidebar:colapso', () => {
+    const el = sobre;
+    ocultar();
+    if (el) setTimeout(() => mostrar(el), 200);
+  });
+  window.addEventListener('resize', ocultar);
+  window.addEventListener('scroll', ocultar, true);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') ocultar(); });
+})();
+
 function alHacerClickEnCualquierDocumento(handler) {
   document.addEventListener('click', handler);
   function enganchar(frame) {
-    try { frame.contentDocument.addEventListener('click', handler); } catch (e) {} // si algún día deja de ser mismo origen, no romper nada por esto
+    try { frame.contentDocument.addEventListener('click', handler); } catch (e) {}
   }
   document.querySelectorAll('.app-main iframe').forEach((frame) => {
     if (frame.contentDocument && frame.contentDocument.readyState === 'complete') enganchar(frame);
@@ -476,13 +1027,57 @@ function alHacerClickEnCualquierDocumento(handler) {
   });
 }
 
-// Buscador de "Viendo perfil de" (solo existe en el DOM con más de 5
-// cuentas -- ver base.html arriba). Filtra la lista por substring
-// (sin distinguir mayúsculas) y, al elegir una, manda el form.
+// Interruptor de tema claro/oscuro (2026-09-11). Guarda la elección en
+// localStorage (misma clave que lee el script anti-flash del <head>) y
+// la refleja también adentro del <iframe> del Dashboard -- es un
+// documento aparte con su PROPIO <html>, así que necesita que se lo
+// digamos explícitamente (mismo mecanismo de "mismo origen" que ya usa
+// alHacerClickEnCualquierDocumento de arriba). El Dashboard además
+// escucha window.__aplicarTemaFinanzas__ (si existe) para poder
+// re-pintar sus gráficos de Chart.js, que no son CSS y no cambian solos.
+(function(){
+  const boton = document.getElementById('themeToggle');
+  if (!boton) return;
+
+  function temaActual() {
+    const guardado = document.documentElement.getAttribute('data-theme');
+    if (guardado === 'light' || guardado === 'dark') return guardado;
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+
+  function aplicarEnIframes(tema) {
+    document.querySelectorAll('.app-main iframe').forEach((frame) => {
+      try {
+        frame.contentDocument.documentElement.setAttribute('data-theme', tema);
+        if (typeof frame.contentWindow.__aplicarTemaFinanzas__ === 'function') {
+          frame.contentWindow.__aplicarTemaFinanzas__(tema);
+        }
+      } catch (e) {} // si algún día deja de ser mismo origen, no romper nada por esto
+    });
+  }
+
+  boton.addEventListener('click', () => {
+    const nuevo = temaActual() === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', nuevo);
+    try { localStorage.setItem('finanzas_theme', nuevo); } catch(e) {}
+    aplicarEnIframes(nuevo);
+  });
+
+  // El iframe del Dashboard puede terminar de cargar DESPUÉS de este
+  // script (documento aparte, su propia carga) -- si el usuario ya
+  // había elegido tema, hay que empujárselo apenas esté listo, no solo
+  // en el próximo click del interruptor.
+  document.querySelectorAll('.app-main iframe').forEach((frame) => {
+    const empujar = () => aplicarEnIframes(temaActual());
+    if (frame.contentDocument && frame.contentDocument.readyState === 'complete') empujar();
+    frame.addEventListener('load', empujar);
+  });
+})();
+
 (function(){
   const trigger = document.getElementById('switcherTrigger');
   const buscador = document.getElementById('buscadorViendoPerfil');
-  if (!trigger || !buscador) return; // 5 cuentas o menos: se usa el <select> simple, nada que hacer acá
+  if (!trigger || !buscador) return;
 
   const panel = document.getElementById('switcherBuscador');
   const lista = document.getElementById('listaViendoPerfil');
@@ -504,8 +1099,6 @@ function alHacerClickEnCualquierDocumento(handler) {
 
   trigger.addEventListener('click', (e) => { e.stopPropagation(); abrir(); });
 
-  // Click afuera de la caja (sin elegir nada, ya sea en esta página o
-  // dentro del iframe del dashboard) -- vuelve al estado cerrado.
   alHacerClickEnCualquierDocumento((e) => {
     if (!panel.hidden && !panel.contains(e.target) && e.target !== trigger) cerrar();
   });
@@ -523,20 +1116,11 @@ function alHacerClickEnCualquierDocumento(handler) {
   opciones.forEach(op => {
     op.addEventListener('click', () => {
       inputId.value = op.dataset.id;
-      form.submit(); // recarga la página igual que el <select> simple -- no hace falta "cerrar" a mano
+      form.submit();
     });
   });
 })();
 
-// Panel de cuenta en mobile (botón "Cuenta" de la barra inferior --
-// ver @media max-width:720px arriba). Por debajo de 720px
-// .sidebar-footer deja de ser un footer siempre visible (no hay
-// espacio) y pasa a ser este panel flotante -- con el MISMO markup que
-// ya renderiza el servidor (nombre+modo, selector "Viendo perfil de" si
-// aplica, Cerrar sesión), nada se duplica: solo se muestra/oculta.
-// QA 2026-09-06/07: antes .sidebar-footer tenía display:none fijo en
-// mobile y con él desaparecían "Cerrar sesión" y el switcher sin ningún
-// reemplazo -- un admin en el celular no podía cerrar sesión.
 (function(){
   const toggle = document.getElementById('mobileAccountToggle');
   const panel = document.getElementById('appSidebarFooter');
@@ -565,14 +1149,6 @@ function alHacerClickEnCualquierDocumento(handler) {
   });
 })();
 
-// Alto real de la barra inferior en mobile -- puede variar (1 fila si
-// entran todos los ítems, 2 si flex-wrap los apila por tener más ítems
-// -- admin ve "Crear usuario"/"Ocultar vistas" de más, ver QA
-// 2026-09-06/07 arriba). --mobile-nav-h alimenta el padding-bottom de
-// .app-main, el alto del iframe y en qué "piso" flota el panel de
-// cuenta -- todo eso necesita el número real, no un valor fijo
-// hardcodeado que se desactualiza en cuanto cambia la cantidad de
-// ítems del menú.
 (function(){
   const sidebar = document.getElementById('appSidebar');
   const actualizar = () => {
@@ -581,9 +1157,348 @@ function alHacerClickEnCualquierDocumento(handler) {
   if (window.ResizeObserver) {
     new ResizeObserver(actualizar).observe(sidebar);
   } else {
-    window.addEventListener('resize', actualizar); // navegador muy viejo sin ResizeObserver
+    window.addEventListener('resize', actualizar);
   }
   actualizar();
+})();
+
+// Auto-dismiss con hover-pause para cualquier elemento de alerta de la app.
+// Retorna una función cancel() para cancelar el dismiss si el elemento cambia.
+window.autoDismissAlert = function(el, delay) {
+  if (!el) return function(){};
+  delay = (delay === undefined) ? 5000 : delay;
+  var dismissed = false;
+  var timer = null;
+  var remaining = delay;
+  var startedAt = null;
+
+  function dismiss() {
+    if (dismissed) return;
+    dismissed = true;
+    el.classList.add('saliendo');
+    function onEnd() {
+      el.style.display = 'none';
+      el.classList.remove('saliendo');
+    }
+    el.addEventListener('animationend', onEnd, { once: true });
+    // Fallback por si animationend no dispara (display:none antes, etc.)
+    setTimeout(onEnd, 600);
+  }
+
+  function startTimer() {
+    startedAt = Date.now();
+    timer = setTimeout(dismiss, remaining);
+  }
+
+  function pauseTimer() {
+    if (timer) { clearTimeout(timer); timer = null; }
+    remaining = Math.max(0, remaining - (Date.now() - startedAt));
+  }
+
+  el.addEventListener('mouseenter', pauseTimer);
+  el.addEventListener('mouseleave', startTimer);
+  startTimer();
+
+  return function cancel() {
+    dismissed = true;
+    if (timer) { clearTimeout(timer); timer = null; }
+    el.removeEventListener('mouseenter', pauseTimer);
+    el.removeEventListener('mouseleave', startTimer);
+  };
+};
+
+// Toast helper (feedback no bloqueante)
+(function(){
+  const toastSVG = {
+    ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+    error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+    confirmar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
+  };
+  const container = document.getElementById('toastContainer');
+
+  window.mostrarAlertaApp = function(tipo, mensaje, opts) {
+    return new Promise((resolve) => {
+      if (!container) { resolve(true); return; }
+      // Limpiar emojis de prefijo del mensaje (❌, ✅, ⚠️)
+      const msg = String(mensaje).replace(/^[✅❌⚠️\s]+/, '').trim();
+      const toast = document.createElement('div');
+      toast.className = 'toast toast-' + (tipo === 'confirmar' ? 'info' : tipo);
+      toast.setAttribute('role', 'status');
+      toast.innerHTML = '<span class="toast-icon">' + (toastSVG[tipo] || toastSVG.ok) + '</span><span>' + msg + '</span>';
+      container.appendChild(toast);
+
+      // Dismiss con hover-pause (5 s)
+      window.autoDismissAlert(toast, 5000);
+      // La promesa resuelve al terminar el slideout
+      toast.addEventListener('animationend', () => { toast.remove(); resolve(true); });
+    });
+  };
+})();
+
+// Dialog de confirmación (solo para acciones destructivas)
+(function(){
+  const overlay = document.getElementById('alertaAppOverlay');
+  if (!overlay) return;
+  const caja = overlay.querySelector('.alerta-app-box');
+  const icono = document.getElementById('alertaAppIcono');
+  const mensajeEl = document.getElementById('alertaAppMensaje');
+  const btnOk = document.getElementById('alertaAppOk');
+  const btnCancelar = document.getElementById('alertaAppCancelar');
+  const btnCerrar = document.getElementById('alertaAppCerrar');
+
+  let resolverActual = null;
+  let elementoQueAbrio = null;
+
+  function onKeydownTrap(e) {
+    if (e.key === 'Escape') { cerrar(false); return; }
+    if (e.key !== 'Tab') return;
+    const foco = caja.querySelectorAll(
+      'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    const focoVisible = Array.prototype.filter.call(foco, (el) => !el.hidden && el.offsetParent !== null);
+    if (!focoVisible.length) return;
+    const primero = focoVisible[0];
+    const ultimo = focoVisible[focoVisible.length - 1];
+    if (e.shiftKey && document.activeElement === primero) { e.preventDefault(); ultimo.focus(); }
+    else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primero.focus(); }
+  }
+
+  function cerrar(resultado) {
+    overlay.classList.remove('abierto');
+    overlay.removeEventListener('keydown', onKeydownTrap);
+    if (resolverActual) { const r = resolverActual; resolverActual = null; r(resultado); }
+    if (elementoQueAbrio && document.contains(elementoQueAbrio)) elementoQueAbrio.focus();
+    elementoQueAbrio = null;
+  }
+
+  btnCerrar.addEventListener('click', () => cerrar(false));
+  btnOk.addEventListener('click', () => cerrar(true));
+  btnCancelar.addEventListener('click', () => cerrar(false));
+  alHacerClickEnCualquierDocumento((e) => { if (e.target === overlay) cerrar(false); });
+
+  const ICONOS_DIALOG = {
+    ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+    error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+    confirmar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 1.7-2.2 1.8-2.5 3.5"/><circle cx="12" cy="17" r="0.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="9"/></svg>'
+  };
+
+  window.confirmarApp = function(mensaje, opts) {
+    return new Promise((resolve) => {
+      resolverActual = resolve;
+      elementoQueAbrio = document.activeElement;
+      icono.className = 'alerta-app-icono confirmar';
+      icono.innerHTML = ICONOS_DIALOG.confirmar;
+      mensajeEl.textContent = mensaje;
+      btnOk.textContent = (opts && opts.textoBoton) ? opts.textoBoton : 'Confirmar';
+      btnCancelar.hidden = false;
+      overlay.classList.add('abierto');
+      overlay.addEventListener('keydown', onKeydownTrap);
+      btnOk.focus();
+    });
+  };
+})();
+
+// ============ Modal "Registrar movimiento" (2026-09-17) ==============
+// Antes era /registrar, una vista entera para un formulario chico. Ahora
+// se abre sobre lo que el usuario esté mirando: registrar un gasto dejó
+// de costar perder el contexto. Ver el <dialog id="modalRegistrar">.
+(function(){
+  const dlg = document.getElementById('modalRegistrar');
+  const form = document.getElementById('formRegistrar');
+  if (!dlg || !form) return;
+
+  const campoFecha = document.getElementById('regFecha');
+  const campoMonto = document.getElementById('regMonto');
+  const resultado  = document.getElementById('regResultado');
+  const btnEnviar  = document.getElementById('regEnviar');
+  const listaCat   = document.getElementById('regListaCategorias');
+  const listaEnt   = document.getElementById('regListaEntidades');
+  const campoTar   = document.getElementById('regTarjetaCampo');
+  const selTarjeta = document.getElementById('regTarjeta');
+
+  let opcionesPedidas = false;
+  let cancelarDismiss = null;
+
+  // ---- Monto con separador de miles en vivo ----
+  // El punto es SIEMPRE separador de miles y la coma el decimal, igual
+  // que en el resto de la app (ver el comentario largo junto al input).
+  campoMonto.addEventListener('input', function(){
+    const partes = campoMonto.value.split(',');
+    const entero = (partes[0] || '').replace(/[^0-9]/g, '').replace(/^0+(?=[0-9])/, '');
+    const conMiles = entero.replace(/\B(?=([0-9]{3})+(?![0-9]))/g, '.');
+    campoMonto.value = campoMonto.value.indexOf(',') !== -1
+      ? conMiles + ',' + (partes[1] || '').replace(/[^0-9]/g, '').slice(0, 2)
+      : conMiles;
+  });
+
+  function limpiarResultado(){
+    if (cancelarDismiss) { cancelarDismiss(); cancelarDismiss = null; }
+    resultado.style.display = 'none';
+    resultado.className = 'result-box';
+    resultado.textContent = '';
+  }
+
+  function mostrarResultado(clase, texto){
+    if (cancelarDismiss) { cancelarDismiss(); cancelarDismiss = null; }
+    resultado.className = 'result-box ' + clase;
+    resultado.textContent = texto;
+    resultado.style.display = 'block';
+    if (clase !== 'loading') {
+      // El error se queda con el modal abierto, así que se auto-descarta
+      // como cualquier alerta de la app (con pausa al pasar el cursor).
+      cancelarDismiss = window.autoDismissAlert(resultado, 6000);
+      resultado.scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  // ---- Opciones de autocompletado ----
+  // Se piden una sola vez, al primer abrir: la mayoría de las visitas no
+  // abren este diálogo y no tienen por qué pagar esas consultas.
+  function cargarOpciones(){
+    if (opcionesPedidas) return;
+    opcionesPedidas = true;
+    fetch('/api/registrar-opciones')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(json){
+        if (!json || !json.ok) { opcionesPedidas = false; return; }
+        listaCat.innerHTML = '';
+        (json.categorias || []).forEach(function(c){
+          const op = document.createElement('option');
+          op.value = c;
+          listaCat.appendChild(op);
+        });
+        listaEnt.innerHTML = '';
+        (json.entidades || []).forEach(function(en){
+          const op = document.createElement('option');
+          op.value = en;
+          listaEnt.appendChild(op);
+        });
+        const tarjetas = json.tarjetas || [];
+        selTarjeta.length = 1;  // conserva "Sin asignar"
+        tarjetas.forEach(function(t){
+          const op = document.createElement('option');
+          op.value = t.id;
+          op.textContent = t.nombre + (t.ultimos4 ? ' · Terminada en ' + t.ultimos4 : '');
+          selTarjeta.appendChild(op);
+        });
+        // Sin tarjetas activas el campo no se muestra, como antes.
+        campoTar.hidden = tarjetas.length === 0;
+      })
+      .catch(function(){ opcionesPedidas = false; });  // se reintenta al próximo abrir
+  }
+
+  // ---- Abrir / cerrar ----
+  function abrir(){
+    if (dlg.open) return;
+    limpiarResultado();
+    if (!campoFecha.value) campoFecha.valueAsDate = new Date();
+    cargarOpciones();
+    dlg.classList.remove('cerrando');
+    dlg.showModal();
+    document.body.classList.add('modal-abierto');
+    // Al primer campo, no al botón de cerrar: el diálogo existe para
+    // escribir en él.
+    campoFecha.focus();
+  }
+
+  function cerrar(alTerminar){
+    if (!dlg.open || dlg.classList.contains('cerrando')) return;
+    dlg.classList.add('cerrando');
+    const terminar = function(){
+      dlg.classList.remove('cerrando');
+      if (dlg.open) dlg.close();
+      document.body.classList.remove('modal-abierto');
+      if (alTerminar) { const fn = alTerminar; alTerminar = null; fn(); }
+    };
+    // Solo la animación del propio diálogo: animationend BURBUJEA, y un
+    // .result-box entrando o saliendo adentro del modal cerraría el
+    // diálogo antes de tiempo.
+    const alTerminarAnimacion = function(e){
+      if (e.target !== dlg) return;
+      dlg.removeEventListener('animationend', alTerminarAnimacion);
+      terminar();
+    };
+    dlg.addEventListener('animationend', alTerminarAnimacion);
+    setTimeout(terminar, 400);  // red de seguridad si animationend no dispara
+  }
+
+  // Escape lo maneja el navegador con "cancel": se lo frena para cerrar
+  // por el mismo camino (con animación y sin dejar el body bloqueado).
+  dlg.addEventListener('cancel', function(e){ e.preventDefault(); cerrar(); });
+  // Click en el fondo oscuro: con padding 0 el contenido cubre el
+  // diálogo entero, así que el target solo es <dialog> si fue el backdrop.
+  dlg.addEventListener('click', function(e){ if (e.target === dlg) cerrar(); });
+  document.getElementById('modalRegistrarCerrar').addEventListener('click', function(){ cerrar(); });
+  document.getElementById('regCancelar').addEventListener('click', function(){ cerrar(); });
+
+  const cta = document.getElementById('ctaRegistrar');
+  if (cta) {
+    cta.addEventListener('click', function(e){
+      // Ctrl/Cmd/Shift o botón del medio: que siga andando como enlace.
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+      e.preventDefault();
+      abrir();
+    });
+  }
+  // Lo usa /registrar (enlace profundo) para entrar con el diálogo abierto.
+  window.abrirModalRegistrar = abrir;
+
+  // El dashboard se dibuja dentro de un <iframe> (ver dashboard.html): si
+  // el movimiento se registró desde ahí, el resumen de atrás tiene que
+  // reflejarlo -- si no, el usuario ve el aviso de éxito sobre números
+  // viejos y parece que no se guardó nada.
+  function refrescarVistaDeAtras(){
+    document.querySelectorAll('.app-main iframe').forEach(function(frame){
+      try { frame.contentWindow.location.reload(); } catch (e) {}
+    });
+  }
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    // El form es novalidate para decidir nosotros cuándo validar, pero
+    // los required siguen valiendo: esto muestra los mensajes nativos.
+    if (!form.checkValidity()) { form.reportValidity(); return; }
+
+    const datos = new FormData(form);
+    datos.set('monto', campoMonto.value.replace(/\./g, '').replace(',', '.'));
+
+    mostrarResultado('loading', 'Guardando...');
+    btnEnviar.disabled = true;
+
+    fetch('/api/registrar-movimiento', { method: 'POST', body: datos })
+      .then(function(res){
+        return res.json()
+          .catch(function(){ return {}; })
+          .then(function(json){ return { res: res, json: json }; });
+      })
+      .then(function(r){
+        if (!r.res.ok || !r.json.ok) {
+          mostrarResultado('error', r.json.error || 'No se pudo registrar el movimiento.');
+          return;
+        }
+        if (r.json.duplicados > 0) {
+          mostrarResultado('error', 'No se guardó: ya existe un movimiento con la misma fecha y monto (posible duplicado).');
+          return;
+        }
+        form.reset();
+        campoFecha.valueAsDate = new Date();
+        // La próxima apertura vuelve a pedir las opciones: la categoría
+        // o entidad recién usada tiene que salir en el autocompletado.
+        opcionesPedidas = false;
+        limpiarResultado();
+        // El aviso se muestra DESPUÉS de cerrar: mientras el <dialog>
+        // está abierto vive en el top layer del navegador y taparía
+        // cualquier toast, sin importar su z-index.
+        cerrar(function(){
+          window.mostrarAlertaApp('ok', 'Movimiento registrado.');
+          refrescarVistaDeAtras();
+        });
+      })
+      .catch(function(){
+        mostrarResultado('error', 'No se pudo conectar con el servidor.');
+      })
+      .then(function(){ btnEnviar.disabled = false; });
+  });
 })();
 </script>
 </body>

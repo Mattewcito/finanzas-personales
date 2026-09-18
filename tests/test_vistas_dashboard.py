@@ -259,7 +259,7 @@ def test_ocultar_vistas_de_dashboard_para_un_usuario_no_afecta_a_otro(client, ap
 
     resp_home = client.get("/")
     assert resp_home.status_code == 200
-    assert b"Dashboard</span>" in resp_home.data
+    assert b"Resumen</span>" in resp_home.data
 
     resp_data = client.get("/api/dashboard-data")
     assert resp_data.status_code == 200

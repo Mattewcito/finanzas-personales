@@ -36,6 +36,54 @@ Dos checkouts/entornos separados que comparten solo `data/finanzas.db`:
   vez de un servicio pago, `ruff`/`bandit` en vez de SonarQube).
 - `pytest -q`/`-v` tiene que estar en verde antes de dar cualquier
   cambio de backend por terminado.
+- **QA revisa TODO lo que se desarrolle, no solo lo que parezca
+  arriesgado** (regla del usuario, 2026-09-17). `pytest` cubre backend:
+  no ve un modal que no atrapa el foco, un tooltip que no aparece, un
+  botón cortado ni un número que se muestra mal. Eso lo tiene que probar
+  alguien que USE la app, y no puede ser la misma sesión que escribió el
+  código -- el 2026-09-17 se entregaron un modal, tooltips y cambios de
+  menú verificados solo a ojo por quien los escribió, que es revisarse a
+  uno mismo, no QA.
+
+  Por eso, **todo cambio que toque la interfaz pasa por un agente de QA
+  antes de darse por terminado**, después de pushear a `dev` y
+  reconstruir el contenedor (QA necesita el cambio corriendo):
+  - `qa-evaluador-auto` es el default: entra con su cuenta `qa_auto`,
+    recorre la app como un usuario real, crea/edita/borra datos y deja
+    un informe `.md` con los bugs clasificados 🔴/🟡/🟢 más sugerencias
+    de UX/producto.
+  - `qa-responsive` cuando hace falta evidencia visual o cobertura por
+    breakpoint: maneja su propio Chromium con Playwright y produce un
+    Excel con capturas reales embebidas.
+
+  Al agente de QA se le pasa QUÉ cambió y qué comportamiento se espera,
+  no solo "probá la app" -- si no, revisa lo de siempre y no lo nuevo.
+  Los 🔴 se arreglan antes de cerrar el cambio; los 🟡/🟢 van al backlog
+  y se le reportan al usuario. Ningún agente de QA arregla código: solo
+  detecta y documenta.
+- **La suite corre sobre dos motores.** `pytest` a secas usa SQLite (el
+  fallback de `db.conectar()` sin `DATABASE_URL`); producción usa
+  PostgreSQL. La capa de adaptación entre ambos (`_PGConn`/
+  `_adapt_sql_pg`) dejó pasar cinco bugs a `dev` con la suite en verde
+  (2026-09-16/17), así que **cualquier cambio que toque `db_finanzas.py`
+  se valida además contra PostgreSQL**:
+
+  ```
+  docker compose up -d postgres
+  TEST_DATABASE_URL=postgresql://finanzas:finanzas_local@127.0.0.1:5433/finanzas_test pytest -q
+  ```
+
+  Cada test corre en su propio esquema, creado y borrado por
+  `tests/conftest.py`. La base `finanzas_test` es OTRA base, separada de
+  la real (`finanzas`): el conftest se niega a arrancar si la URL no
+  termina en `_test`. Usar `127.0.0.1` y no `localhost` -- en Windows
+  `localhost` resuelve primero a IPv6 y cuesta ~2 s por conexión.
+  En CI esto ya corre solo (job `test-postgres` de `deploy.yml`).
+- El motor de BD queda expuesto en `127.0.0.1:5433` para inspeccionarlo
+  con psql/DBeaver/pgAdmin (`docker-compose.override.yml`, no
+  versionado, solo en la carpeta de trabajo -- nunca en el
+  `docker-compose.yml` que comparte la carpeta de despliegue, o los dos
+  postgres pelearían por el mismo puerto del host).
 - Agentes de proyecto en `.claude/agents/`: `product-owner`,
   `backend-engineer`, `frontend-dataviz`, `devops-engineer`,
   `test-engineer`, `qa-responsive`, `product-designer`,

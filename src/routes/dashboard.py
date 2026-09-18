@@ -4,12 +4,15 @@ routes/dashboard.py
 Blueprint del dashboard: verlo, registrar un movimiento a mano, y cargar
 extractos (Excel/PDF). Ver auth.py para el patrón de Blueprints elegido.
 """
+import concurrent.futures
 import datetime
 import io
 import sys
+import uuid
 from pathlib import Path
 
 from flask import Blueprint, render_template, request, jsonify, send_from_directory, send_file
+from werkzeug.utils import secure_filename
 
 import db_finanzas as db
 import perfil_financiero
@@ -92,14 +95,28 @@ def api_dashboard_data():
     50/30/20, mapeo vacío, lista vacía) -- nunca None/NaN, cumple el
     caso borde "cuenta nueva sin presupuesto configurado todavía" del
     documento de requisitos."""
-    with db.conexion() as conn:
-        movimientos = db.obtener_movimientos(conn, usuario_id=viendo_id())
-        ledger_deuda = db.obtener_ledger_deuda(conn, usuario_id=viendo_id())
-        vistas_ocultas_viendo = db.vistas_ocultas_de(conn, viendo_id())
-        tarjetas = db.obtener_tarjetas_con_deuda(conn, usuario_id=viendo_id())
-        presupuesto = db.obtener_presupuesto(conn, usuario_id=viendo_id())
-        categoria_balde = db.obtener_mapeo_categorias(conn, usuario_id=viendo_id())
-        metas_ahorro = db.obtener_metas_ahorro(conn, usuario_id=viendo_id())
+    uid = viendo_id()
+
+    def _q(fn, *args, **kwargs):
+        with db.conexion() as conn:
+            return fn(conn, *args, **kwargs)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=7) as ex:
+        f_mov = ex.submit(_q, db.obtener_movimientos,        usuario_id=uid)
+        f_led = ex.submit(_q, db.obtener_ledger_deuda,       usuario_id=uid)
+        f_vis = ex.submit(_q, db.vistas_ocultas_de,          uid)
+        f_tar = ex.submit(_q, db.obtener_tarjetas_con_deuda, uid)
+        f_pre = ex.submit(_q, db.obtener_presupuesto,        uid)
+        f_cat = ex.submit(_q, db.obtener_mapeo_categorias,   uid)
+        f_met = ex.submit(_q, db.obtener_metas_ahorro,       uid)
+
+    movimientos           = f_mov.result()
+    ledger_deuda          = f_led.result()
+    vistas_ocultas_viendo = f_vis.result()
+    tarjetas              = f_tar.result()
+    presupuesto           = f_pre.result()
+    categoria_balde       = f_cat.result()
+    metas_ahorro          = f_met.result()
 
     perfil = None
     if "perfil_financiero" not in vistas_ocultas_viendo:
@@ -121,17 +138,48 @@ def api_dashboard_data():
 @dashboard_bp.route("/registrar")
 @login_required
 def registrar():
+    """Enlace profundo al diálogo de "Registrar movimiento".
+
+    Desde 2026-09-17 el formulario NO es una página propia: vive en un
+    modal que abre el CTA del menú (ver templates/base.html, bloque
+    "Modal Registrar movimiento"), así que registrar un gasto ya no te
+    saca de donde estabas -- era un formulario chico ocupando una vista
+    entera. Esta ruta sigue existiendo porque la URL estaba en el menú y
+    puede estar en un favorito: entra a la app con el diálogo ya abierto.
+    No carga categorías/entidades/tarjetas -- eso lo pide el propio modal
+    a /api/registrar-opciones recién cuando se abre.
+    """
+    return render_template("registrar.html", activo="registrar")
+
+
+@dashboard_bp.route("/api/registrar-opciones")
+@login_required
+def api_registrar_opciones():
+    """Lo que el modal de "Registrar movimiento" necesita para llenar sus
+    autocompletados: categorías y entidades ya usadas por la cuenta que se
+    está viendo, y sus tarjetas ACTIVAS (las archivadas no se ofrecen como
+    destino de movimientos nuevos, ver
+    requisitos/2026-09-07_tarjetas-credito-cupo.md).
+
+    Es un endpoint aparte, y no parte del contexto global de las
+    plantillas, justamente para no pagar estas tres consultas en CADA
+    página de la app: el modal existe en todas, pero lo abre una minoría
+    de las visitas. Se pide una sola vez, al primer abrir.
+    """
     with db.conexion() as conn:
         db.crear_esquema(conn)
         categorias = db.obtener_categorias(conn, usuario_id=viendo_id())
         entidades = db.obtener_entidades(conn, usuario_id=viendo_id())
-        # Tarjetas ACTIVAS de viendo_id() -- para el selector opcional de
-        # "a qué tarjeta pertenece este movimiento" (ver
-        # requisitos/2026-09-07_tarjetas-credito-cupo.md). Las archivadas
-        # no se ofrecen como destino de movimientos nuevos.
         tarjetas = db.obtener_tarjetas(conn, usuario_id=viendo_id(), solo_activas=True)
-    return render_template("registrar.html", activo="registrar", categorias=categorias,
-                            entidades=entidades, tarjetas=tarjetas)
+    return jsonify(
+        ok=True,
+        categorias=categorias,
+        entidades=entidades,
+        # Solo lo que el <select> necesita -- no se filtra la fila entera
+        # de la tarjeta a una vista que solo muestra su nombre.
+        tarjetas=[{"id": t["id"], "nombre": t["nombre"], "ultimos4": t.get("ultimos4")}
+                  for t in tarjetas],
+    )
 
 
 @dashboard_bp.route("/api/registrar-movimiento", methods=["POST"])
@@ -344,35 +392,92 @@ def api_cargar_extracto():
     if not archivo or not archivo.filename:
         return jsonify(ok=False, error="No se recibió ningún archivo."), 400
 
-    destino = UPLOADS_DIR / archivo.filename
+    # Nunca confiar en archivo.filename tal cual para el path final -- viene
+    # del cliente sin sanitizar y podria contener ".." o una ruta absoluta
+    # (path traversal). secure_filename() lo limpia, y el prefijo uuid evita
+    # colisiones entre usuarios subiendo un archivo con el mismo nombre.
+    nombre_seguro = secure_filename(archivo.filename)
+    if not nombre_seguro:
+        return jsonify(ok=False, error="Nombre de archivo inválido."), 400
+    destino = UPLOADS_DIR / f"{uuid.uuid4().hex}_{nombre_seguro}"
     archivo.save(destino)
 
+    marca = ultimos4 = cedula = ""
     try:
         if tipo == "excel":
             movimientos = _leer_excel_generico(destino)
         elif tipo == "pdf_ahorros":
-            crudos = rex.parse_savings_statement(destino)
+            crudos, _intereses, _desde, _hasta = rex.parse_savings_statement(destino)
             movimientos = [rex.normalizar_savings(m) for m in crudos]
         elif tipo == "pdf_tarjeta":
             marca = (request.form.get("marca") or "Credito").strip()
             ultimos4 = (request.form.get("ultimos4") or "").strip()
+            cedula = (request.form.get("cedula") or "").strip()
             if not ultimos4:
                 return jsonify(ok=False, error="Falta indicar los últimos 4 dígitos de la tarjeta."), 400
-            crudos = rex.parse_card_statement(destino, ultimos4)
+            if not cedula:
+                # Si ya se cargó un extracto de esta tarjeta antes, la cédula
+                # quedó guardada (cifrada) con ella -- no hace falta reescribirla.
+                with db.conexion() as conn:
+                    cedula = db.obtener_cedula_tarjeta(conn, viendo_id(), ultimos4) or ""
+            crudos, intereses, _desde, _hasta = rex.parse_card_statement(
+                destino, ultimos4, password=cedula or None)
             movimientos = [rex.normalizar_card(m, marca) for m in crudos]
+            # Los intereses corrientes vienen aparte de los movimientos: sin
+            # esto quedaban fuera y la deuda del extracto no cerraba.
+            movimientos += rex.normalizar_intereses_card(intereses, ultimos4)
         else:
             return jsonify(ok=False, error=f"Tipo de archivo desconocido: {tipo!r}"), 400
     except Exception as e:
-        return jsonify(ok=False, error=f"No pude leer el archivo: {e}"), 400
+        return jsonify(ok=False, error=_mensaje_error_extracto(e)), 400
 
     if not movimientos:
         return jsonify(ok=False, error="No encontré movimientos en ese archivo."), 400
 
+    tarjeta_creada = None
     with db.conexion() as conn:
         db.crear_esquema(conn)
+        if tipo == "pdf_tarjeta":
+            # El alta va ANTES de insertar: insertar_movimientos() resuelve
+            # tarjeta_id por ultimos4 contra las tarjetas que existen en ese
+            # momento -- si la creáramos después, todos los movimientos de
+            # este extracto quedarían huérfanos.
+            tarjeta_creada = _crear_tarjeta_si_falta(conn, destino, marca, ultimos4, cedula)
         stats = db.insertar_movimientos(conn, movimientos, origen=f"upload_{tipo}", usuario_id=viendo_id())
 
-    return jsonify(ok=True, **stats)
+    return jsonify(ok=True, tarjeta_creada=tarjeta_creada, **stats)
+
+
+def _mensaje_error_extracto(e: Exception) -> str:
+    """PDFPasswordIncorrect llega con str(e) vacío -- el mensaje quedaba en
+    "No pude leer el archivo:" a secas, sin decir qué pasó. Es de lejos el
+    error más común al subir un extracto de tarjeta: Bancolombia los cifra
+    con la cédula del titular."""
+    texto = str(e).strip()
+    if "password" in f"{texto} {type(e).__name__} {e!r}".lower():
+        return ("Ese PDF está protegido con contraseña. Escribí la cédula del "
+                "titular (solo números, sin puntos) para poder abrirlo.")
+    return f"No pude leer el archivo: {texto}" if texto else "No pude leer el archivo."
+
+
+def _crear_tarjeta_si_falta(conn, pdf_path, marca: str, ultimos4: str, cedula: str) -> dict | None:
+    """Da de alta la tarjeta del extracto si el usuario todavía no la tiene
+    (match por últimos4 entre sus tarjetas ACTIVAS). El cupo sale del propio
+    extracto ("Cupo total: $ ..."): si el PDF no lo trae, NO se crea nada --
+    un cupo inventado falsearía el "disponible" del dashboard. Devuelve el
+    resumen de lo creado, o None si no hizo falta crear (o no se pudo)."""
+    activas = db.obtener_tarjetas(conn, viendo_id(), solo_activas=True)
+    if any(t["ultimos4"] == ultimos4 for t in activas):
+        return None
+    cupo = rex.parse_card_cupo(pdf_path, password=cedula or None)
+    if not cupo:
+        return None
+    nombre = marca or "Tarjeta de crédito"
+    tarjeta_id = db.crear_tarjeta(
+        conn, viendo_id(), nombre=nombre, cupo_total=cupo,
+        entidad="Bancolombia", ultimos4=ultimos4, cedula=cedula or None,
+    )
+    return {"id": tarjeta_id, "nombre": nombre, "ultimos4": ultimos4, "cupo_total": cupo}
 
 
 def _leer_excel_generico(path) -> list[dict]:

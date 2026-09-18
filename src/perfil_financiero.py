@@ -149,7 +149,7 @@ def clasificar_perfil(metricas: dict) -> dict:
                 "Todavía no hay movimientos registrados para generar un perfil. "
                 "En cuanto registres o cargues tus primeros movimientos, este panel se completa solo."
             ),
-            "consejos": ["Registrá tu primer movimiento o cargá un extracto para empezar a ver tu perfil financiero."],
+            "consejos": ["Registra tu primer movimiento o carga un extracto para empezar a ver tu perfil financiero."],
         }
 
     consejos: list[str] = []
@@ -161,8 +161,8 @@ def clasificar_perfil(metricas: dict) -> dict:
             "de deuda viene creciendo. Es el patrón que más rápido se sale de control si no se atiende."
         )
         consejos += [
-            "Priorizá pagar más del mínimo de la tarjeta este mes si es posible.",
-            "Evitá nuevas compras a crédito hasta que el saldo empiece a bajar.",
+            "Prioriza pagar más del mínimo de la tarjeta este mes si es posible.",
+            "Evita nuevas compras a crédito hasta que el saldo empiece a bajar.",
         ]
 
     elif m["total_ingresos"] == 0:
@@ -171,7 +171,7 @@ def clasificar_perfil(metricas: dict) -> dict:
             "Tu historial solo tiene gastos -- no hay ningún ingreso real registrado todavía, "
             "así que este panel no puede calcular una tasa de ahorro real."
         )
-        consejos.append("Si tenés ingresos que no se están registrando (efectivo, otra cuenta), agregalos manualmente para tener el panorama completo.")
+        consejos.append("Si tienes ingresos que no se están registrando (efectivo, otra cuenta), agrégalos manualmente para tener el panorama completo.")
 
     elif m["tasa_ahorro"] is not None and m["tasa_ahorro"] < 0:
         arquetipo = "Gastando más de lo que ingresa"
@@ -179,7 +179,7 @@ def clasificar_perfil(metricas: dict) -> dict:
             f"Tus gastos de caja real superan tus ingresos reales (tasa de ahorro de {m['tasa_ahorro']*100:.0f}%). "
             "Vale la pena revisar qué se puede recortar antes de que dependa de crédito."
         )
-        consejos.append("Revisá primero el gasto discrecional (lo no esencial) -- suele ser lo más fácil de ajustar rápido.")
+        consejos.append("Revisa primero el gasto discrecional (lo no esencial) -- suele ser lo más fácil de ajustar rápido.")
 
     elif m["regularidad_ingresos"] is not None and m["regularidad_ingresos"] < 0.5:
         arquetipo = "Ingresos irregulares"
@@ -187,7 +187,7 @@ def clasificar_perfil(metricas: dict) -> dict:
             "Tus ingresos no aparecen todos los meses de forma constante -- esto hace más importante tener un "
             "colchón para los meses flojos."
         )
-        consejos.append("Si podés, apartá una parte de los meses con ingreso alto como fondo para los meses sin ingreso.")
+        consejos.append("Si puedes, aparta una parte de los meses con ingreso alto como fondo para los meses sin ingreso.")
 
     elif m["concentracion_categoria"] >= UMBRAL_CONCENTRACION and m["categoria_top"]:
         arquetipo = f"Gasto concentrado en {m['categoria_top']}"
@@ -203,18 +203,18 @@ def clasificar_perfil(metricas: dict) -> dict:
             f"Estás ahorrando cerca del {m['tasa_ahorro']*100:.0f}% de tus ingresos reales -- un hábito sólido "
             "comparado con el patrón más común de gastar casi todo lo que entra."
         )
-        consejos.append("Con este ritmo de ahorro ya podés evaluar metas concretas (fondo de emergencia, adelantar deuda, invertir el excedente).")
+        consejos.append("Con este ritmo de ahorro ya puedes evaluar metas concretas (fondo de emergencia, adelantar deuda, invertir el excedente).")
 
     else:
         arquetipo = "Equilibrado"
         descripcion = "Tus ingresos y gastos de caja real están relativamente balanceados, sin una señal de alerta dominante en tus datos."
-        consejos.append('Revisá de vez en cuando el detalle por categoría -- es la forma más simple de encontrar margen extra sin sentir que te estás "privando" de algo.')
+        consejos.append('Revisa de vez en cuando el detalle por categoría -- es la forma más simple de encontrar margen extra sin sentir que te estás "privando" de algo.')
 
     if m["pct_gasto_discrecional"] >= UMBRAL_DISCRECIONAL_ALTO:
-        consejos.append(f"El {m['pct_gasto_discrecional']*100:.0f}% de tu gasto es discrecional (no esencial) -- es tu palanca más rápida si necesitás ajustar algo.")
+        consejos.append(f"El {m['pct_gasto_discrecional']*100:.0f}% de tu gasto es discrecional (no esencial) -- es tu palanca más rápida si necesitas ajustar algo.")
 
     if m["n_avances_credito"] > 0:
-        consejos.append("Usaste avances de efectivo de tarjeta de crédito -- suelen tener el interés más alto de todos los productos de crédito; evitalos si tenés otra opción.")
+        consejos.append("Usaste avances de efectivo de tarjeta de crédito -- suelen tener el interés más alto de todos los productos de crédito; evítalos si tienes otra opción.")
 
     return {"arquetipo": arquetipo, "descripcion": descripcion, "consejos": consejos[:4]}
 

@@ -1,12 +1,12 @@
-{% extends "base.html" %}
-{% block title %}Editar usuario{% endblock %}
+﻿{% extends "base.html" %}
+{% block title %}Editar usuario · Cuadre{% endblock %}
 
 {% block content %}
 <div class="page-wrap" style="max-width: 640px;">
 
   <div class="page-header">
-    <h1>✏️ Editar usuario</h1>
-    <p>Estás editando la cuenta de <b style="color:var(--text-dim)">{{ cuenta.nombre_mostrado }}</b>. Dejá la contraseña en blanco si no querés cambiarla.</p>
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" width="22" height="22" aria-hidden="true" style="vertical-align:middle; margin-right:8px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Editar usuario</h1>
+    <p>Estás editando la cuenta de <b style="color:var(--text-muted)">{{ cuenta.nombre_mostrado }}</b>. Deja la contraseña en blanco si no quieres cambiarla.</p>
   </div>
 
   <div class="card" style="margin-top: 26px;">
@@ -32,7 +32,7 @@
     <div id="resultado" class="result-box" style="display:none;"></div>
   </div>
 
-  <p style="margin-top:16px;"><a href="/crear-usuario" style="color:var(--accent-2); font-size:13px;">&larr; Volver a la lista de usuarios</a></p>
+  <p style="margin-top:16px;"><a href="/crear-usuario" style="color:var(--brand); font-size:13px;">&larr; Volver a la lista de usuarios</a></p>
 </div>
 
 <script>
@@ -50,17 +50,16 @@ document.getElementById('formEditar').addEventListener('submit', async (e) => {
   try {
     const res = await fetch('/api/editar-usuario/{{ cuenta.id }}', { method: 'POST', body: datos });
     const json = await res.json();
+    resultado.style.display = 'none';
     if (!res.ok || !json.ok) {
-      resultado.className = 'result-box error';
-      resultado.textContent = '❌ ' + (json.error || 'Error desconocido');
+      await mostrarAlertaApp('error', json.error || 'Error desconocido');
       return;
     }
-    resultado.className = 'result-box ok';
-    resultado.textContent = '✅ Usuario actualizado.';
+    await mostrarAlertaApp('ok', 'Usuario actualizado.');
     e.target.querySelector('[name="password"]').value = '';
   } catch (err) {
-    resultado.className = 'result-box error';
-    resultado.textContent = '❌ No se pudo conectar con el servidor.';
+    resultado.style.display = 'none';
+    await mostrarAlertaApp('error', 'No se pudo conectar con el servidor.');
   } finally {
     btn.disabled = false;
   }
