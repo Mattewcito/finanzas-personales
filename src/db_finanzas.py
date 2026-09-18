@@ -1320,26 +1320,37 @@ def asignar_movimientos_sin_dueno_a_admin(conn: sqlite3.Connection) -> int:
 
 
 def obtener_categorias(conn: sqlite3.Connection, usuario_id: int | None = None) -> list[str]:
-    """Categorías distintas ya usadas, para autocompletar el formulario de
-    registro manual (evita que cada quien escriba la misma categoría con
-    variantes distintas). Filtradas por usuario: cada quien autocompleta
-    con SU propio historial."""
-    sql = "SELECT DISTINCT categoria FROM movimientos WHERE categoria IS NOT NULL AND categoria != ''"
+    """Categorías ya usadas, para autocompletar el formulario de registro
+    manual (evita que cada quien escriba la misma categoría con variantes
+    distintas). Filtradas por usuario: cada quien autocompleta con SU
+    propio historial.
+
+    Ordenadas POR USO, de más a menos (2026-09-17), y alfabéticamente
+    entre las que empatan. Alfabético dejaba arriba lo que empieza con
+    "a" -- con 25 categorías, las cinco que alguien usa todos los días
+    podían quedar sepultadas a mitad de lista. El desplegable muestra
+    las primeras sin filtrar, así que este orden es lo que decide si la
+    sugerencia sirve o hay que tipear igual."""
+    sql = ("SELECT categoria FROM movimientos "
+           "WHERE categoria IS NOT NULL AND categoria != ''")
     params = ()
     if usuario_id is not None:
         sql += " AND usuario_id = ?"
         params = (usuario_id,)
-    sql += " ORDER BY categoria"
+    sql += " GROUP BY categoria ORDER BY COUNT(*) DESC, categoria"
     return [r["categoria"] for r in conn.execute(sql, params).fetchall()]
 
 
 def obtener_entidades(conn: sqlite3.Connection, usuario_id: int | None = None) -> list[str]:
-    sql = "SELECT DISTINCT entidad FROM movimientos WHERE entidad IS NOT NULL AND entidad != ''"
+    """Entidades ya usadas -- mismo criterio de orden que
+    obtener_categorias(): por uso primero, alfabético para desempatar."""
+    sql = ("SELECT entidad FROM movimientos "
+           "WHERE entidad IS NOT NULL AND entidad != ''")
     params = ()
     if usuario_id is not None:
         sql += " AND usuario_id = ?"
         params = (usuario_id,)
-    sql += " ORDER BY entidad"
+    sql += " GROUP BY entidad ORDER BY COUNT(*) DESC, entidad"
     return [r["entidad"] for r in conn.execute(sql, params).fetchall()]
 
 

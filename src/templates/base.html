@@ -235,19 +235,34 @@
     box-shadow: var(--shadow-1);
   }
 
-  .field-label{ display:block; font-size: 12.5px; color: var(--text-muted); margin: 18px 0 6px; font-weight:600; }
+  .field-label{ display:block; font-size: 12.5px; color: var(--text-muted); margin: 18px 0 7px; font-weight:600; }
   .field-label:first-child{ margin-top:0; }
+  /* Campos "outline" y no rellenos de gris (2026-09-18): el relleno
+     --surface-2 con borde de 1px los dejaba desvaídos sobre la tarjeta
+     blanca, sin decir bien dónde empieza y termina cada uno. Fondo de
+     superficie + borde de 1.5px los recorta con nitidez, y deja el color
+     disponible para los estados: hover insinúa la marca, foco la afirma. */
   .field-select, .field-input{
-    width:100%; padding: 10px 12px; font-size: 13.5px;
-    background-color: var(--surface-2); color: var(--text);
-    border: 1px solid var(--border); border-radius: 10px;
+    width:100%; padding: 11px 13px; font-size: 14px; line-height: 1.35;
+    background-color: var(--surface); color: var(--text);
+    border: 1.5px solid var(--border); border-radius: 10px;
     font-family: inherit;
-    transition: border-color .15s ease, box-shadow .15s ease;
+    transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+  }
+  .field-input::placeholder{ color: var(--text-subtle); }
+  .field-select:hover:not(:focus), .field-input:hover:not(:focus){
+    border-color: color-mix(in srgb, var(--brand) 38%, var(--border));
   }
   .field-select:focus, .field-input:focus{
     outline:none; border-color: var(--brand);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 25%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent);
   }
+  /* El ícono nativo del <input type="date"> queda gris apagado sobre el
+     fondo claro; se le sube el contraste sin reemplazarlo. */
+  .field-input[type="date"]::-webkit-calendar-picker-indicator{
+    opacity:.55; cursor:pointer; transition: opacity .15s ease;
+  }
+  .field-input[type="date"]:hover::-webkit-calendar-picker-indicator{ opacity:1; }
   .field-select{ padding-right: 30px; }
   .field-row{ display:grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
@@ -542,8 +557,14 @@
   .modal-reg[open]::backdrop{ animation: modalRegFondo .2s ease; }
   .modal-reg.cerrando{ animation: modalRegOut .14s ease forwards; }
   .modal-reg.cerrando::backdrop{ animation: modalRegFondoOut .14s ease forwards; }
-  @keyframes modalRegIn{ from{ opacity:0; transform: translateY(12px) scale(.97); } to{ opacity:1; transform:none; } }
-  @keyframes modalRegOut{ from{ opacity:1; transform:none; } to{ opacity:0; transform: translateY(8px) scale(.98); } }
+  /* Solo opacidad y desplazamiento, SIN scale() (2026-09-18): el
+     desplegable de los combos se ubica restando la caja del campo menos
+     la del diálogo, y bajo una escala esas dos cajas se achican por
+     igual pero la diferencia NO -- quedaba un 3% corrido y angosto si se
+     abría durante la animación. Una traslación pura no altera esa
+     diferencia, así que las medidas salen exactas en todo momento. */
+  @keyframes modalRegIn{ from{ opacity:0; transform: translateY(14px); } to{ opacity:1; transform:none; } }
+  @keyframes modalRegOut{ from{ opacity:1; transform:none; } to{ opacity:0; transform: translateY(10px); } }
   @keyframes modalRegFondo{ from{ opacity:0; } to{ opacity:1; } }
   @keyframes modalRegFondoOut{ from{ opacity:1; } to{ opacity:0; } }
 
@@ -590,6 +611,54 @@
   }
   .modal-reg-aviso svg{ width:15px; height:15px; flex-shrink:0; margin-top:1px; color: var(--warning); }
   .modal-reg .result-box{ margin-top:18px; }
+
+  /* ============ Combo con sugerencias (2026-09-18) ====================
+     Reemplaza a <datalist>, que NO se puede estilizar: el navegador lo
+     dibuja con la UI del sistema operativo, así que el desplegable de
+     categorías se salía del modal, ignoraba los colores de marca y
+     mostraba las 25 categorías de golpe en una lista gris gigante.
+  ==================================================================== */
+  .combo{ position: relative; }
+  .combo .field-input{ padding-right: 36px; }
+  .combo-flecha{
+    position:absolute; right:6px; top:50%; transform:translateY(-50%);
+    width:28px; height:28px; padding:0; border:none; border-radius:7px;
+    background:transparent; color: var(--text-subtle); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition: color .15s ease, background-color .15s ease;
+  }
+  .combo-flecha svg{ width:14px; height:14px; transition: transform .15s ease; }
+  .combo-flecha:hover{ background: var(--surface-2); color: var(--text); }
+  .combo.abierto .combo-flecha{ color: var(--brand); }
+  .combo.abierto .combo-flecha svg{ transform: rotate(180deg); }
+
+  .combo-lista{
+    /* Absolute anclado al <dialog>, no al campo: el cuerpo del modal
+       scrollea (overflow-y:auto) y recortaría un desplegable anclado al
+       .combo. Y tampoco `fixed`: mientras corre la animación de entrada
+       el <dialog> tiene un `transform`, y eso lo convierte en bloque
+       contenedor de sus hijos fijos -- el desplegable aparecía corrido
+       toda la distancia del modal si se abría dentro de esos 200ms.
+       Anclado al diálogo no depende de si hay transform o no. Lo
+       posiciona el script (ver posicionar() en crearCombo). */
+    position: absolute; z-index: 20; margin:0; padding:5px; list-style:none;
+    background: var(--surface); color: var(--text);
+    border:1px solid var(--border); border-radius:12px;
+    box-shadow: var(--shadow-dropdown);
+    max-height: 216px; overflow-y:auto; overscroll-behavior: contain;
+  }
+  .combo-lista[hidden]{ display:none; }
+  .combo-opcion{
+    display:block; padding:8px 10px; border-radius:8px; cursor:pointer;
+    font-size:13.5px; line-height:1.35; color: var(--text);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .combo-opcion:hover{ background: var(--surface-2); }
+  /* .activa es la opción marcada con las flechas del teclado: tiene que
+     leerse distinto del hover del mouse, no igual. */
+  .combo-opcion.activa{ background: var(--brand-soft); color: var(--brand); font-weight:600; }
+  .combo-opcion mark{ background:transparent; color: var(--brand); font-weight:700; }
+  .combo-vacio{ padding:10px; font-size:12.5px; color: var(--text-subtle); line-height:1.4; }
 
   /* Control segmentado Gasto/Ingreso -- vivía en registrar.html, que
      desde 2026-09-17 ya no tiene el formulario. */
@@ -891,16 +960,31 @@
       <label class="field-label" for="regDescripcion">Descripción</label>
       <input type="text" name="descripcion" id="regDescripcion" class="field-input" placeholder="Uber, Mercado, Salario..." required>
 
+      <!-- Combo propio, no <datalist>: ver el porqué en el CSS y
+           crearCombo() en el script del final. Los dos siguen siendo
+           texto libre -- la lista sugiere, no obliga. -->
       <div class="field-row">
         <div>
           <label class="field-label" for="regCategoria">Categoría</label>
-          <input type="text" name="categoria" id="regCategoria" class="field-input" list="regListaCategorias" placeholder="transporte, comida...">
-          <datalist id="regListaCategorias"></datalist>
+          <div class="combo" id="regCategoriaCombo">
+            <input type="text" name="categoria" id="regCategoria" class="field-input"
+                   role="combobox" aria-expanded="false" aria-controls="regCategoriaLista"
+                   aria-autocomplete="list" autocomplete="off" placeholder="transporte, comida...">
+            <button type="button" class="combo-flecha" id="regCategoriaFlecha" tabindex="-1" aria-label="Ver categorías ya usadas">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+          </div>
         </div>
         <div>
           <label class="field-label" for="regEntidad">Entidad</label>
-          <input type="text" name="entidad" id="regEntidad" class="field-input" list="regListaEntidades" placeholder="Bancolombia, Nequi...">
-          <datalist id="regListaEntidades"></datalist>
+          <div class="combo" id="regEntidadCombo">
+            <input type="text" name="entidad" id="regEntidad" class="field-input"
+                   role="combobox" aria-expanded="false" aria-controls="regEntidadLista"
+                   aria-autocomplete="list" autocomplete="off" placeholder="Bancolombia, Nequi...">
+            <button type="button" class="combo-flecha" id="regEntidadFlecha" tabindex="-1" aria-label="Ver entidades ya usadas">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -921,6 +1005,13 @@
       <button type="submit" class="btn-primary" id="regEnviar">Registrar</button>
     </footer>
   </form>
+
+  <!-- Los desplegables de los combos viven ACÁ, como hijos del <dialog> y
+       no del campo: el cuerpo del modal scrollea y los recortaría. Fuera
+       del <form> a propósito -- no son controles, el <input> sigue
+       adentro. Ver posicionar() en crearCombo(). -->
+  <ul class="combo-lista" id="regCategoriaLista" role="listbox" aria-label="Categorías ya usadas" hidden></ul>
+  <ul class="combo-lista" id="regEntidadLista" role="listbox" aria-label="Entidades ya usadas" hidden></ul>
 </dialog>
 
 <script>
@@ -1311,13 +1402,179 @@ window.autoDismissAlert = function(el, delay) {
   const campoMonto = document.getElementById('regMonto');
   const resultado  = document.getElementById('regResultado');
   const btnEnviar  = document.getElementById('regEnviar');
-  const listaCat   = document.getElementById('regListaCategorias');
-  const listaEnt   = document.getElementById('regListaEntidades');
+  const cuerpo     = dlg.querySelector('.modal-reg-cuerpo');
   const campoTar   = document.getElementById('regTarjetaCampo');
   const selTarjeta = document.getElementById('regTarjeta');
 
   let opcionesPedidas = false;
   let cancelarDismiss = null;
+
+  // ---- Combo con sugerencias ----
+  // Reemplaza a <datalist>, que el navegador dibuja con la UI del sistema
+  // y no se puede estilizar ni contener dentro del modal. El campo sigue
+  // siendo texto libre: la lista sugiere lo que la cuenta ya usó (ordenado
+  // por uso, ver db.obtener_categorias), no restringe a un catálogo.
+  function crearCombo(caja, input, flecha, lista){
+    let opciones = [];
+    let indice = -1;
+
+    // Sin tildes ni mayúsculas: buscar "educacion" tiene que encontrar
+    // "educación". Para el español la longitud se conserva (cada letra
+    // acentuada se descompone en base + marca, y la marca se borra), así
+    // que los índices siguen sirviendo para resaltar el tramo.
+    const plano = (t) => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const abierta = () => !lista.hidden;
+
+    // Coordenadas relativas al <dialog> (su caja de padding), que es el
+    // bloque contenedor de la lista. Si no entra abajo y arriba hay más
+    // lugar, se abre hacia arriba; y el alto se recorta a lo que quede
+    // libre, así el overflow:hidden del modal nunca la corta.
+    function posicionar(){
+      const rd = dlg.getBoundingClientRect();
+      const r = input.getBoundingClientRect();
+      const MARGEN = 10, HUECO = 6, ALTO_MAX = 216;
+      const abajo = rd.bottom - r.bottom - MARGEN - HUECO;
+      const arriba = r.top - rd.top - MARGEN - HUECO;
+      const haciaArriba = abajo < 120 && arriba > abajo;
+
+      lista.style.left = (r.left - rd.left - dlg.clientLeft) + 'px';
+      lista.style.width = r.width + 'px';
+      lista.style.maxHeight = Math.max(72, Math.min(ALTO_MAX, haciaArriba ? arriba : abajo)) + 'px';
+      if (haciaArriba) {
+        lista.style.top = 'auto';
+        lista.style.bottom = (rd.bottom - r.top - dlg.clientTop + HUECO) + 'px';
+      } else {
+        lista.style.bottom = 'auto';
+        lista.style.top = (r.bottom - rd.top - dlg.clientTop + HUECO) + 'px';
+      }
+    }
+
+    function marcarActiva(){
+      Array.prototype.forEach.call(lista.children, function(li, i){
+        const esta = (i === indice);
+        li.classList.toggle('activa', esta);
+        if (li.setAttribute) li.setAttribute('aria-selected', esta ? 'true' : 'false');
+      });
+      if (indice >= 0 && lista.children[indice]) {
+        lista.children[indice].scrollIntoView({ block: 'nearest' });
+        input.setAttribute('aria-activedescendant', lista.children[indice].id);
+      } else {
+        input.removeAttribute('aria-activedescendant');
+      }
+    }
+
+    function pintar(){
+      const q = plano(input.value.trim());
+      const visibles = q ? opciones.filter(function(o){ return plano(o).indexOf(q) !== -1; }) : opciones.slice();
+      lista.innerHTML = '';
+      indice = -1;
+      if (!visibles.length) {
+        const vacio = document.createElement('li');
+        vacio.className = 'combo-vacio';
+        vacio.textContent = opciones.length
+          ? 'Sin coincidencias -- se guarda tal cual lo escribas'
+          : 'Todavía no usaste ninguna';
+        lista.appendChild(vacio);
+        return;
+      }
+      visibles.slice(0, 60).forEach(function(op, i){
+        const li = document.createElement('li');
+        li.className = 'combo-opcion';
+        li.id = lista.id + '-op-' + i;
+        li.setAttribute('role', 'option');
+        li.setAttribute('aria-selected', 'false');
+        const pos = q ? plano(op).indexOf(q) : -1;
+        if (pos >= 0) {
+          // Se arma con nodos, nunca innerHTML: son datos del usuario.
+          li.appendChild(document.createTextNode(op.slice(0, pos)));
+          const m = document.createElement('mark');
+          m.textContent = op.slice(pos, pos + q.length);
+          li.appendChild(m);
+          li.appendChild(document.createTextNode(op.slice(pos + q.length)));
+        } else {
+          li.textContent = op;
+        }
+        // mousedown y no click: el click llega después del blur del input,
+        // que ya habría cerrado la lista.
+        li.addEventListener('mousedown', function(e){ e.preventDefault(); elegir(op); });
+        lista.appendChild(li);
+      });
+    }
+
+    function abrir(){
+      if (abierta()) return;
+      pintar();
+      lista.hidden = false;
+      caja.classList.add('abierto');
+      input.setAttribute('aria-expanded', 'true');
+      posicionar();
+    }
+
+    function cerrar(){
+      if (!abierta()) return;
+      lista.hidden = true;
+      caja.classList.remove('abierto');
+      input.setAttribute('aria-expanded', 'false');
+      input.removeAttribute('aria-activedescendant');
+      indice = -1;
+    }
+
+    function elegir(valor){
+      input.value = valor;
+      cerrar();
+      input.focus();
+    }
+
+    function mover(paso){
+      const total = lista.querySelectorAll('.combo-opcion').length;
+      if (!total) return;
+      indice = (indice + paso + total) % total;
+      marcarActiva();
+    }
+
+    input.addEventListener('focus', abrir);
+    input.addEventListener('input', function(){ abrir(); pintar(); posicionar(); });
+    input.addEventListener('blur', cerrar);
+    flecha.addEventListener('mousedown', function(e){
+      e.preventDefault();
+      abierta() ? cerrar() : (input.focus(), abrir());
+    });
+    input.addEventListener('keydown', function(e){
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!abierta()) { abrir(); return; }
+        mover(e.key === 'ArrowDown' ? 1 : -1);
+      } else if (e.key === 'Enter' && abierta() && indice >= 0) {
+        // Solo roba el Enter si hay una opción marcada: si no, que envíe
+        // el formulario como cualquier otro campo.
+        e.preventDefault();
+        elegir(lista.children[indice].textContent);
+      } else if (e.key === 'Escape' && abierta()) {
+        // Sin esto el <dialog> se lo lleva y cierra el modal entero: la
+        // primera pulsación tiene que cerrar solo la lista.
+        e.preventDefault();
+        e.stopPropagation();
+        cerrar();
+      } else if (e.key === 'Tab') {
+        cerrar();
+      }
+    });
+    // Mientras la lista está abierta tiene que seguir al campo.
+    if (cuerpo) cuerpo.addEventListener('scroll', function(){ if (abierta()) posicionar(); });
+    window.addEventListener('resize', cerrar);
+
+    return {
+      setOpciones: function(arr){ opciones = arr || []; if (abierta()) pintar(); },
+      cerrar: cerrar
+    };
+  }
+
+  const comboCategoria = crearCombo(
+    document.getElementById('regCategoriaCombo'), document.getElementById('regCategoria'),
+    document.getElementById('regCategoriaFlecha'), document.getElementById('regCategoriaLista'));
+  const comboEntidad = crearCombo(
+    document.getElementById('regEntidadCombo'), document.getElementById('regEntidad'),
+    document.getElementById('regEntidadFlecha'), document.getElementById('regEntidadLista'));
 
   // ---- Monto con separador de miles en vivo ----
   // El punto es SIEMPRE separador de miles y la coma el decimal, igual
@@ -1361,18 +1618,8 @@ window.autoDismissAlert = function(el, delay) {
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(json){
         if (!json || !json.ok) { opcionesPedidas = false; return; }
-        listaCat.innerHTML = '';
-        (json.categorias || []).forEach(function(c){
-          const op = document.createElement('option');
-          op.value = c;
-          listaCat.appendChild(op);
-        });
-        listaEnt.innerHTML = '';
-        (json.entidades || []).forEach(function(en){
-          const op = document.createElement('option');
-          op.value = en;
-          listaEnt.appendChild(op);
-        });
+        comboCategoria.setOpciones(json.categorias);
+        comboEntidad.setOpciones(json.entidades);
         const tarjetas = json.tarjetas || [];
         selTarjeta.length = 1;  // conserva "Sin asignar"
         tarjetas.forEach(function(t){
@@ -1403,23 +1650,40 @@ window.autoDismissAlert = function(el, delay) {
 
   function cerrar(alTerminar){
     if (!dlg.open || dlg.classList.contains('cerrando')) return;
+    // Los desplegables de los combos se cierran con el modal: si no,
+    // quedan abiertos para la próxima vez que se abra.
+    comboCategoria.cerrar();
+    comboEntidad.cerrar();
     dlg.classList.add('cerrando');
-    const terminar = function(){
+
+    let listo = false;
+    let reloj = null;
+
+    function terminar(){
+      // Una sola vez: pueden llamarlo la animación Y el temporizador.
+      if (listo) return;
+      listo = true;
+      // El listener se saca SIEMPRE, no solo cuando gana la animación.
+      // Cuando ganaba el temporizador quedaba enganchado, y entonces el
+      // modalRegIn de la PRÓXIMA apertura lo disparaba y cerraba el
+      // modal recién abierto -- se veía como que el botón "no responde"
+      // la segunda vez (bug real encontrado con Playwright, 2026-09-18).
+      dlg.removeEventListener('animationend', alTerminarAnimacion);
+      clearTimeout(reloj);
       dlg.classList.remove('cerrando');
       if (dlg.open) dlg.close();
       document.body.classList.remove('modal-abierto');
       if (alTerminar) { const fn = alTerminar; alTerminar = null; fn(); }
-    };
-    // Solo la animación del propio diálogo: animationend BURBUJEA, y un
-    // .result-box entrando o saliendo adentro del modal cerraría el
-    // diálogo antes de tiempo.
-    const alTerminarAnimacion = function(e){
-      if (e.target !== dlg) return;
-      dlg.removeEventListener('animationend', alTerminarAnimacion);
-      terminar();
-    };
+    }
+
+    // animationend BURBUJEA: solo cuenta la animación del propio diálogo,
+    // porque un .result-box animándose adentro lo cerraría antes de tiempo.
+    function alTerminarAnimacion(e){
+      if (e.target === dlg) terminar();
+    }
+
     dlg.addEventListener('animationend', alTerminarAnimacion);
-    setTimeout(terminar, 400);  // red de seguridad si animationend no dispara
+    reloj = setTimeout(terminar, 400);  // red de seguridad si animationend no dispara
   }
 
   // Escape lo maneja el navegador con "cancel": se lo frena para cerrar
