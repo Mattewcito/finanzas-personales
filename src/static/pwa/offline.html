@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F6F7FB">
+<title>Sin conexión · Cuadre</title>
+<link rel="icon" type="image/svg+xml" href="/static/brand/favicon.svg">
+<link rel="stylesheet" href="/static/css/tokens.css">
+<link rel="stylesheet" href="/static/css/base.css">
+<!--
+  La sirve el service worker (static/pwa/sw.js) cuando una página no
+  carga por falta de red. Es un archivo estático y SIN datos a propósito:
+  no puede mostrar nada de la cuenta, porque la app no guarda en caché
+  ninguna página ni respuesta con información personal.
+-->
+<style>
+  html, body{ margin:0; height:100%; }
+  body{
+    background: var(--bg); color: var(--text);
+    font-family: var(--font-ui);
+    display:flex; align-items:center; justify-content:center;
+    padding: 24px calc(24px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) calc(24px + env(safe-area-inset-left));
+    box-sizing: border-box;
+  }
+  .caja{ max-width: 340px; text-align:center; }
+  .icono{
+    width:64px; height:64px; border-radius:20px; margin: 0 auto 20px;
+    background: var(--brand-soft); color: var(--brand);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .icono svg{ width:30px; height:30px; }
+  h1{ font-family: var(--font-display); font-size: 22px; line-height: 1.3; margin: 0 0 10px; }
+  p{ margin: 0 0 24px; color: var(--text-muted); font-size: 14.5px; line-height: 1.55; }
+  button{
+    padding: 12px 26px; border-radius: 12px; border: none;
+    background: var(--brand); color: var(--on-brand);
+    font-family: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer;
+  }
+  button:focus-visible{ outline: 2px solid var(--brand); outline-offset: 3px; }
+</style>
+</head>
+<body>
+  <main class="caja">
+    <div class="icono" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2 8.8a15 15 0 0 1 20 0"/><path d="M5 12.9a10 10 0 0 1 14 0"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/>
+        <line x1="12" y1="20" x2="12.01" y2="20"/><line x1="3" y1="3" x2="21" y2="21"/>
+      </svg>
+    </div>
+    <h1>Sin conexión</h1>
+    <p>No pudimos traer tus datos. No se perdió nada: todo sigue guardado en el servidor. Probá de nuevo cuando tengas señal.</p>
+    <button type="button" onclick="location.reload()">Reintentar</button>
+  </main>
+</body>
+</html>

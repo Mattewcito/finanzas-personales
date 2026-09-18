@@ -67,6 +67,7 @@ from routes.correo import correo_bp
 from routes.admin_vistas import admin_vistas_bp
 from routes.tarjetas import tarjetas_bp
 from routes.presupuesto import presupuesto_bp
+from routes.pwa import pwa_bp
 
 app = Flask(__name__)
 
@@ -118,6 +119,7 @@ app.register_blueprint(correo_bp)
 app.register_blueprint(admin_vistas_bp)
 app.register_blueprint(tarjetas_bp)
 app.register_blueprint(presupuesto_bp)
+app.register_blueprint(pwa_bp)
 
 
 @app.errorhandler(404)

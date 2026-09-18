@@ -2,8 +2,18 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='brand/favicon.svg') }}">
+<!-- PWA (2026-09-18): instalable en la pantalla de inicio. Ver routes/pwa.py
+     y static/pwa/sw.js. theme-color igual al fondo (--bg) para que la barra
+     de estado del celular se funda con la app en vez de cortarla. -->
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#F6F7FB">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Cuadre">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='pwa/apple-touch-icon.png') }}">
 <!-- Tema fijo en claro (toggle desactivado; ignoramos localStorage y OS). -->
 <script>document.documentElement.setAttribute('data-theme','light');</script>
 <title>{% block title %}Cuadre{% endblock %}</title>
@@ -48,6 +58,9 @@
   }
 
   .app-shell{ display:flex; min-height:100vh; }
+  /* Muesca del iPhone en horizontal (viewport-fit=cover): que nada quede
+     debajo. Vale 0 en cualquier pantalla sin muesca. */
+  .app-shell{ padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
 
   .app-sidebar{
     width: var(--sidebar-w);
@@ -403,6 +416,10 @@
        (misma especificidad) ganaba el de abajo y el boton seguia siendo el
        pill azul de ancho completo. Por eso todo va prefijado .app-sidebar. */
     .app-sidebar, .app-sidebar.collapsed{ justify-content: center; align-items: center; }
+    /* Con viewport-fit=cover (PWA instalada) la barra llega hasta el borde
+       inferior del iPhone, y la raya del indicador de inicio le tapa los
+       íconos. env() vale 0 donde no hay nada que esquivar. */
+    .app-sidebar, .app-sidebar.collapsed{ padding-bottom: env(safe-area-inset-bottom); }
     .app-sidebar .sidebar-cta{ padding: 0; display: flex; align-items: center; flex: 0 0 auto; }
     .app-sidebar .btn-sidebar-cta{
       flex-direction: column; justify-content: center; gap: 3px;
@@ -1807,6 +1824,18 @@ window.autoDismissAlert = function(el, delay) {
       .then(function(){ btnEnviar.disabled = false; });
   });
 })();
+</script>
+<script>
+// Service worker de la PWA (ver static/pwa/sw.js). Solo en contexto seguro:
+// el navegador lo exige, y en HTTP plano por IP de la red local
+// simplemente no se registra -- la app funciona igual, sin instalarse.
+// Para instalarla desde el celular hace falta HTTPS (pendiente de infra:
+// Cloudflare Tunnel).
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('/sw.js').catch(function(){});
+  });
+}
 </script>
 </body>
 </html>

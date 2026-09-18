@@ -1,0 +1,40 @@
+{
+  "name": "Cuadre · Finanzas personales",
+  "short_name": "Cuadre",
+  "description": "Tus gastos, ingresos, tarjetas y presupuesto, en un solo lugar.",
+  "lang": "es-CO",
+  "dir": "ltr",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F6F7FB",
+  "theme_color": "#F6F7FB",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    { "src": "/static/pwa/icono-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/pwa/icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/pwa/icono-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Registrar gasto",
+      "short_name": "Registrar",
+      "description": "Cargar un gasto o ingreso sin pasar por el resumen",
+      "url": "/registrar",
+      "icons": [{ "src": "/static/pwa/atajo-registrar-96.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "Resumen",
+      "short_name": "Resumen",
+      "url": "/",
+      "icons": [{ "src": "/static/pwa/icono-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Tarjetas",
+      "short_name": "Tarjetas",
+      "url": "/tarjetas",
+      "icons": [{ "src": "/static/pwa/icono-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}
