@@ -914,6 +914,9 @@
      en renderPresupuesto(). */
   .balde-card.estado-sin-ingresos .balde-card-estado{ background: var(--surface-2); color: var(--text-muted); }
   .balde-card.estado-sin-ingresos .balde-barra > span{ width:0 !important; }
+  /* Ícono del título del detalle de un insight (ver abrirModalInsight). */
+  .modal-insight-icono{ display:inline-flex; vertical-align:-3px; margin-right:8px; color: var(--brand); }
+  .modal-insight-icono svg{ width:18px; height:18px; }
 
   .balde-cifras{ display:flex; flex-direction:column; gap:6px; }
   .balde-cifras .fila{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:12px; color:var(--text-muted); }
@@ -1017,6 +1020,16 @@
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent);
   }
   .form-error{ font-size:12px; color: var(--negative); margin: -6px 0 12px; }
+  /* Ayuda bajo un campo cuando el campo corrigió algo que se escribió
+     (ver el listener de Monto de Editar movimiento). Mismo estilo que
+     .campo-ayuda de base.html -- este dashboard vive en un <iframe> y no
+     hereda esa hoja. */
+  .campo-ayuda{
+    display:flex; align-items:flex-start; gap:6px; margin-top:6px;
+    font-size:12px; line-height:1.4; color: var(--warning);
+  }
+  .campo-ayuda[hidden]{ display:none; }
+  .campo-ayuda svg{ width:13px; height:13px; flex-shrink:0; margin-top:1px; }
   .form-error[hidden]{ display:none; }
   .form-suma-pct{ font-size:12px; color: var(--text-muted); margin: -6px 0 14px; }
 
@@ -2663,8 +2676,26 @@ const campoMov = {
 // Monto: el punto es SIEMPRE separador de miles y la coma el decimal
 // (hace falta para USD con centavos) -- misma máscara que el campo Monto
 // de "Registrar movimiento" en base.html.
+// Avisa lo que descarta en vez de hacerlo en silencio, igual que el
+// Monto de "Registrar movimiento": "-500" quedaba en "500" sin ninguna
+// pista de que el signo lo pone el selector Tipo (QA, 2026-09-18). La
+// ayuda queda hasta que se abre otro movimiento -- NO se oculta al salir
+// del campo: ese blur ocurre en el mousedown sobre "Guardar cambios", la
+// ayuda desaparece, el botón sube y el clic se pierde (ver el mismo
+// comentario en base.html).
+const ayudaMontoMov = document.getElementById('movMontoAyuda');
+function avisarMontoMov(texto) {
+  ayudaMontoMov.querySelector('span').textContent = texto;
+  ayudaMontoMov.hidden = false;
+}
 campoMov.monto.addEventListener('input', () => {
   const v = campoMov.monto.value;
+  const descartado = v.replace(/[0-9.,]/g, '');
+  if (descartado.indexOf('-') !== -1) {
+    avisarMontoMov('Los montos van siempre en positivo: si es un gasto, elegí "Gasto" en Tipo.');
+  } else if (descartado.length) {
+    avisarMontoMov('Solo números: el punto separa los miles y la coma, los centavos.');
+  }
   const partes = v.split(',');
   const entero = (partes[0] || '').replace(/[^0-9]/g, '').replace(/^0+(?=[0-9])/, '');
   const conMiles = entero.replace(/\B(?=([0-9]{3})+(?![0-9]))/g, '.');
@@ -2925,6 +2956,7 @@ function abrirModalMovimiento(id) {
   document.getElementById('movNotaOrigen').textContent = nota.join(' ');
 
   document.getElementById('btnGuardarMovimiento').disabled = false;
+  ayudaMontoMov.hidden = true;
   document.getElementById('modalMovimiento').classList.add('open');
   enfocarModal('modalMovimiento');
   // Al primer campo y no a la "X" (lo que hace enfocarModal): el modal
@@ -4697,7 +4729,21 @@ function cerrarModalGrafico() {
 function abrirModalInsight(i) {
   const ins = INSIGHTS_ACTUAL[i];
   if (!ins) return; // el período cambió justo entre el render y el click -- no reventar
-  document.getElementById('modalInsightTitulo').textContent = `${ins.icon} ${ins.title}`;
+  // El ícono es markup SVG (desde que los emojis se reemplazaron por
+  // íconos): con textContent se mostraba el código fuente del <svg> como
+  // texto antes del título (QA, 2026-09-18). El ícono va como markup -- lo
+  // arma la propia app, no viene del usuario -- y el título como TEXTO,
+  // porque puede incluir nombres de categorías o entidades.
+  const tituloInsight = document.getElementById('modalInsightTitulo');
+  tituloInsight.textContent = '';
+  if (ins.icon) {
+    const icono = document.createElement('span');
+    icono.className = 'modal-insight-icono';
+    icono.setAttribute('aria-hidden', 'true');
+    icono.innerHTML = ins.icon;
+    tituloInsight.appendChild(icono);
+  }
+  tituloInsight.appendChild(document.createTextNode(ins.title));
   document.getElementById('modalInsightTexto').innerHTML = ins.text;
   document.getElementById('modalInsight').classList.add('open');
   enfocarModal('modalInsight');
@@ -4987,7 +5033,12 @@ document.addEventListener('DOMContentLoaded', () => {
                  type="number": mismo bug y mismo fix que el campo Monto de
                  "Registrar movimiento" en base.html ("16.600.000" se
                  guardaba como 16.600). -->
-            <input type="text" inputmode="decimal" id="movMonto" required autocomplete="off">
+            <input type="text" inputmode="decimal" id="movMonto" required autocomplete="off"
+                   aria-describedby="movMontoAyuda">
+            <div class="campo-ayuda" id="movMontoAyuda" role="status" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <span></span>
+            </div>
           </div>
           <div class="form-row">
             <label for="movMoneda">Moneda</label>

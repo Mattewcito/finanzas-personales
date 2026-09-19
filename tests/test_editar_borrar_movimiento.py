@@ -503,6 +503,70 @@ def test_editar_manteniendo_la_misma_tarjeta_ya_archivada_no_la_desasigna(conn):
 
 
 # ----------------------------------------------------------------------
+# editar_movimiento(): asignar/quitar tarjeta_id reclasifica medio_pago
+# cuando el texto de la descripción es neutro (bug 2026-09-18, reportado
+# por QA -- ver enriquecer_movimiento() en db_finanzas.py). Antes
+# editar_movimiento() no le pasaba tarjeta_id a enriquecer_movimiento, así
+# que asignarle una tarjeta a un gasto al editarlo nunca lo convertía en
+# deuda.
+# ----------------------------------------------------------------------
+
+def test_editar_asignando_tarjeta_a_gasto_debito_neutro_pasa_a_credito_y_sube_la_deuda(conn):
+    uid = crear_usuario(conn, "ana")
+    tid = db.crear_tarjeta(conn, uid, "Visa", 200000)
+    fila = insertar_uno(conn, uid, descripcion="Mercado", monto=50000)
+    assert fila["medio_pago"] == "debito"
+    assert db.obtener_tarjetas_con_deuda(conn, uid)["activas"][0]["deuda_actual"] == 0
+
+    resultado = db.editar_movimiento(conn, uid, fila["id"], {"tarjeta_id": tid})
+
+    assert resultado["ok"] is True
+    assert resultado["reclasificado"] is True
+    assert resultado["medio_pago_anterior"] == "debito"
+    assert resultado["medio_pago_nuevo"] == "credito"
+    actualizado = db.obtener_movimiento(conn, uid, fila["id"])
+    assert actualizado["medio_pago"] == "credito"
+    assert actualizado["es_deuda"] is True
+    assert db.obtener_tarjetas_con_deuda(conn, uid)["activas"][0]["deuda_actual"] == 50000
+
+
+def test_editar_quitando_tarjeta_a_gasto_neutro_que_era_credito_por_esta_regla_vuelve_a_debito(conn):
+    uid = crear_usuario(conn, "ana")
+    tid = db.crear_tarjeta(conn, uid, "Visa", 200000)
+    fila = insertar_uno(conn, uid, descripcion="Mercado", monto=50000, tarjeta_id=tid)
+    assert fila["medio_pago"] == "credito"
+    assert db.obtener_tarjetas_con_deuda(conn, uid)["activas"][0]["deuda_actual"] == 50000
+
+    resultado = db.editar_movimiento(conn, uid, fila["id"], {"tarjeta_id": ""})
+
+    assert resultado["ok"] is True
+    assert resultado["reclasificado"] is True
+    assert resultado["medio_pago_anterior"] == "credito"
+    assert resultado["medio_pago_nuevo"] == "debito"
+    actualizado = db.obtener_movimiento(conn, uid, fila["id"])
+    assert actualizado["medio_pago"] == "debito"
+    assert actualizado["es_deuda"] is False
+    assert db.obtener_tarjetas_con_deuda(conn, uid)["activas"][0]["deuda_actual"] == 0
+
+
+def test_editar_asignando_tarjeta_a_movimiento_de_pago_tarjeta_no_se_vuelve_compra(conn):
+    """El texto sigue mandando cuando es específico -- asignarle tarjeta a
+    un "Pago tarjeta ..." no lo convierte en una compra a crédito."""
+    uid = crear_usuario(conn, "ana")
+    tid = db.crear_tarjeta(conn, uid, "Visa", 200000)
+    fila = insertar_uno(conn, uid, descripcion="Pago tarjeta Visa", monto=50000)
+    assert fila["medio_pago"] == "pago_tarjeta_credito"
+
+    resultado = db.editar_movimiento(conn, uid, fila["id"], {"tarjeta_id": tid})
+
+    assert resultado["ok"] is True
+    assert resultado["reclasificado"] is False
+    actualizado = db.obtener_movimiento(conn, uid, fila["id"])
+    assert actualizado["medio_pago"] == "pago_tarjeta_credito"
+    assert actualizado["es_deuda"] is False
+
+
+# ----------------------------------------------------------------------
 # editar_movimiento(): moneda y deuda (riesgo aritmético del documento)
 # ----------------------------------------------------------------------
 
@@ -860,6 +924,33 @@ def test_editar_movimiento_asignando_tarjeta_activa_via_http(client, app_ctx):
     assert resp.status_code == 200
     conn = db.conectar()
     assert db.obtener_movimiento(conn, admin_id, mov_id)["tarjeta_id"] == tid
+    conn.close()
+
+
+def test_editar_movimiento_asignando_tarjeta_via_http_reclasifica_a_credito_y_suma_deuda(client, app_ctx):
+    """Bug 2026-09-18: la ruta HTTP tiene que reflejar la misma
+    reclasificación que db.editar_movimiento() -- ver
+    test_editar_asignando_tarjeta_a_gasto_debito_neutro_pasa_a_credito_y_sube_la_deuda
+    en tests/test_tarjetas.py para la prueba equivalente sin HTTP."""
+    _, admin_id, _ = app_ctx
+    conn = db.conectar()
+    tid = db.crear_tarjeta(conn, admin_id, "Visa", 200000)
+    conn.close()
+    login(client, "admin_test", "clave-admin-123")
+    _registrar(client, descripcion="Mercado", monto="50000")  # texto neutro, sin tarjeta
+    mov_id = _unico_movimiento_id(admin_id)
+
+    resp = client.post(f"/api/movimiento/{mov_id}/editar", data={"tarjeta_id": str(tid)})
+
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["reclasificado"] is True
+    assert body["medio_pago_nuevo"] == "credito"
+    conn = db.conectar()
+    fila = db.obtener_movimiento(conn, admin_id, mov_id)
+    assert fila["medio_pago"] == "credito"
+    assert fila["es_deuda"] is True
+    assert db.obtener_tarjetas_con_deuda(conn, admin_id)["activas"][0]["deuda_actual"] == 50000
     conn.close()
 
 

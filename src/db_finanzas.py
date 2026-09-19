@@ -931,6 +931,22 @@ def enriquecer_movimiento(row: dict) -> dict:
     real, liquida deuda)."""
     row = dict(row)
     medio = clasificar_medio_pago(str(row.get("descripcion", "")))
+    # Un GASTO asignado explícitamente a una tarjeta de crédito es una
+    # compra con esa tarjeta, aunque la descripción no lo diga (2026-09-18).
+    # Antes el medio de pago salía SOLO del texto: un gasto "Mercado" al
+    # que el usuario le elegía la tarjeta en "Registrar movimiento" -- o se
+    # la asignaba al editarlo -- quedaba como 'debito', y la deuda de esa
+    # tarjeta (que suma por medio_pago, ver obtener_tarjetas_con_deuda) no
+    # se enteraba: el cupo disponible salía de más. Lo encontró QA.
+    #
+    # Solo cuando el texto no dice nada específico ('debito' es el "no sé"
+    # por defecto): si dice avance, pago de tarjeta o T.Cred, manda el
+    # texto. Y solo gastos: un ingreso asociado a la tarjeta (reembolso,
+    # abono) no es deuda nueva. No contradice la regla de "nunca adivinar
+    # la tarjeta" de los requisitos -- acá no se adivina nada: la tarjeta
+    # la eligió el usuario.
+    if medio == "debito" and row.get("tarjeta_id") and row.get("tipo") == "gasto":
+        medio = "credito"
     row["medio_pago"] = medio
 
     if medio == "avance_credito":
@@ -2407,6 +2423,9 @@ def editar_movimiento(conn: sqlite3.Connection, usuario_id: int, movimiento_id: 
     fila_final = enriquecer_movimiento({
         "fecha": fecha, "tipo": tipo, "categoria": categoria, "moneda": moneda,
         "monto": monto, "descripcion": descripcion, "entidad": entidad,
+        # Con la tarjeta FINAL (la editada, o la que ya tenía): sin esto,
+        # asignarle una tarjeta al editar no la convertía en deuda.
+        "tarjeta_id": tarjeta_id,
     })
 
     medio_pago_anterior = existente["medio_pago"]

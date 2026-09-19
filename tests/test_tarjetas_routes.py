@@ -386,6 +386,31 @@ def datos_movimiento(**overrides):
     return datos
 
 
+def test_registrar_gasto_neutro_eligiendo_tarjeta_suma_a_la_deuda_de_esa_tarjeta(client, app_ctx):
+    """Bug real encontrado por QA (2026-09-18): el medio de pago salía
+    SOLO del texto de la descripción, así que un gasto "Mercado del mes" al
+    que el usuario le elegía la tarjeta en "Registrar movimiento" quedaba
+    como débito y NO sumaba a la deuda de esa tarjeta -- el cupo
+    disponible salía de más. Elegir la tarjeta ES decir "lo pagué con
+    ella", aunque la descripción no diga "T.Cred"."""
+    _, admin_id, _ = app_ctx
+    conn = db.conectar()
+    tid = db.crear_tarjeta(conn, admin_id, "Visa", 1000000)
+    conn.close()
+
+    login(client, "admin_test", "clave-admin-123")
+    resp = client.post("/api/registrar-movimiento", data=datos_movimiento(
+        descripcion="Mercado del mes", monto="150000", tarjeta_id=str(tid)))
+    assert resp.status_code == 200
+
+    conn = db.conectar()
+    deuda = db.obtener_tarjetas_con_deuda(conn, admin_id)
+    conn.close()
+    visa = next(t for t in deuda["activas"] if t["id"] == tid)
+    assert visa["deuda_actual"] == 150000
+    assert visa["cupo_disponible"] == 850000
+
+
 def test_registrar_movimiento_con_tarjeta_activa_propia_la_asocia(client, app_ctx):
     _, admin_id, _ = app_ctx
     conn = db.conectar()

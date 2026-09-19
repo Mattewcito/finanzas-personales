@@ -1030,3 +1030,142 @@ def test_alerta_de_correo_no_reclasifica_retroactivamente(conn):
     assert stats["reclasificados"] == 0
     assert _tarjeta_id_de(conn, fila_id) is None
     assert db.obtener_tarjetas_con_deuda(conn, uid)["activas"][0]["deuda_actual"] == 0
+
+
+# ============================================================================
+# Bug 2026-09-18 (reportado por QA): un GASTO con tarjeta_id EXPLÍCITO --
+# elegida a propósito en "Registrar movimiento" -- cuenta como deuda de esa
+# tarjeta aunque el texto de la descripción no diga nada de tarjeta de
+# crédito. Antes medio_pago salía SOLO del texto (clasificar_medio_pago),
+# así que un gasto "Mercado" con tarjeta elegida quedaba como 'debito' y el
+# cupo disponible salía de más. Ver enriquecer_movimiento() en
+# db_finanzas.py.
+# ============================================================================
+
+def test_enriquecer_movimiento_gasto_con_texto_neutro_y_tarjeta_id_se_clasifica_credito():
+    """Unidad, contra la función pura -- el corazón del fix."""
+    resultado = db.enriquecer_movimiento({"tipo": "gasto", "descripcion": "Mercado", "tarjeta_id": 7})
+    assert resultado["medio_pago"] == "credito"
+    assert resultado["es_deuda"] is True
+
+
+def test_enriquecer_movimiento_gasto_con_texto_neutro_sin_tarjeta_id_sigue_debito():
+    """No cambió nada para quien no elige tarjeta -- retrocompatibilidad."""
+    resultado = db.enriquecer_movimiento({"tipo": "gasto", "descripcion": "Mercado"})
+    assert resultado["medio_pago"] == "debito"
+    assert resultado["es_deuda"] is False
+
+
+def test_enriquecer_movimiento_tarjeta_id_falsy_no_dispara_la_regla():
+    resultado = db.enriquecer_movimiento({"tipo": "gasto", "descripcion": "Mercado", "tarjeta_id": None})
+    assert resultado["medio_pago"] == "debito"
+    assert resultado["es_deuda"] is False
+
+
+def test_enriquecer_movimiento_ingreso_con_tarjeta_id_no_se_vuelve_deuda():
+    """Un reembolso/abono asociado a la tarjeta no es una compra nueva."""
+    resultado = db.enriquecer_movimiento({"tipo": "ingreso", "descripcion": "Reembolso", "tarjeta_id": 7})
+    assert resultado["medio_pago"] == "debito"
+    assert resultado["es_deuda"] is False
+
+
+def test_enriquecer_movimiento_texto_especifico_de_pago_manda_sobre_tarjeta_id():
+    """El texto sigue mandando cuando es específico: no se vuelve compra."""
+    resultado = db.enriquecer_movimiento({"tipo": "gasto", "descripcion": "Pago tarjeta Visa", "tarjeta_id": 7})
+    assert resultado["medio_pago"] == "pago_tarjeta_credito"
+    assert resultado["es_deuda"] is False
+
+
+def test_enriquecer_movimiento_texto_especifico_de_avance_manda_sobre_tarjeta_id():
+    resultado = db.enriquecer_movimiento(
+        {"tipo": "gasto", "descripcion": "Avance T.Cred *1111 a cta *5360", "tarjeta_id": 7}
+    )
+    assert resultado["medio_pago"] == "avance_credito"
+    assert resultado["tipo"] == "ingreso"
+    assert resultado["es_deuda"] is True
+
+
+def test_insertar_movimientos_gasto_con_texto_neutro_y_tarjeta_id_cuenta_como_deuda_de_esa_tarjeta(conn):
+    """Integración de punta a punta: el mismo caso de arriba, pero
+    verificando lo que de verdad le importa al usuario -- el cupo
+    disponible de LA tarjeta elegida, y que la invariante
+    activas + sin_asignar == deuda total se mantenga."""
+    uid = crear_usuario(conn, "ana")
+    tid = db.crear_tarjeta(conn, uid, "Visa", 200000)
+
+    db.insertar_movimientos(
+        conn, [mov("2026-09-01", "gasto", "mercado", 50000, "Mercado", tarjeta_id=tid)],
+        origen="app_manual", usuario_id=uid,
+    )
+
+    fila = db.obtener_movimientos(conn, usuario_id=uid)[0]
+    assert fila["medio_pago"] == "credito"
+    assert fila["es_deuda"] is True
+
+    resultado = db.obtener_tarjetas_con_deuda(conn, uid)
+    tarjeta = resultado["activas"][0]
+    assert tarjeta["id"] == tid
+    assert tarjeta["deuda_actual"] == 50000
+    assert tarjeta["cupo_disponible"] == 150000
+    assert sum(t["deuda_actual"] for t in resultado["activas"]) + resultado["sin_asignar"] == 50000
+
+
+def test_insertar_movimientos_gasto_con_texto_neutro_sin_tarjeta_sigue_siendo_debito_sin_deuda(conn):
+    """No cambió nada para quien no elige tarjeta, aunque tenga una
+    tarjeta activa registrada en la cuenta."""
+    uid = crear_usuario(conn, "ana")
+    db.crear_tarjeta(conn, uid, "Visa", 200000)
+
+    db.insertar_movimientos(
+        conn, [mov("2026-09-01", "gasto", "mercado", 50000, "Mercado")],
+        origen="app_manual", usuario_id=uid,
+    )
+
+    fila = db.obtener_movimientos(conn, usuario_id=uid)[0]
+    assert fila["medio_pago"] == "debito"
+    assert fila["es_deuda"] is False
+    assert db.obtener_tarjetas_con_deuda(conn, uid)["activas"][0]["deuda_actual"] == 0
+
+
+def test_insertar_movimientos_ingreso_con_tarjeta_id_explicito_no_es_deuda(conn):
+    uid = crear_usuario(conn, "ana")
+    tid = db.crear_tarjeta(conn, uid, "Visa", 200000)
+
+    db.insertar_movimientos(
+        conn, [mov("2026-09-01", "ingreso", "reembolso", 30000, "Reembolso de compra", tarjeta_id=tid)],
+        origen="app_manual", usuario_id=uid,
+    )
+
+    fila = db.obtener_movimientos(conn, usuario_id=uid)[0]
+    assert fila["medio_pago"] == "debito"
+    assert fila["es_deuda"] is False
+    assert db.obtener_tarjetas_con_deuda(conn, uid)["activas"][0]["deuda_actual"] == 0
+
+
+def test_insertar_movimientos_pago_tarjeta_con_tarjeta_id_explicito_no_se_vuelve_compra(conn):
+    uid = crear_usuario(conn, "ana")
+    tid = db.crear_tarjeta(conn, uid, "Visa", 200000)
+
+    db.insertar_movimientos(
+        conn, [mov_pago_tarjeta("2026-09-01", 30000, tarjeta_id=tid)],
+        origen="app_manual", usuario_id=uid,
+    )
+
+    fila = db.obtener_movimientos(conn, usuario_id=uid)[0]
+    assert fila["medio_pago"] == "pago_tarjeta_credito"
+    assert fila["es_deuda"] is False
+
+
+def test_insertar_movimientos_avance_con_tarjeta_id_explicito_sigue_siendo_avance(conn):
+    uid = crear_usuario(conn, "ana")
+    tid = db.crear_tarjeta(conn, uid, "Visa", 200000)
+
+    db.insertar_movimientos(
+        conn, [mov("2026-09-01", "gasto", "avance", 30000, "Avance T.Cred *1111 a cta *5360", tarjeta_id=tid)],
+        origen="app_manual", usuario_id=uid,
+    )
+
+    fila = db.obtener_movimientos(conn, usuario_id=uid)[0]
+    assert fila["medio_pago"] == "avance_credito"
+    assert fila["tipo"] == "ingreso"
+    assert fila["es_deuda"] is True

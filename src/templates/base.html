@@ -1638,12 +1638,16 @@ window.autoDismissAlert = function(el, delay) {
   // quien quería cargar algo negativo no sabía que el signo lo pone el
   // selector Gasto/Ingreso (QA, 2026-09-18). Ahora avisa qué pasó.
   const ayudaMonto = document.getElementById('regMontoAyuda');
-  let relojAyudaMonto = null;
+  // Queda visible hasta la próxima vez que se abre el modal (ver abrir()):
+  //  - NO con un temporizador de 5 s: se iba antes de terminar de leerla
+  //    (QA, 2026-09-18), justo la queja del usuario sobre las alertas.
+  //  - NI al salir del campo (blur): el blur ocurre en el MOUSEDOWN sobre
+  //    "Registrar", la ayuda desaparece, todo lo de abajo sube, el botón
+  //    se corre antes del mouseup y el clic no llega a completarse -- el
+  //    primer clic se perdía. Una ayuda que se queda no cuesta nada.
   function avisarMonto(texto){
     ayudaMonto.querySelector('span').textContent = texto;
     ayudaMonto.hidden = false;
-    clearTimeout(relojAyudaMonto);
-    relojAyudaMonto = setTimeout(function(){ ayudaMonto.hidden = true; }, 5000);
   }
 
   campoMonto.addEventListener('input', function(){
