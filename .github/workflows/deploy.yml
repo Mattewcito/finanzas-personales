@@ -78,10 +78,26 @@ jobs:
           $previo = git rev-parse HEAD
           Write-Host "Commit actual, guardado como respaldo: $previo"
 
+          # OJO (2026-09-19): git y docker son ejecutables NATIVOS -- que
+          # fallen NO lanza una excepcion de PowerShell, ni siquiera con
+          # $ErrorActionPreference = "Stop", asi que el try/catch de abajo no
+          # los atrapa por si solo. Por eso cada uno revisa $LASTEXITCODE.
+          # Sin esto, el deploy del PR #8 (2026-09-17) fallo al crear el
+          # contenedor de postgres (conflicto de nombre con el de dev),
+          # siguio de largo, el chequeo de /health le pregunto al contenedor
+          # VIEJO -- que nunca se reemplazo -- y reporto "Despliegue
+          # exitoso" con prod intacto: codigo viejo sobre datos congelados.
+          function Confirmar-Nativo([string]$que) {
+            if ($LASTEXITCODE -ne 0) { throw "$que fallo (exit $LASTEXITCODE)." }
+          }
+
           try {
             git fetch origin master
+            Confirmar-Nativo "git fetch"
             git reset --hard origin/master
+            Confirmar-Nativo "git reset"
             docker compose up -d --build
+            Confirmar-Nativo "docker compose up"
 
             Write-Host "Verificando que el contenedor haya arrancado bien..."
             $ok = $false
@@ -121,6 +137,11 @@ jobs:
             Write-Host "Revirtiendo al commit anterior: $previo"
             git reset --hard $previo
             docker compose up -d --build
+            # Si el rollback TAMBIEN falla, que quede dicho en el log en vez
+            # de que parezca que prod volvio a su estado anterior.
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "ATENCION: el rollback tampoco pudo levantar el contenedor (exit $LASTEXITCODE). Revisar prod a mano."
+            }
             Write-Error "Se revirtio automaticamente al commit anterior por un fallo en el despliegue."
             exit 1
           }
