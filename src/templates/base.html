@@ -1295,9 +1295,21 @@ function alHacerClickEnCualquierDocumento(handler) {
 
 // Auto-dismiss con hover-pause para cualquier elemento de alerta de la app.
 // Retorna una función cancel() para cancelar el dismiss si el elemento cambia.
+// `delay` es un MÍNIMO, no la duración exacta (2026-09-18). Con 5 s
+// fijos, un mensaje largo -- o un error, que es justo lo que más importa
+// leer -- desaparecía antes de terminar de leerlo. Ahora la alerta dura lo
+// que tarda leer su texto: ~55 ms por carácter sobre una base de 2 s (un
+// ritmo de lectura cómodo, no el de alguien que ya sabe qué dice), y nunca
+// menos que `delay` ni más de 20 s. Pasar el cursor encima la sigue
+// pausando, así que igual se puede leer con calma.
+window.duracionLectura = function(texto, minimo) {
+  var largo = String(texto || '').trim().length;
+  return Math.min(20000, Math.max(minimo || 0, 2000 + largo * 55));
+};
+
 window.autoDismissAlert = function(el, delay) {
   if (!el) return function(){};
-  delay = (delay === undefined) ? 5000 : delay;
+  delay = window.duracionLectura(el.textContent, (delay === undefined) ? 7000 : delay);
   var dismissed = false;
   var timer = null;
   var remaining = delay;
@@ -1358,8 +1370,10 @@ window.autoDismissAlert = function(el, delay) {
       toast.innerHTML = '<span class="toast-icon">' + (toastSVG[tipo] || toastSVG.ok) + '</span><span>' + msg + '</span>';
       container.appendChild(toast);
 
-      // Dismiss con hover-pause (5 s)
-      window.autoDismissAlert(toast, 5000);
+      // Mínimo según el tipo; el tiempo real sale del largo del texto
+      // (ver duracionLectura). Los errores piden más: hay que entender
+      // qué pasó y muchas veces hacer algo al respecto.
+      window.autoDismissAlert(toast, tipo === 'error' ? 10000 : 7000);
       // La promesa resuelve al terminar el slideout
       toast.addEventListener('animationend', () => { toast.remove(); resolve(true); });
     });
@@ -1666,7 +1680,7 @@ window.autoDismissAlert = function(el, delay) {
     if (clase !== 'loading') {
       // El error se queda con el modal abierto, así que se auto-descarta
       // como cualquier alerta de la app (con pausa al pasar el cursor).
-      cancelarDismiss = window.autoDismissAlert(resultado, 6000);
+      cancelarDismiss = window.autoDismissAlert(resultado, clase === 'error' ? 10000 : 7000);
       resultado.scrollIntoView({ block: 'nearest' });
     }
   }

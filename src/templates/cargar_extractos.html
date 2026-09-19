@@ -241,7 +241,7 @@ document.getElementById('formCarga').addEventListener('submit', async (e) => {
       resultado.innerHTML =
         '<span class="res-titulo">No se pudo procesar el archivo</span>' +
         (json.error || 'Error desconocido');
-      _cancelarDismiss = window.autoDismissAlert(resultado, 5000);
+      _cancelarDismiss = window.autoDismissAlert(resultado);
       return;
     }
     const n = json.nuevos;
@@ -262,13 +262,13 @@ document.getElementById('formCarga').addEventListener('submit', async (e) => {
     resultado.innerHTML =
       `<span class="res-titulo">${n} ${n === 1 ? 'movimiento nuevo insertado' : 'movimientos nuevos insertados'}</span>` +
       partes.join('<br>');
-    _cancelarDismiss = window.autoDismissAlert(resultado, 5000);
+    _cancelarDismiss = window.autoDismissAlert(resultado);
   } catch (err) {
     resultado.className = 'result-box error';
     resultado.innerHTML =
       '<span class="res-titulo">Error de conexión</span>' +
       'No se pudo conectar con el servidor.';
-    _cancelarDismiss = window.autoDismissAlert(resultado, 5000);
+    _cancelarDismiss = window.autoDismissAlert(resultado);
   } finally {
     btn.disabled = false;
   }

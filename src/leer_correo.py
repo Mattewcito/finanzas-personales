@@ -585,6 +585,23 @@ def procesar_cuenta(config: dict, dias: int, aplicar: bool) -> str:
     categorias: dict[str, int] = {}
     for m in movimientos:
         categorias[m["categoria"]] = categorias.get(m["categoria"], 0) + 1
+
+    # Resumen de la corrida (2026-09-18): la interfaz ya no lista cada
+    # movimiento, muestra cuánto se leyó por tipo. Se calcula ACÁ, sobre
+    # TODOS los movimientos, y no en el navegador sobre la lista guardada:
+    # esa lista se acota a 100, así que sumarla en una corrida de 418
+    # daría un total falso sin ninguna señal de que falta algo.
+    # Por tipo y POR MONEDA: pesos y dólares no se suman entre sí.
+    totales: dict[str, dict[str, dict]] = {}
+    for m in movimientos:
+        t = totales.setdefault(m["tipo"], {}).setdefault(m["moneda"], {"cantidad": 0, "monto": 0.0})
+        t["cantidad"] += 1
+        t["monto"] += float(m["monto"])
+    for por_moneda in totales.values():
+        for t in por_moneda.values():
+            t["monto"] = round(t["monto"], 2)
+    fechas = sorted(m["fecha"] for m in movimientos)
+
     detalle = {
         "duracion_seg": round(time.monotonic() - inicio, 1),
         "dias_revisados": dias,
@@ -593,6 +610,8 @@ def procesar_cuenta(config: dict, dias: int, aplicar: bool) -> str:
         "duplicados_bd": stats["duplicados_bd"],
         "duplicados_lote": stats["duplicados_lote"],
         "categorias": categorias,
+        "totales": totales,
+        "rango_fechas": {"desde": fechas[0], "hasta": fechas[-1]} if fechas else None,
         "movimientos": [
             {"fecha": m["fecha"], "tipo": m["tipo"], "categoria": m["categoria"],
              "moneda": m["moneda"], "monto": m["monto"], "descripcion": m["descripcion"]}

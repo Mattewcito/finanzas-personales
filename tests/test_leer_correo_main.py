@@ -948,3 +948,172 @@ def test_procesar_cuenta_sin_movimientos_guarda_detalle_en_ceros(correo_ctx, mon
     assert detalle["duplicados_lote"] == 0
     assert detalle["categorias"] == {}
     assert detalle["movimientos"] == []
+
+
+# ---------------------------------------------------------------------------
+# detalle["totales"] / detalle["rango_fechas"] (2026-09-18): calculados sobre
+# TODOS los movimientos leídos en la corrida, no sobre la lista acotada a 100
+# de detalle["movimientos"] -- ver leer_correo.py::procesar_cuenta.
+# ---------------------------------------------------------------------------
+
+def _movimientos_gasto_cop(cantidad, monto_base=1000.0, fecha="2026-09-01"):
+    """`cantidad` movimientos de gasto en COP, cada uno con descripción y
+    monto distintos, para poder sumarlos a mano en los asserts."""
+    return [
+        {
+            "fecha": fecha,
+            "tipo": "gasto",
+            "categoria": "otros",
+            "moneda": "COP",
+            "monto": monto_base + i,
+            "descripcion": f"Movimiento numero {i}",
+            "entidad": "Bancolombia",
+        }
+        for i in range(cantidad)
+    ]
+
+
+def test_procesar_cuenta_totales_suma_todos_los_movimientos_no_solo_la_muestra_de_100(correo_ctx, monkeypatch):
+    """Con 150 movimientos, detalle['movimientos'] sigue acotado a 100,
+    pero detalle['totales'] debe reflejar los 150 -- sumar solo la muestra
+    acotada daría un total falso en una corrida grande."""
+    import json
+
+    id_maria = crear_usuario("maria")
+    crear_config(id_maria)
+    config = config_de(id_maria)
+
+    movimientos = _movimientos_gasto_cop(150)
+    monkeypatch.setattr(lc, "buscar_movimientos_correo", lambda dias, config: list(movimientos))
+
+    lc.procesar_cuenta(config, dias=7, aplicar=True)
+
+    detalle = json.loads(config_de(id_maria)["ultima_corrida_detalle"])
+    assert len(detalle["movimientos"]) == 100
+
+    esperado = round(sum(m["monto"] for m in movimientos), 2)
+    assert detalle["totales"]["gasto"]["COP"]["cantidad"] == 150
+    assert detalle["totales"]["gasto"]["COP"]["monto"] == esperado
+
+
+def test_procesar_cuenta_totales_no_mezcla_pesos_y_dolares(correo_ctx, monkeypatch):
+    """Un gasto en COP y otro en USD deben quedar en entradas separadas de
+    totales['gasto'] -- nunca sumados entre sí."""
+    import json
+
+    id_maria = crear_usuario("maria")
+    crear_config(id_maria)
+    config = config_de(id_maria)
+
+    movimientos = [
+        {"fecha": "2026-09-01", "tipo": "gasto", "categoria": "otros", "moneda": "COP",
+         "monto": 100000.0, "descripcion": "Gasto en pesos", "entidad": "Bancolombia"},
+        {"fecha": "2026-09-02", "tipo": "gasto", "categoria": "otros", "moneda": "USD",
+         "monto": 50.0, "descripcion": "Gasto en dolares", "entidad": "Bancolombia"},
+    ]
+    monkeypatch.setattr(lc, "buscar_movimientos_correo", lambda dias, config: list(movimientos))
+
+    lc.procesar_cuenta(config, dias=7, aplicar=True)
+
+    detalle = json.loads(config_de(id_maria)["ultima_corrida_detalle"])
+    assert detalle["totales"]["gasto"]["COP"] == {"cantidad": 1, "monto": 100000.0}
+    assert detalle["totales"]["gasto"]["USD"] == {"cantidad": 1, "monto": 50.0}
+
+
+def test_procesar_cuenta_totales_separa_gastos_e_ingresos(correo_ctx, monkeypatch):
+    id_maria = crear_usuario("maria")
+    crear_config(id_maria)
+    config = config_de(id_maria)
+
+    monkeypatch.setattr(lc, "buscar_movimientos_correo", lambda dias, config: list(MOVIMIENTOS_PRUEBA))
+
+    import json
+    lc.procesar_cuenta(config, dias=7, aplicar=True)
+
+    detalle = json.loads(config_de(id_maria)["ultima_corrida_detalle"])
+    assert detalle["totales"]["gasto"]["COP"] == {"cantidad": 1, "monto": 50000.0}
+    assert detalle["totales"]["ingreso"]["COP"] == {"cantidad": 1, "monto": 2000000.0}
+
+
+def test_procesar_cuenta_totales_redondea_los_montos_a_2_decimales(correo_ctx, monkeypatch):
+    import json
+
+    id_maria = crear_usuario("maria")
+    crear_config(id_maria)
+    config = config_de(id_maria)
+
+    movimientos = [
+        {"fecha": "2026-09-01", "tipo": "gasto", "categoria": "otros", "moneda": "COP",
+         "monto": 0.1, "descripcion": "Uno", "entidad": "Bancolombia"},
+        {"fecha": "2026-09-02", "tipo": "gasto", "categoria": "otros", "moneda": "COP",
+         "monto": 0.2, "descripcion": "Dos", "entidad": "Bancolombia"},
+    ]
+    monkeypatch.setattr(lc, "buscar_movimientos_correo", lambda dias, config: list(movimientos))
+
+    lc.procesar_cuenta(config, dias=7, aplicar=True)
+
+    detalle = json.loads(config_de(id_maria)["ultima_corrida_detalle"])
+    # 0.1 + 0.2 en punto flotante da 0.30000000000000004 -- debe quedar
+    # redondeado a 0.3, no ese valor con ruido de precisión.
+    assert detalle["totales"]["gasto"]["COP"]["monto"] == 0.3
+
+
+def test_procesar_cuenta_sin_movimientos_totales_vacio_y_rango_fechas_none(correo_ctx, monkeypatch):
+    import json
+
+    id_maria = crear_usuario("maria")
+    crear_config(id_maria)
+    config = config_de(id_maria)
+    monkeypatch.setattr(lc, "buscar_movimientos_correo", lambda dias, config: [])
+
+    lc.procesar_cuenta(config, dias=7, aplicar=True)
+
+    detalle = json.loads(config_de(id_maria)["ultima_corrida_detalle"])
+    assert detalle["totales"] == {}
+    assert detalle["rango_fechas"] is None
+
+
+def test_procesar_cuenta_rango_fechas_refleja_la_fecha_minima_y_maxima_leidas(correo_ctx, monkeypatch):
+    """El orden en que llegan los movimientos no debe importar -- el rango
+    tiene que reflejar la fecha mínima y máxima reales, no la primera y
+    última de la lista tal cual la devolvió buscar_movimientos_correo."""
+    import json
+
+    id_maria = crear_usuario("maria")
+    crear_config(id_maria)
+    config = config_de(id_maria)
+
+    movimientos = [
+        {"fecha": "2026-09-15", "tipo": "gasto", "categoria": "otros", "moneda": "COP",
+         "monto": 1000.0, "descripcion": "Medio", "entidad": "Bancolombia"},
+        {"fecha": "2026-09-01", "tipo": "gasto", "categoria": "otros", "moneda": "COP",
+         "monto": 2000.0, "descripcion": "Primero", "entidad": "Bancolombia"},
+        {"fecha": "2026-09-30", "tipo": "gasto", "categoria": "otros", "moneda": "COP",
+         "monto": 3000.0, "descripcion": "Ultimo", "entidad": "Bancolombia"},
+    ]
+    monkeypatch.setattr(lc, "buscar_movimientos_correo", lambda dias, config: list(movimientos))
+
+    lc.procesar_cuenta(config, dias=7, aplicar=True)
+
+    detalle = json.loads(config_de(id_maria)["ultima_corrida_detalle"])
+    assert detalle["rango_fechas"] == {"desde": "2026-09-01", "hasta": "2026-09-30"}
+
+
+def test_procesar_cuenta_detalle_mantiene_las_claves_previas_del_contrato(correo_ctx, monkeypatch):
+    """Las claves nuevas (totales/rango_fechas) se agregan sin romper el
+    contrato previo -- todas las claves que ya consumía la interfaz deben
+    seguir presentes."""
+    import json
+
+    id_maria = crear_usuario("maria")
+    crear_config(id_maria)
+    config = config_de(id_maria)
+    monkeypatch.setattr(lc, "buscar_movimientos_correo", lambda dias, config: list(MOVIMIENTOS_PRUEBA))
+
+    lc.procesar_cuenta(config, dias=7, aplicar=True)
+
+    detalle = json.loads(config_de(id_maria)["ultima_corrida_detalle"])
+    for clave in ("duracion_seg", "dias_revisados", "correos_encontrados", "nuevos",
+                  "duplicados_bd", "duplicados_lote", "categorias", "movimientos",
+                  "totales", "rango_fechas"):
+        assert clave in detalle
