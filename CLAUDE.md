@@ -1,10 +1,37 @@
 # Finanzas personales -- instrucciones de proyecto
 
-App de finanzas personales: Flask + SQLite + Docker, multiusuario.
-Dos checkouts/entornos separados que comparten solo `data/finanzas.db`:
+App de finanzas personales: Flask + PostgreSQL + Docker, multiusuario
+(SQLite queda solo como fallback de `db.conectar()` para la suite de tests).
+Dos checkouts/entornos separados, **cada uno con su propia base de datos**
+(decisión del usuario, 2026-09-19):
 - `dev`: este repo (`C:\Finanzas personales`), rama `dev`, contenedor
-  `finanzas-app-dev`, puerto **5001**.
-- `prod`: `C:\finanzas-deploy`, rama `master`, puerto **5002**.
+  `finanzas-app-dev`, puerto **5001**, PostgreSQL en el contenedor
+  `finanzas-postgres` (expuesto en `127.0.0.1:5433`).
+- `prod`: `C:\finanzas-deploy`, rama `master`, contenedor
+  `finanzas-app-online`, puerto **5002**, PostgreSQL en el contenedor
+  `finanzas-postgres-online` (no expuesto).
+
+**Dev y prod ya NO comparten datos.** Hasta el 2026-09-19 prod leía el
+SQLite de la carpeta de dev montado en su contenedor; al migrar dev a
+PostgreSQL eso se rompió sin que nadie lo notara (ver el deploy, abajo) y
+prod quedó mostrando datos congelados del 10 de septiembre. El 2026-09-19
+se le copiaron a prod los datos de dev (sin las cuentas de QA) y desde ahí
+las dos bases divergen: lo que se carga en una no aparece en la otra.
+
+**Clave de cifrado:** prod usa una COPIA de la clave de dev
+(`C:\finanzas-deploy\data\cifrado-prod.key`, montada como
+`/app/data/cifrado.key` desde el `docker-compose.override.yml` de prod),
+porque sus datos se copiaron de dev ya cifrados con ella. La
+`data/cifrado.key` vieja de prod queda intacta como respaldo.
+
+**Un deploy puede reportar éxito sin haber hecho nada.** `git` y `docker`
+son ejecutables nativos: que fallen no corta el script de PowerShell del
+workflow aunque tenga `$ErrorActionPreference = "Stop"`. El deploy del PR
+#8 falló al crear postgres (conflicto de nombre con el de dev), siguió de
+largo, el chequeo de `/health` le preguntó al contenedor viejo y dijo
+"Despliegue exitoso". Desde 2026-09-19 cada comando nativo del deploy
+revisa `$LASTEXITCODE`. Después de un deploy, verificar que prod corra el
+código nuevo: un `/health` en 200 solo dice que ALGO responde en 5002.
 
 ## Regla de git push (vigente desde 2026-09-06)
 
@@ -58,6 +85,17 @@ Dos checkouts/entornos separados que comparten solo `data/finanzas.db`:
 
   Al agente de QA se le pasa QUÉ cambió y qué comportamiento se espera,
   no solo "probá la app" -- si no, revisa lo de siempre y no lo nuevo.
+
+  **Ojo con el panel de navegador de Claude Code para probar teclado:**
+  manda las teclas por CDP, lo que genera el `keydown` en el DOM pero NO
+  el "close request" del navegador. Ahí Escape sobre un `<dialog>` parece
+  no andar aunque el código esté bien, e invita a conclusiones falsas en
+  las dos direcciones. Para eso está Playwright:
+  `python tools/qa/verificar_modal_registrar.py` (14 chequeos del modal
+  de "Registrar movimiento": Escape, trampa de foco, reapertura, el
+  desplegable de los combos). Así apareció un bug que ni `pytest` ni el
+  panel veían -- el modal se cerraba solo 200 ms después de abrirse la
+  segunda vez.
   Los 🔴 se arreglan antes de cerrar el cambio; los 🟡/🟢 van al backlog
   y se le reportan al usuario. Ningún agente de QA arregla código: solo
   detecta y documenta.

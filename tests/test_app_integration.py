@@ -351,7 +351,7 @@ def test_dashboard_data_redirige_a_login_sin_sesion(client):
     assert "/login" in resp.headers["Location"]
 
 
-def test_dashboard_data_con_sesion_devuelve_json_con_las_nueve_claves(client):
+def test_dashboard_data_con_sesion_devuelve_json_con_las_once_claves(client):
     """Desde que se agregó "vistas ocultas por usuario" al dashboard, la
     respuesta también incluye "vistas_ocultas" (lista de sub-vistas
     ocultas para viendo_id(), ver routes/dashboard.py::api_dashboard_data).
@@ -360,12 +360,16 @@ def test_dashboard_data_con_sesion_devuelve_json_con_las_nueve_claves(client):
     ({"activas": [...], "sin_asignar": <float>}). Desde presupuesto por
     baldes / metas de ahorro (2026-09-08, ver
     requisitos/2026-09-08_presupuesto-ahorro-deudas.md) se agregaron
-    "presupuesto", "categoria_balde" y "metas_ahorro" -- son 9 claves,
-    no 6. Para una cuenta que nunca configuró nada de esto (como
-    admin_test acá, recién logueada y sin movimientos todavía), las 3
-    claves nuevas igual vienen con una forma válida en vez de None/NaN
-    (ver el caso borde "cuenta nueva sin presupuesto configurado
-    todavía" del documento de requisitos)."""
+    "presupuesto", "categoria_balde" y "metas_ahorro". Desde el modal de
+    editar/borrar movimiento (2026-09-18, ver
+    requisitos/2026-09-07_editar-borrar-movimiento.md) se agregaron
+    "cuenta_vista" ({"es_propia", "nombre"}) y "textos_riesgo_movimiento"
+    ({"gmail_bot_excel", "automatico"}) -- son 11 claves, no 9. Para una
+    cuenta que nunca configuró nada de esto (como admin_test acá, recién
+    logueada y sin movimientos todavía), las 3 claves de presupuesto
+    igual vienen con una forma válida en vez de None/NaN (ver el caso
+    borde "cuenta nueva sin presupuesto configurado todavía" del
+    documento de requisitos)."""
     login(client, "admin_test", "clave-admin-123")
     resp = client.get("/api/dashboard-data")
 
@@ -373,7 +377,7 @@ def test_dashboard_data_con_sesion_devuelve_json_con_las_nueve_claves(client):
     body = resp.get_json()
     assert set(body.keys()) == {
         "movimientos", "ledger_deuda", "perfil", "generated_at", "vistas_ocultas", "tarjetas",
-        "presupuesto", "categoria_balde", "metas_ahorro",
+        "presupuesto", "categoria_balde", "metas_ahorro", "cuenta_vista", "textos_riesgo_movimiento",
     }
     assert body["vistas_ocultas"] == []
     assert body["tarjetas"] == {"activas": [], "sin_asignar": 0.0}
@@ -459,3 +463,76 @@ def test_dashboard_data_tras_cambiar_vista_muestra_datos_de_la_cuenta_vista(clie
 
     assert "Movimiento del usuario normal" in descripciones
     assert "Movimiento del admin" not in descripciones
+
+
+# ---------------------------------------------------------------------------
+# /api/dashboard-data -- "cuenta_vista" y "textos_riesgo_movimiento"
+# (2026-09-18, ver routes/dashboard.py::api_dashboard_data y
+# requisitos/2026-09-07_editar-borrar-movimiento.md). El modal de
+# editar/borrar movimiento del dashboard estático los usa para avisar en
+# nombre de quién se está editando/borrando, y para advertir del riesgo
+# de un movimiento no-manual ANTES de pedir confirmación.
+# ---------------------------------------------------------------------------
+
+def test_dashboard_data_cuenta_vista_es_propia_para_admin_sin_cambiar_de_perfil(client):
+    """Un admin que todavía no cambió de perfil (viendo_id() ==
+    session['usuario_id']) ve sus propios datos: "cuenta_vista" debe
+    marcar es_propia=True y traer su propio nombre de sesión."""
+    login(client, "admin_test", "clave-admin-123")
+    resp = client.get("/api/dashboard-data")
+
+    assert resp.status_code == 200
+    cuenta_vista = resp.get_json()["cuenta_vista"]
+    assert cuenta_vista == {"es_propia": True, "nombre": "Admin"}
+
+
+def test_dashboard_data_cuenta_vista_no_es_propia_tras_cambiar_vista_a_otro_usuario(client, app_ctx):
+    """Tras /cambiar-vista a otra cuenta, "cuenta_vista" debe reflejar la
+    cuenta que se está viendo (es_propia=False, nombre = su
+    nombre_mostrado en la BD) -- no el nombre del admin logueado."""
+    _, admin_id, user_id = app_ctx
+
+    login(client, "admin_test", "clave-admin-123")
+    cambio = client.post("/cambiar-vista", data={"usuario_id": user_id})
+    assert cambio.status_code == 302
+
+    resp = client.get("/api/dashboard-data")
+    cuenta_vista = resp.get_json()["cuenta_vista"]
+    assert cuenta_vista == {"es_propia": False, "nombre": "Usuario"}
+
+
+def test_dashboard_data_cuenta_vista_siempre_es_propia_para_usuario_normal(client):
+    """Un usuario con rol 'usuario' nunca puede cambiar de perfil (ver
+    test_usuario_normal_no_puede_cambiar_de_perfil) -- por lo tanto
+    "cuenta_vista" tiene que llegar siempre con es_propia=True para él,
+    con su propio nombre de sesión."""
+    login(client, "user_test", "clave-user-456")
+    resp = client.get("/api/dashboard-data")
+
+    assert resp.status_code == 200
+    cuenta_vista = resp.get_json()["cuenta_vista"]
+    assert cuenta_vista == {"es_propia": True, "nombre": "Usuario"}
+
+
+def test_dashboard_data_textos_riesgo_movimiento_trae_los_textos_de_advertencia_riesgo_movimiento(client):
+    """"textos_riesgo_movimiento" tiene que traer exactamente el copy que
+    devuelve db.advertencia_riesgo_movimiento() para un movimiento del
+    Excel legado ("gmail_bot_excel") y para uno conciliado/automático
+    genérico ("correo_imap") -- el frontend no debe mantener una segunda
+    copia de ese texto que se pueda desincronizar. Ambos textos, además,
+    tienen que ser no vacíos y distintos entre sí: son advertencias con
+    contenido diferente (ver advertencia_riesgo_movimiento)."""
+    login(client, "admin_test", "clave-admin-123")
+    resp = client.get("/api/dashboard-data")
+
+    assert resp.status_code == 200
+    textos = resp.get_json()["textos_riesgo_movimiento"]
+
+    esperado_excel = db.advertencia_riesgo_movimiento({"origen": "gmail_bot_excel"})
+    esperado_automatico = db.advertencia_riesgo_movimiento({"origen": "correo_imap"})
+
+    assert textos["gmail_bot_excel"] == esperado_excel
+    assert textos["automatico"] == esperado_automatico
+    assert textos["gmail_bot_excel"]
+    assert textos["automatico"]
+    assert textos["gmail_bot_excel"] != textos["automatico"]

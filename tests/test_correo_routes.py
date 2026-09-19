@@ -21,6 +21,7 @@ auth.py::viendo_id().
 """
 import db_finanzas as db
 import leer_correo as lc
+from routes.correo import _mensaje_error_correo
 
 from test_app_integration import app_ctx, client, login  # noqa: F401 (fixtures reutilizadas)
 
@@ -71,6 +72,60 @@ def test_get_configurar_correo_con_config_guardada_no_expone_la_password_en_el_h
 
     assert resp.status_code == 200
     assert b"secreta-super-unica-xyz" not in resp.data
+
+
+def test_get_configurar_correo_detalle_con_script_en_descripcion_no_inyecta_html(client, app_ctx):
+    """Regresión XSS (2026-09-18): antes se inyectaba el detalle con
+    `| safe` sobre el JSON crudo dentro de un <script type="application/
+    json">; json.dumps no escapa '</', así que una descripción de comercio
+    -- que viene del correo del banco, o sea de afuera -- con
+    '</script><script>alert(1)</script>' cerraba el bloque <script> e
+    inyectaba código. Ahora la ruta pasa el detalle ya parseado (dict) y
+    la plantilla lo serializa con `| tojson`, que escapa `<`/`>`/`&`: la
+    secuencia peligrosa no debe aparecer literal en el HTML de respuesta."""
+    _, admin_id, _ = app_ctx
+    guardar_config_directo(admin_id)
+    detalle = {
+        "duracion_seg": 1.0, "dias_revisados": 7, "correos_encontrados": 1,
+        "nuevos": 1, "duplicados_bd": 0, "duplicados_lote": 0,
+        "categorias": {"otros": 1}, "totales": {}, "rango_fechas": None,
+        "movimientos": [{
+            "fecha": "2026-09-01", "tipo": "gasto", "categoria": "otros",
+            "moneda": "COP", "monto": 100.0,
+            "descripcion": "Compra en TIENDA</script><script>alert(1)</script>",
+        }],
+    }
+    with db.conexion() as conn:
+        db.actualizar_estado_correo(conn, admin_id, ok=True, error=None, detalle=detalle)
+
+    login(client, "admin_test", "clave-admin-123")
+    resp = client.get("/configurar-correo")
+
+    assert resp.status_code == 200
+    assert b"</script><script>alert(1)" not in resp.data
+    # tojson escapa los angulares con \u003c/\u003e -- el navegador nunca
+    # ve un '<' literal, así que no puede cerrar el bloque <script>.
+    assert b"\\u003c/script\\u003e" in resp.data
+
+
+def test_get_configurar_correo_con_detalle_invalido_no_rompe_la_pagina(client, app_ctx):
+    """Si ultima_corrida_detalle no es JSON válido (dato corrupto de
+    alguna corrida vieja, o cualquier otra cosa), la página igual debe
+    responder 200 -- configurar_correo_page() ya atrapa (TypeError,
+    ValueError) al parsear."""
+    _, admin_id, _ = app_ctx
+    guardar_config_directo(admin_id)
+    with db.conexion() as conn:
+        conn.execute(
+            "UPDATE correo_config SET ultima_corrida_detalle = ? WHERE usuario_id = ?",
+            ("esto no es json valido {{{", admin_id),
+        )
+        conn.commit()
+
+    login(client, "admin_test", "clave-admin-123")
+    resp = client.get("/configurar-correo")
+
+    assert resp.status_code == 200
 
 
 def test_configurar_correo_redirige_a_login_sin_sesion(client):
@@ -273,6 +328,46 @@ def test_guardar_nunca_usa_otro_usuario_id_aunque_se_intente_forzar_por_form(cli
 
 
 # ---------------------------------------------------------------------------
+# _mensaje_error_correo -- traduce errores de IMAP a algo entendible
+# (2026-09-18): antes /api/correo/probar y /api/correo/sincronizar-ahora
+# devolvían la excepción cruda de Python, del tipo
+# `b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'`.
+# ---------------------------------------------------------------------------
+
+def test_mensaje_error_correo_authenticationfailed_menciona_password_de_aplicacion():
+    """El caso real de imaplib: la excepción trae un `bytes` como único
+    argumento -- str(e) queda con el prefijo "b'...'" de Python. El
+    mensaje traducido no debe dejar pasar ni ese prefijo ni el código
+    crudo de IMAP, solo la explicación en español."""
+    e = Exception(b"[AUTHENTICATIONFAILED] Invalid credentials (Failure)")
+
+    mensaje = _mensaje_error_correo(e)
+
+    assert "contraseña" in mensaje.lower() and "aplicaci" in mensaje.lower()
+    assert "b'" not in mensaje
+    assert "AUTHENTICATIONFAILED" not in mensaje
+
+
+def test_mensaje_error_correo_invalid_credentials_tambien_menciona_password_de_aplicacion():
+    e = Exception("Invalid credentials (Failure)")
+
+    mensaje = _mensaje_error_correo(e)
+
+    assert "contraseña" in mensaje.lower() and "aplicaci" in mensaje.lower()
+
+
+def test_mensaje_error_correo_excepcion_desconocida_incluye_su_texto():
+    """Un error que no matchea ningún caso conocido no debe tragarse --
+    sigue incluyendo el texto original, para no perder información útil
+    de diagnóstico en un caso que no se previó."""
+    e = RuntimeError("motivo bien especifico de un fallo nunca antes visto")
+
+    mensaje = _mensaje_error_correo(e)
+
+    assert "motivo bien especifico de un fallo nunca antes visto" in mensaje
+
+
+# ---------------------------------------------------------------------------
 # POST /api/correo/probar
 # ---------------------------------------------------------------------------
 
@@ -344,6 +439,30 @@ def test_probar_con_excepcion_de_imap_da_400(client, monkeypatch):
     assert resp.get_json()["ok"] is False
 
 
+def test_probar_con_authenticationfailed_da_400_con_mensaje_legible_sin_el_crudo(client, monkeypatch):
+    """Antes esta respuesta traía la excepción cruda de Python (ej.
+    `b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'`). Ahora el
+    'error' debe mencionar la contraseña de aplicación, sin el prefijo
+    `b'` ni el código IMAP crudo."""
+    login(client, "admin_test", "clave-admin-123")
+
+    def _fallar(dias, config):
+        raise Exception(b"[AUTHENTICATIONFAILED] Invalid credentials (Failure)")
+
+    monkeypatch.setattr(lc, "buscar_movimientos_correo", _fallar)
+
+    resp = client.post("/api/correo/probar", data={
+        "email": "correo@example.com", "app_password": "clave-app-123",
+    })
+
+    assert resp.status_code == 400
+    body = resp.get_json()
+    assert body["ok"] is False
+    assert "contraseña" in body["error"].lower() and "aplicaci" in body["error"].lower()
+    assert "b'" not in body["error"]
+    assert "AUTHENTICATIONFAILED" not in body["error"]
+
+
 # ---------------------------------------------------------------------------
 # POST /api/correo/sincronizar-ahora
 # ---------------------------------------------------------------------------
@@ -388,6 +507,38 @@ def test_sincronizar_ahora_con_excepcion_da_400_y_deja_el_estado_de_error_en_bd(
     fila = config_de(admin_id)
     assert fila["ultima_corrida_ok"] == 0
     assert "fallo simulado de sincronizacion" in fila["ultimo_error"]
+
+
+def test_sincronizar_ahora_con_authenticationfailed_responde_legible_pero_guarda_el_crudo_en_bd(
+        client, app_ctx, monkeypatch):
+    """El usuario recibe el mensaje traducido (legible, menciona la
+    contraseña de aplicación), pero en BD (correo_config.ultimo_error)
+    queda el error CRUDO tal cual lo lanzó IMAP -- es lo que sirve para
+    diagnosticar de verdad, y no debe perderse por traducir la respuesta
+    al usuario."""
+    _, admin_id, _ = app_ctx
+    guardar_config_directo(admin_id)
+    login(client, "admin_test", "clave-admin-123")
+
+    crudo = "b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'"
+
+    def _fallar(config, dias, aplicar):
+        raise Exception(crudo)
+
+    monkeypatch.setattr(lc, "procesar_cuenta", _fallar)
+
+    resp = client.post("/api/correo/sincronizar-ahora")
+
+    assert resp.status_code == 400
+    body = resp.get_json()
+    assert body["ok"] is False
+    assert "contraseña" in body["error"].lower() and "aplicaci" in body["error"].lower()
+    assert "AUTHENTICATIONFAILED" not in body["error"]
+    assert crudo not in body["error"]
+
+    fila = config_de(admin_id)
+    assert fila["ultima_corrida_ok"] == 0
+    assert fila["ultimo_error"] == crudo  # crudo en BD, para diagnóstico
 
 
 def test_sincronizar_ahora_usa_calcular_dias_a_revisar_en_vez_de_un_valor_fijo(client, app_ctx, monkeypatch):

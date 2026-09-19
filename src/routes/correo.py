@@ -27,7 +27,9 @@ La contraseña de aplicación NUNCA se devuelve al navegador después de
 guardarla -- ni en esta página ni en ningún endpoint. El formulario la
 trata como "escribir para cambiar, dejar en blanco para mantener".
 """
+import json
 import re
+import socket
 from datetime import datetime
 
 from flask import Blueprint, render_template, request, jsonify
@@ -97,7 +99,39 @@ def _config_desde_formulario(existente: dict | None) -> tuple[dict | None, str |
 def configurar_correo_page():
     with db.conexion() as conn:
         config = db.obtener_correo_config(conn, viendo_id())
-    return render_template("configurar_correo.html", activo="correo", config=config)
+    # El detalle de la corrida se pasa ya PARSEADO para que la plantilla lo
+    # serialice con `| tojson`, que escapa `<`, `>` y `&`. Antes se inyectaba
+    # el texto JSON crudo con `| safe` dentro de un <script>, y json.dumps no
+    # escapa `</` -- una descripción de comercio que viniera en un correo con
+    # "</script>..." cerraba el bloque y ejecutaba lo que siguiera. Esas
+    # descripciones las escribe el banco, o sea que entran desde afuera.
+    detalle_corrida = None
+    if config and config.get("ultima_corrida_detalle"):
+        try:
+            detalle_corrida = json.loads(config["ultima_corrida_detalle"])
+        except (TypeError, ValueError):
+            detalle_corrida = None
+    return render_template("configurar_correo.html", activo="correo", config=config,
+                           detalle_corrida=detalle_corrida)
+
+
+def _mensaje_error_correo(e: Exception) -> str:
+    """Traduce los errores de IMAP a algo que se pueda entender y
+    accionar. Antes el usuario veía la excepción cruda de Python, del tipo
+    `b'[AUTHENTICATIONFAILED] Invalid credentials (Failure)'`."""
+    crudo = str(e)
+    if "AUTHENTICATIONFAILED" in crudo or "Invalid credentials" in crudo:
+        return ("Gmail rechazó el correo o la contraseña. Tiene que ser una contraseña "
+                "de APLICACIÓN (16 letras, se genera en tu cuenta de Google), no la "
+                "contraseña normal de Gmail. Si el campo se completó solo, puede que "
+                "sea tu navegador poniendo otra contraseña guardada: borralo y dejalo "
+                "vacío para usar la que ya está guardada.")
+    if isinstance(e, (socket.gaierror, ConnectionRefusedError)) or "getaddrinfo" in crudo:
+        return "No se pudo encontrar el servidor de correo. Revisá el servidor IMAP en las opciones avanzadas."
+    if isinstance(e, (TimeoutError, socket.timeout)) or "timed out" in crudo:
+        return "El servidor de correo no respondió a tiempo. Probá de nuevo en un rato."
+    return f"No se pudo conectar o leer el correo: {crudo}"
+
 
 
 @correo_bp.route("/api/correo/guardar", methods=["POST"])
@@ -154,7 +188,7 @@ def api_correo_probar():
     try:
         movimientos = lc.buscar_movimientos_correo(dias, config)
     except Exception as e:
-        return jsonify(ok=False, error=f"No se pudo conectar/leer: {e}"), 400
+        return jsonify(ok=False, error=_mensaje_error_correo(e)), 400
 
     return jsonify(ok=True, total=len(movimientos), movimientos=movimientos[:20])
 
@@ -177,8 +211,9 @@ def api_correo_sincronizar_ahora():
         mensaje = lc.procesar_cuenta(config, dias=dias, aplicar=True)
     except Exception as e:
         with db.conexion() as conn:
+            # En la BD queda el error CRUDO: es lo que sirve para diagnosticar.
             db.actualizar_estado_correo(conn, usuario_id, ok=False, error=str(e))
-        return jsonify(ok=False, error=str(e)), 400
+        return jsonify(ok=False, error=_mensaje_error_correo(e)), 400
 
     return jsonify(ok=True, mensaje=mensaje)
 

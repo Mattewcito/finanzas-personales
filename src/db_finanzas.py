@@ -931,6 +931,22 @@ def enriquecer_movimiento(row: dict) -> dict:
     real, liquida deuda)."""
     row = dict(row)
     medio = clasificar_medio_pago(str(row.get("descripcion", "")))
+    # Un GASTO asignado explícitamente a una tarjeta de crédito es una
+    # compra con esa tarjeta, aunque la descripción no lo diga (2026-09-18).
+    # Antes el medio de pago salía SOLO del texto: un gasto "Mercado" al
+    # que el usuario le elegía la tarjeta en "Registrar movimiento" -- o se
+    # la asignaba al editarlo -- quedaba como 'debito', y la deuda de esa
+    # tarjeta (que suma por medio_pago, ver obtener_tarjetas_con_deuda) no
+    # se enteraba: el cupo disponible salía de más. Lo encontró QA.
+    #
+    # Solo cuando el texto no dice nada específico ('debito' es el "no sé"
+    # por defecto): si dice avance, pago de tarjeta o T.Cred, manda el
+    # texto. Y solo gastos: un ingreso asociado a la tarjeta (reembolso,
+    # abono) no es deuda nueva. No contradice la regla de "nunca adivinar
+    # la tarjeta" de los requisitos -- acá no se adivina nada: la tarjeta
+    # la eligió el usuario.
+    if medio == "debito" and row.get("tarjeta_id") and row.get("tipo") == "gasto":
+        medio = "credito"
     row["medio_pago"] = medio
 
     if medio == "avance_credito":
@@ -1320,26 +1336,37 @@ def asignar_movimientos_sin_dueno_a_admin(conn: sqlite3.Connection) -> int:
 
 
 def obtener_categorias(conn: sqlite3.Connection, usuario_id: int | None = None) -> list[str]:
-    """Categorías distintas ya usadas, para autocompletar el formulario de
-    registro manual (evita que cada quien escriba la misma categoría con
-    variantes distintas). Filtradas por usuario: cada quien autocompleta
-    con SU propio historial."""
-    sql = "SELECT DISTINCT categoria FROM movimientos WHERE categoria IS NOT NULL AND categoria != ''"
+    """Categorías ya usadas, para autocompletar el formulario de registro
+    manual (evita que cada quien escriba la misma categoría con variantes
+    distintas). Filtradas por usuario: cada quien autocompleta con SU
+    propio historial.
+
+    Ordenadas POR USO, de más a menos (2026-09-17), y alfabéticamente
+    entre las que empatan. Alfabético dejaba arriba lo que empieza con
+    "a" -- con 25 categorías, las cinco que alguien usa todos los días
+    podían quedar sepultadas a mitad de lista. El desplegable muestra
+    las primeras sin filtrar, así que este orden es lo que decide si la
+    sugerencia sirve o hay que tipear igual."""
+    sql = ("SELECT categoria FROM movimientos "
+           "WHERE categoria IS NOT NULL AND categoria != ''")
     params = ()
     if usuario_id is not None:
         sql += " AND usuario_id = ?"
         params = (usuario_id,)
-    sql += " ORDER BY categoria"
+    sql += " GROUP BY categoria ORDER BY COUNT(*) DESC, categoria"
     return [r["categoria"] for r in conn.execute(sql, params).fetchall()]
 
 
 def obtener_entidades(conn: sqlite3.Connection, usuario_id: int | None = None) -> list[str]:
-    sql = "SELECT DISTINCT entidad FROM movimientos WHERE entidad IS NOT NULL AND entidad != ''"
+    """Entidades ya usadas -- mismo criterio de orden que
+    obtener_categorias(): por uso primero, alfabético para desempatar."""
+    sql = ("SELECT entidad FROM movimientos "
+           "WHERE entidad IS NOT NULL AND entidad != ''")
     params = ()
     if usuario_id is not None:
         sql += " AND usuario_id = ?"
         params = (usuario_id,)
-    sql += " ORDER BY entidad"
+    sql += " GROUP BY entidad ORDER BY COUNT(*) DESC, entidad"
     return [r["entidad"] for r in conn.execute(sql, params).fetchall()]
 
 
@@ -2396,6 +2423,9 @@ def editar_movimiento(conn: sqlite3.Connection, usuario_id: int, movimiento_id: 
     fila_final = enriquecer_movimiento({
         "fecha": fecha, "tipo": tipo, "categoria": categoria, "moneda": moneda,
         "monto": monto, "descripcion": descripcion, "entidad": entidad,
+        # Con la tarjeta FINAL (la editada, o la que ya tenía): sin esto,
+        # asignarle una tarjeta al editar no la convertía en deuda.
+        "tarjeta_id": tarjeta_id,
     })
 
     medio_pago_anterior = existente["medio_pago"]

@@ -40,6 +40,14 @@
   .fila-detalle:last-child{ border-bottom:none; }
   .fila-detalle span:first-child{ color: var(--text); }
   .fila-detalle span:last-child{ color: var(--text-muted); text-align:right; }
+  .fila-detalle span:first-child{ min-width:0; overflow-wrap:anywhere; }
+  /* Aclaración chica debajo del nombre de una fila (ej. qué significa
+     "ya estaban cargados"). */
+  .fila-detalle .ayuda-fila{ display:block; margin-top:2px; font-size:11.5px; color: var(--text-subtle); font-weight:400; }
+  .resumen-corrida-sub{ margin: -4px 0 10px; font-size:12px; color: var(--text-subtle); }
+  .resumen-corrida td.monto{ text-align:right; font-variant-numeric: tabular-nums; white-space:nowrap; }
+  .resumen-corrida th.monto{ text-align:right; }
+  .resumen-corrida .monto-extra{ display:block; font-size:11.5px; color: var(--text-muted); }
 
   .ayuda-btn{
     display:inline-flex; align-items:center; gap:6px; margin: 0 0 18px;
@@ -184,8 +192,12 @@
        app. Se arma en JS al hacer click, no de una -- ver el <script> más
        abajo. El JSON en sí lo produce leer_correo.py::procesar_cuenta y
        lo guarda tal cual db_finanzas.py::actualizar_estado_correo. -->
-  <script type="application/json" id="datosDetalleCorrida">{{ config.ultima_corrida_detalle | safe }}</script>
-  <div class="panel-detalle-corrida" id="panelDetalleCorrida" hidden></div>
+  <!-- `| tojson` y NO `| safe` sobre el texto crudo (2026-09-18): el
+       detalle incluye descripciones que vienen de los correos del banco, y
+       json.dumps no escapa `</` -- un comercio con "</script>" en el nombre
+       cerraba este bloque y ejecutaba lo que siguiera. tojson escapa < > &. -->
+  <script type="application/json" id="datosDetalleCorrida">{{ detalle_corrida | tojson }}</script>
+  <div class="panel-detalle-corrida" id="panelDetalleCorrida" data-fecha-corrida="{{ config.ultima_corrida or '' }}" hidden></div>
   {% endif %}
   {% endif %}
 
@@ -201,7 +213,14 @@
              value="{{ config.email if config else '' }}" required>
 
       <label class="field-label">Contraseña de aplicación de Gmail</label>
+      <!-- autocomplete="new-password" (2026-09-18): sin esto Chrome rellena
+           este campo con la contraseña que tiene guardada para ESTE sitio (la
+           del login de la app), y como el campo no queda vacío, "Probar
+           conexión" usaba esa en vez de la guardada -> AUTHENTICATIONFAILED
+           falso. Peor: "Guardar cambios" pisaba la contraseña de aplicación
+           buena y la sincronización automática dejaba de andar. -->
       <input type="password" name="app_password" class="field-input" minlength="8"
+             autocomplete="new-password"
              placeholder="{{ 'Dejar en blanco para no cambiarla' if config else 'Requerida la primera vez — ver la ayuda de arriba' }}">
 
       <label class="field-label">Cédula <span style="color:var(--text-subtle); font-weight:400;">(opcional — solo si quieres que también abra extractos PDF adjuntos)</span></label>
@@ -511,32 +530,168 @@ if (btnSincronizar) {
   let detalle = null;
   try { detalle = JSON.parse(document.getElementById('datosDetalleCorrida').textContent); } catch (e) { detalle = null; }
 
+  // --- Utilidades del detalle (2026-09-18) -------------------------------
+  // Todo lo que viene del correo (categoría, descripción) es texto de AFUERA:
+  // se escapa siempre antes de meterlo en el HTML. Antes iba crudo.
+  function esc(t) {
+    return String(t == null ? '' : t)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // "avance_credito" -> "Avance de crédito". Las categorías se guardan como
+  // identificadores (sin tildes ni espacios); acá se muestran como texto.
+  const NOMBRES_CATEGORIA = {
+    avance_credito: 'Avance de crédito',
+    pago_tarjeta_credito: 'Pago de tarjeta de crédito',
+    tecnologia: 'Tecnología',
+    educacion: 'Educación',
+    electrodomesticos: 'Electrodomésticos',
+  };
+  function nombreCategoria(c) {
+    if (NOMBRES_CATEGORIA[c]) return NOMBRES_CATEGORIA[c];
+    const t = String(c || 'sin categoría').replace(/_/g, ' ').trim();
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  }
+
+  // 10,7 s · 2 min 5 s · 1 h 2 min
+  function formatoDuracion(seg) {
+    seg = Number(seg) || 0;
+    if (seg < 60) return (Math.round(seg * 10) / 10).toLocaleString('es-CO') + ' s';
+    const h = Math.floor(seg / 3600), m = Math.floor((seg % 3600) / 60), s2 = Math.round(seg % 60);
+    const partes = [];
+    if (h) partes.push(h + ' h');
+    if (m) partes.push(m + ' min');
+    if (s2 && !h) partes.push(s2 + ' s');
+    return partes.join(' ') || '0 s';
+  }
+
+  function unir(partes) {
+    return partes.length > 1 ? partes.slice(0, -1).join(', ') + ' y ' + partes[partes.length - 1] : (partes[0] || '');
+  }
+
+  // "261 días — 8 meses y 18 días (desde el 31 dic 2025)". Cuenta de
+  // CALENDARIO real, hacia atrás desde el día de la corrida -- no divide
+  // por 30, que corre el resultado varios días en ventanas largas.
+  function formatoDiasAtras(dias, fechaCorrida) {
+    dias = Number(dias) || 0;
+    const base = dias + (dias === 1 ? ' día' : ' días');
+    if (dias <= 30) return base;
+    let fin = fechaCorrida ? new Date(String(fechaCorrida).replace(' ', 'T')) : new Date();
+    if (isNaN(fin)) fin = new Date();
+    fin = new Date(fin.getFullYear(), fin.getMonth(), fin.getDate());
+    const inicio = new Date(fin.getFullYear(), fin.getMonth(), fin.getDate() - dias);
+    let meses = (fin.getFullYear() - inicio.getFullYear()) * 12 + (fin.getMonth() - inicio.getMonth());
+    let d = fin.getDate() - inicio.getDate();
+    if (d < 0) {
+      meses -= 1;
+      d += new Date(fin.getFullYear(), fin.getMonth(), 0).getDate();  // días del mes anterior
+    }
+    const anios = Math.floor(meses / 12);
+    meses = meses % 12;
+    const partes = [];
+    if (anios) partes.push(anios + (anios === 1 ? ' año' : ' años'));
+    if (meses) partes.push(meses + (meses === 1 ? ' mes' : ' meses'));
+    if (d) partes.push(d + (d === 1 ? ' día' : ' días'));
+    const desde = inicio.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
+    return base + ' — ' + unir(partes) + ' (desde el ' + desde + ')';
+  }
+
+  function formatoMonto(moneda, monto) {
+    try {
+      return new Intl.NumberFormat('es-CO', {
+        style: 'currency', currency: moneda,
+        maximumFractionDigits: moneda === 'COP' ? 0 : 2,
+      }).format(monto);
+    } catch (e) {
+      return esc(moneda) + ' ' + Number(monto).toLocaleString('es-CO');
+    }
+  }
+
+  function formatoFecha(iso) {
+    const f = new Date(String(iso).replace(' ', 'T') + (String(iso).length === 10 ? 'T00:00:00' : ''));
+    return isNaN(f) ? esc(iso) : f.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  // Totales por tipo y moneda. Los nuevos detalles los traen calculados
+  // desde el servidor sobre TODA la corrida; en los viejos solo se pueden
+  // sacar de la lista guardada, y eso es exacto únicamente si la lista está
+  // completa (se acotaba a 100). Si no, se dice -- nunca un total parcial
+  // presentado como total.
+  function totalesDe(d) {
+    if (d.totales) return d.totales;
+    const lista = d.movimientos || [];
+    if (!lista.length || lista.length < (d.correos_encontrados || 0)) return null;
+    const t = {};
+    lista.forEach(function(m){
+      const x = (t[m.tipo] = t[m.tipo] || {});
+      const y = (x[m.moneda] = x[m.moneda] || { cantidad: 0, monto: 0 });
+      y.cantidad += 1;
+      y.monto += Number(m.monto) || 0;
+    });
+    return t;
+  }
+
+  function renderResumenCorrida(d, fechaCorrida) {
+    const totales = totalesDe(d);
+    if (!d.correos_encontrados) {
+      return '<p style="margin:0; color:var(--text-subtle);">Ningún correo coincidió con un movimiento reconocible en esta corrida.</p>';
+    }
+    if (!totales) {
+      return `<p style="margin:0; color:var(--text-subtle);">Esta corrida es anterior a los resúmenes: se guardaron ${(d.movimientos || []).length} de ${d.correos_encontrados} movimientos, así que no hay un total exacto. La próxima corrida ya lo va a traer.</p>`;
+    }
+    const ETIQUETA_TIPO = { gasto: 'Gasto', ingreso: 'Ingreso' };
+    const orden = Object.keys(totales).sort(function(a, b){
+      const peso = { gasto: 0, ingreso: 1 };
+      return (peso[a] ?? 9) - (peso[b] ?? 9);
+    });
+    const fechaTxt = fechaCorrida ? formatoFecha(fechaCorrida) : '--';
+    const filas = orden.map(function(tipo){
+      const porMoneda = totales[tipo];
+      // Pesos primero; las otras monedas debajo, nunca sumadas a los pesos.
+      const monedas = Object.keys(porMoneda).sort(function(a, b){ return (a === 'COP' ? -1 : 0) - (b === 'COP' ? -1 : 0); });
+      const cantidad = monedas.reduce(function(n, m){ return n + porMoneda[m].cantidad; }, 0);
+      const montos = monedas.map(function(m, i){
+        const txt = formatoMonto(m, porMoneda[m].monto);
+        return i === 0 ? txt : `<span class="monto-extra">+ ${txt}</span>`;
+      }).join('');
+      return `<tr><td>${fechaTxt}</td><td>${esc(ETIQUETA_TIPO[tipo] || tipo)}</td><td>${cantidad}</td><td class="monto">${montos}</td></tr>`;
+    }).join('');
+    const rango = d.rango_fechas
+      ? `<p class="resumen-corrida-sub">Movimientos fechados entre el ${formatoFecha(d.rango_fechas.desde)} y el ${formatoFecha(d.rango_fechas.hasta)}. Pesos y dólares se muestran por separado: no se suman entre sí.</p>`
+      : '';
+    return `${rango}<table class="preview-tabla resumen-corrida">
+      <thead><tr><th>Fecha de la corrida</th><th>Tipo</th><th>Movimientos</th><th class="monto">Total</th></tr></thead>
+      <tbody>${filas}</tbody></table>`;
+  }
+
   function renderDetalleCorrida(d) {
     if (!d) return '<p style="margin:0; color:var(--text-subtle);">No hay detalle técnico guardado para esta corrida.</p>';
+    const fechaCorrida = panel.dataset.fechaCorrida || '';
+
     const categoriasEntries = Object.entries(d.categorias || {}).sort((a, b) => b[1] - a[1]);
     const categoriasHTML = categoriasEntries.length
-      ? categoriasEntries.map(([cat, n]) => `<div class="fila-detalle"><span>${cat}</span><span>${n}</span></div>`).join('')
+      ? categoriasEntries.map(([cat, n]) => `<div class="fila-detalle"><span>${esc(nombreCategoria(cat))}</span><span>${n}</span></div>`).join('')
       : '<p style="margin:0; color:var(--text-subtle);">Sin movimientos para categorizar.</p>';
-    const movimientosHTML = (d.movimientos && d.movimientos.length)
-      ? `<table class="preview-tabla"><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Monto</th><th>Descripción</th></tr></thead><tbody>${
-          d.movimientos.map(m => `<tr><td>${m.fecha}</td><td>${m.tipo}</td><td>${m.categoria}</td><td>${m.moneda} ${Number(m.monto).toLocaleString('es-CO')}</td><td>${m.descripcion}</td></tr>`).join('')
-        }</tbody></table>`
-      : '<p style="margin:0; color:var(--text-subtle);">Ningún correo coincidió con un movimiento reconocible en esta corrida.</p>';
-    const nota = (d.movimientos && d.movimientos.length < d.correos_encontrados)
-      ? ` (mostrando ${d.movimientos.length} de ${d.correos_encontrados} -- se acota la lista guardada para no duplicar lo que ya vive en la tabla de movimientos)`
-      : '';
 
     return `
       <h4>Resumen técnico</h4>
-      <div class="fila-detalle"><span>Duración</span><span>${d.duracion_seg}s</span></div>
-      <div class="fila-detalle"><span>Días revisados hacia atrás</span><span>${d.dias_revisados}</span></div>
+      <div class="fila-detalle"><span>Duración</span><span>${formatoDuracion(d.duracion_seg)}</span></div>
+      <div class="fila-detalle"><span>Días revisados hacia atrás</span><span>${formatoDiasAtras(d.dias_revisados, fechaCorrida)}</span></div>
       <div class="fila-detalle"><span>Correos con movimiento reconocido</span><span>${d.correos_encontrados}</span></div>
-      <div class="fila-detalle"><span>Insertados como nuevos</span><span>${d.nuevos}</span></div>
-      <div class="fila-detalle"><span>Ya existían (duplicados)</span><span>${d.duplicados_bd} en la base, ${d.duplicados_lote} repetidos entre sí</span></div>
+      <div class="fila-detalle"><span>Agregados como nuevos</span><span>${d.nuevos}</span></div>
+      <div class="fila-detalle">
+        <span>Ya estaban cargados<span class="ayuda-fila">Existían en tu cuenta de antes (de otra corrida, un extracto o una carga a mano), así que no se volvieron a agregar.</span></span>
+        <span>${d.duplicados_bd}</span>
+      </div>
+      <div class="fila-detalle">
+        <span>Repetidos en esta misma corrida<span class="ayuda-fila">El mismo movimiento llegó en más de un correo; se agregó una sola vez.</span></span>
+        <span>${d.duplicados_lote}</span>
+      </div>
       <h4>Categorías asignadas</h4>
       ${categoriasHTML}
-      <h4>Movimientos de esta corrida${nota}</h4>
-      ${movimientosHTML}
+      <h4>Resumen de la corrida</h4>
+      ${renderResumenCorrida(d, fechaCorrida)}
     `;
   }
 
